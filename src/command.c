@@ -77,8 +77,6 @@
 	CcpStat, AdmitBund, NULL },
     { "ecp",				"ECP status",
 	EcpStat, AdmitBund, NULL },
-    { "eap",				"EAP status",
-	EapStat, AdmitBund, NULL },
     { "events",				"Current events",
 	ShowEvents, NULL, NULL },
     { "ipcp",				"IPCP status",
@@ -91,9 +89,7 @@
 	ShowLayers, NULL, NULL },
     { "link",				"Link status",
 	LinkStat, AdmitBund, NULL },
-    { "auth",				"Auth status",
-	AuthStat, AdmitBund, NULL },
-    { "radius",				"RADIUS status",
+    { "radius",				"radius status",
 	RadStat, AdmitBund, NULL },
     { "lcp",				"LCP status",
 	LcpStat, AdmitBund, NULL },
@@ -121,11 +117,7 @@
 	CMD_SUBMENU, AdmitBund, (void *) CcpSetCmds },
     { "ecp ...",			"ECP specific stuff",
 	CMD_SUBMENU, AdmitBund, (void *) EcpSetCmds },
-    { "eap ...",			"EAP specific stuff",
-	CMD_SUBMENU, AdmitBund, (void *) EapSetCmds },
-    { "auth ...",			"Auth specific stuff",
-	CMD_SUBMENU, AdmitBund, (void *) AuthSetCmds },
-    { "radius ...",			"RADIUS specific stuff",
+    { "radius ...",			"Set radius configuration",
 	CMD_SUBMENU, AdmitBund, (void *) RadiusSetCmds },
     { "login [authname]",		"Set/clear console password",
 	SetLoginCommand, NULL, NULL },
@@ -275,7 +267,7 @@ FindCommand(CmdTab cmds, char *str, CmdTab *cmdp, int complain)
   int		len = strlen(str);
   const char	*fmt;
 
-  for (nmatch = 0, found = 0; cmds->name; cmds++) {
+  for (nmatch = 0, found = NULL; cmds->name; cmds++) {
     if (cmds->name && !strncmp(str, cmds->name, len)) {
       *cmdp = cmds;
       nmatch++;

@@ -21,5 +21,11 @@
   extern const struct cmdtab	PptpSetCmds[];
   extern const struct phystype	gPptpPhysType;
 
+/*
+ * FUNCTIONS
+ */
+
+  extern struct in_addr		*PptpGetPeerIp(void);
+
 #endif
 

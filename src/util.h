@@ -10,8 +10,8 @@
 #ifndef _UTIL_H_
 #define _UTIL_H_
 
-#include "ip.h"
 #include "ipcp.h"
+#include "ip.h"
 
   /*-
    * The following macro is used to update an
@@ -66,13 +66,12 @@
   extern int		PIDCheck(const char *lockfile, int killem);
 
   extern void		LengthenArray(void *arrayp, int esize,
-				int *alenp, const char *type);
+				int *alenp, int type);
 
   extern int		ExecCmd(int log, const char *fmt, ...)
 				__printflike(2, 3);
   extern void		ShowMesg(int log, const char *buf, int len);
-  extern char		*Bin2Hex(const unsigned char *bin, int len);
-  extern u_char		*Hex2Bin(char *hexstr);
+
   extern u_short	Crc16(u_short fcs, u_char *cp, int len);
   extern u_long		GenerateMagic(void);
 

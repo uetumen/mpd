@@ -766,7 +766,11 @@ ChatDoCmd(ChatInfo c, int ac, char *av[])
       break;
 
     case CMD_LOG:
+#ifdef IA_CUSTOM
+      ChatLog(c, ADLG_WAN_CONNECTING, av[1]);
+#else
       ChatLog(c, 0, av[1]);
+#endif
       break;
 
 #ifdef LOCAT_SCRIPT_FILE
@@ -1210,6 +1214,9 @@ ChatLog(ChatInfo c, int code, const char *string)
   if (c->lastLog)
     (*c->free)(c->arg, c->lastLog);
   c->lastLog = exp_string;
+#ifdef IA_CUSTOM
+  SetStatus(code, STR_COPY, c->lastLog);
+#endif
 }
 
 /*

@@ -40,23 +40,16 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#include <pthread.h>
-#include <pdel/structs/structs.h>
-#include <pdel/structs/type/array.h>
-#include <pdel/util/typed_mem.h>
-#include <pdel/util/pevent.h>
-#include <pdel/util/paction.h>
-
 #include "defs.h"
 #include "event.h"
 #include "msgdef.h"
-#include "vars.h"
 #include "bund.h"
 #include "link.h"
 #include "proto.h"
 #include "util.h"
 #include "log.h"
 #include "mbuf.h"
+#include "vars.h"
 #include "phys.h"
 
 /*
@@ -65,10 +58,6 @@
 
   /* Do our own version of assert() so it shows up in the logs */
   #define assert(e)	((e) ? (void)0 : DoAssert(__FILE__, __LINE__, #e))
-
-  /* Giant Mutex handling */
-  #define GIANT_MUTEX_LOCK()	assert(pthread_mutex_lock(&gGiantMutex) == 0)
-  #define GIANT_MUTEX_UNLOCK()	assert(pthread_mutex_unlock(&gGiantMutex) == 0)
 
 /* Wrappers for strings, other hacks */
 
@@ -95,9 +84,6 @@
 
   extern int		gNumLinks;		/* Total number of links */
   extern int		gNumBundles;		/* Total number of bundles */
-  extern int		gEnableTee;		/* Insert ng_tee into netgraph */
-
-  extern pthread_mutex_t	gGiantMutex;	/* Giant Mutex */
 
   extern Bund		bund;			/* Current bundle */
   extern Link		lnk;			/* Current link */

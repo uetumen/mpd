@@ -85,7 +85,6 @@
   static void	PptpShutdown(PhysInfo p);
   static void	PptpStat(PhysInfo p);
   static int	PptpOriginated(PhysInfo p);
-  static int	PptpPeerAddr(PhysInfo p, void *buf, int buf_len);
 
   static void	PptpInitCtrl(void);
   static int	PptpOriginate(PptpInfo pptp);
@@ -127,7 +126,6 @@
     PptpShutdown,
     PptpStat,
     PptpOriginated,
-    PptpPeerAddr,
   };
 
   const struct cmdtab	PptpSetCmds[] = {
@@ -352,6 +350,26 @@ PptpKillNode(PptpInfo pptp)
   NgFuncShutdownNode(bund, lnk->name, path);
 }
 
+/*
+ * PptpGetPeerIp()
+ */
+
+struct in_addr *
+PptpGetPeerIp(void)
+{
+  PptpInfo	const pptp = (PptpInfo) lnk->phys->info;
+
+  if (lnk->phys->type == &gPptpPhysType) {
+     return(&(pptp->peer_addr));
+  } else {
+     return((struct in_addr *)NULL);
+  };
+}
+
+/*
+ * PptpOriginated()
+ */
+
 static int
 PptpOriginated(PhysInfo p)
 {
@@ -359,22 +377,6 @@ PptpOriginated(PhysInfo p)
 
   return(pptp->originate ? LINK_ORIGINATE_LOCAL : LINK_ORIGINATE_REMOTE);
 }
-
-static int
-PptpPeerAddr(PhysInfo p, void *buf, int buf_len)
-{
-  PptpInfo	const pptp = (PptpInfo) p;
-
-  if (inet_ntop(AF_INET, &pptp->peer_addr, buf, buf_len))
-    return(0);
-  else
-    return(-1);
-}
-
-/*
- * PptpOriginated()
- */
-
 
 /*
  * PptpStat()

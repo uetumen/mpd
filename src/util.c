@@ -40,15 +40,12 @@
   static void		Escape(char *line);
   static char		*ReadLine(FILE *fp, int *lineNum);
 
-  static char		HexVal(char c);
-
-
 /*
  * LengthenArray()
  */
 
 void
-LengthenArray(void *array, int esize, int *alenp, const char *type)
+LengthenArray(void *array, int esize, int *alenp, int type)
 {
   void **const arrayp = (void **)array;
   void *newa;
@@ -56,7 +53,7 @@ LengthenArray(void *array, int esize, int *alenp, const char *type)
   newa = Malloc(type, (*alenp + 1) * esize);
   if (*arrayp != NULL) {
     memcpy(newa, *arrayp, *alenp * esize);
-    Freee(type, *arrayp);
+    Freee(*arrayp);
   }
   *arrayp = newa;
   (*alenp)++;
@@ -243,7 +240,7 @@ void
 FreeArgs(int ac, char *av[])
 {
   while (ac > 0)
-    Freee(MB_UTIL, av[--ac]);
+    Freee(av[--ac]);
 }
 
 /*
@@ -318,11 +315,11 @@ ReadFile(const char *filename, const char *target,
   {
     if (!isspace(*line))
     {
-      Freee(MB_UTIL, line);
+      Freee(line);
       break;
     }
     ac = ParseLine(line, av, sizeof(av) / sizeof(*av));
-    Freee(MB_UTIL, line);
+    Freee(line);
     memcpy(av_copy, av, sizeof(av));
     (*func)(ac, av);
     FreeArgs(ac, av_copy);
@@ -359,11 +356,11 @@ SeekToLabel(FILE *fp, const char *label, int *lineNum)
 
     if (isspace(*line))
     {
-      Freee(MB_UTIL, line);
+      Freee(line);
       continue;
     }
     found = (s = strtok(line, " \t\f:")) && !strcmp(s, label);
-    Freee(MB_UTIL, line);
+    Freee(line);
     if (found)
       return(0);
   }
@@ -1056,59 +1053,6 @@ ShowMesg(int log, const char *buf, int len)
     mesg[len] = 0;
     for (s = strtok(mesg, "\r\n"); s; s = strtok(NULL, "\r\n"))
       Log(log, (" MESG: %s", s));
-  }
-}
-
-/*
- * Bin2Hex()
- */
-
-char *
-Bin2Hex(const unsigned char *bin, int len)
-{
-  static char	hexconvtab[] = "0123456789abcdef";
-  int		i, j;
-  char		*buf;
-  
-  buf = Malloc(MB_UTIL, len * 2 + 1);
-  for (i = j = 0; i < len; i++) {
-    buf[j++] = hexconvtab[bin[i] >> 4];
-    buf[j++] = hexconvtab[bin[i] & 15];
-  }
-  buf[j] = 0;
-  return buf;
-}
-
-/*
- * Hex2Bin()
- */
-
-u_char *
-Hex2Bin(char *hexstr)
-{
-  int		i;
-  u_char	*binval;
-
-  binval = Malloc(MB_UTIL, strlen(hexstr) / 2);
-
-  for (i = 0; i < strlen(hexstr) / 2; i++) {
-    binval[i] = 16 * HexVal(hexstr[2*i]) + HexVal(hexstr[2*i+1]);
-  }
-
-  return binval;
-}
- 
-static char
-HexVal(char c)
-{
-  if (c >= '0' && c <= '9') {
-    return (c - '0');
-  } else if (c >= 'a' && c <= 'z') {
-    return (c - 'a' + 10);
-  } else if (c >= 'A' && c <= 'Z') {
-    return (c - 'A' + 10);
-  } else {
-    return (-1);
   }
 }
 

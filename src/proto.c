@@ -45,7 +45,6 @@
     { PROTO_ECP,	"ECP" },
     { PROTO_SPAP,	"SPAP" },
     { PROTO_ATCP,	"ATCP" },
-    { PROTO_EAP,	"EAP" },
   };
   #define NUM_STAT_PROTOCOLS	(sizeof(statProtos) / sizeof(*statProtos))
 
@@ -135,7 +134,6 @@
     { 0xc029,	"CallBack Control Protocol (CBCP)" },
     { 0xc081,	"Container Control Protocol", },
     { 0xc223,	"Challenge Handshake Authentication Protocol" },
-    { 0xc227,	"Extensible Authentication Protocol" },
     { 0xc281,	"Proprietary Authentication Protocol", },
     { 0xc26f,	"Stampede Bridging Authorization Protocol" },
     { 0xc481,	"Proprietary Node ID Authentication Protocol", },

@@ -43,6 +43,7 @@
     SET_MIN_DISCONNECT,
     SET_AUTHNAME,
     SET_PASSWORD,
+    SET_MAX_LOGINS,
     SET_RETRY,
     SET_ACCEPT,
     SET_DENY,
@@ -93,6 +94,12 @@
 	BundSetCommand, NULL, (void *) SET_MIN_CONNECT },
     { "min-dis seconds",		"BOD min disconnected time",
 	BundSetCommand, NULL, (void *) SET_MIN_DISCONNECT },
+    { "authname name",			"Authentication name",
+	BundSetCommand, NULL, (void *) SET_AUTHNAME },
+    { "password pass",			"Authentication password",
+	BundSetCommand, NULL, (void *) SET_PASSWORD },
+    { "max-logins num",			"Max concurrent logins",
+	BundSetCommand, NULL, (void *) SET_MAX_LOGINS },
     { "retry seconds",			"FSM retry timeout",
 	BundSetCommand, NULL, (void *) SET_RETRY },
     { "accept [opt ...]",		"Accept option",
@@ -122,6 +129,9 @@
     { 0,	BUND_CONF_CRYPT_REQD,	"crypt-reqd"	},
     { 0,	BUND_CONF_BWMANAGE,	"bw-manage"	},
     { 0,	BUND_CONF_ROUNDROBIN,	"round-robin"	},
+    { 0,	BUND_CONF_RADIUSAUTH,	"radius-auth"	},
+    { 0,	BUND_CONF_RADIUSFALLBACK,	"radius-fallback"	},
+    { 0,	BUND_CONF_RADIUSACCT,	"radius-acct"	},    
     { 0,	BUND_CONF_NORETRY,	"noretry"	},
     { 0,	BUND_CONF_TCPWRAPPER,	"tcp-wrapper"	},
     { 0,	0,			NULL		},
@@ -250,20 +260,27 @@ BundJoin(void)
     bund->pppConfig.bund.enableRoundRobin =
       Enabled(&bund->conf.options, BUND_CONF_ROUNDROBIN);
 #endif
-
-    /* generate a uniq session id */
-    snprintf(bund->session_id, LINK_MAX_NAME, "%ld-%s",
-      time(NULL) % 10000000, bund->name);
   }
 
   /* Update PPP node configuration */
   NgFuncSetConfig();
+  
+  if (Enabled(&bund->conf.options, BUND_CONF_RADIUSACCT)) {
+    u_long updateInterval = 0;
 
-  /* generate a uniq session id */
-  snprintf(lnk->session_id, LINK_MAX_NAME, "%ld-%s",
-    time(NULL) % 10000000, lnk->name);
+    RadiusAccount(RAD_START);
 
-  AuthAccountStart(AUTH_ACCT_START);
+    if (bund->radius.interim_interval > 0)
+      updateInterval = bund->radius.interim_interval;
+    else if (bund->radius.conf.acct_update > 0)
+      updateInterval = bund->radius.conf.acct_update;
+
+    if (updateInterval > 0) {
+      TimerInit(&lnk->radius.radUpdate, "RadiusAcctUpdate",
+	updateInterval * SECONDS, RadiusAcctUpdate, NULL);
+      TimerStart(&lnk->radius.radUpdate);
+    }
+  }
 
   /* starting link statistics timer */
   TimerInit(&lnk->stats.updateTimer, "LinkUpdateStats", 
@@ -291,9 +308,11 @@ BundLeave(void)
   /* stopping link statistics timer */
   TimerStop(&lnk->stats.updateTimer);
 
-  AuthAccountStart(AUTH_ACCT_STOP);
-  AuthCleanup();
-
+  if (Enabled(&bund->conf.options, BUND_CONF_RADIUSACCT)) 
+  {
+    TimerStop(&lnk->radius.radUpdate);
+    RadiusAccount(RAD_STOP);
+  }
   BundReasses(0);
   
   /* Disable link */
@@ -303,13 +322,21 @@ BundLeave(void)
   /* Special stuff when last link goes down... */
   if (bm->n_up == 0) {
   
+    if (Enabled(&bund->conf.options, BUND_CONF_RADIUSAUTH) || 
+        Enabled(&bund->conf.options, BUND_CONF_RADIUSACCT)) 
+      RadiusDown();
+
     /* Reset statistics and auth information */
     BundBmStop();
     if (bm->ncps_up)
       BundDownNcps();
+    memset(bund->peer_msChal, 0, sizeof(bund->peer_msChal));
+    memset(bund->self_msChal, 0, sizeof(bund->self_msChal));
     memset(bund->peer_authname, 0, sizeof(bund->peer_authname));
-    memset(&bund->ccp.mppc, 0, sizeof(bund->ccp.mppc));
-    
+    memset(bund->msPassword, 0, sizeof(bund->msPassword));
+    memset(bund->peer_ntResp, 0, sizeof(bund->peer_ntResp));
+    memset(bund->self_ntResp, 0, sizeof(bund->self_ntResp));
+
     /* Close links, or else wait and try to open again later */
     if (!bund->open || Enabled(&bund->conf.options, BUND_CONF_NORETRY)) {
       BundCloseLinks();
@@ -534,6 +561,10 @@ BundReasses(int add)
   Log(LG_BUND, ("[%s] up: %d link%s, total bandwidth %d bps",
     bund->name, bm->n_up, bm->n_up == 1 ? "" : "s", bm->total_bw));
 
+  /* Do any custom stuff */
+#ifdef IA_CUSTOM
+  CustomLinkStateChange(add);
+#endif
 }
 
 /*
@@ -691,10 +722,10 @@ BundCreateCmd(int ac, char *av[], void *arg)
   /* We need at least one link in the bundle */
   if (bund->n_links == 0) {
     Log(LG_ERR, ("mpd: bundle \"%s\" creation failed: no links", av[0]));
-    Freee(MB_BUND, bund->links);
+    Freee(bund->links);
     NgFuncShutdown(bund);
 fail2:
-    Freee(MB_BUND, bund);
+    Freee(bund);
 fail:
     bund = old_bund;
     return(0);
@@ -720,6 +751,7 @@ fail:
   bund->conf.bm_Lo = BUND_BM_DFL_Lo;
   bund->conf.bm_Mc = BUND_BM_DFL_Mc;
   bund->conf.bm_Md = BUND_BM_DFL_Md;
+  bund->conf.max_logins = 0;	/* unlimited concurrent logins */
 
   Enable(&bund->conf.options, BUND_CONF_MULTILINK);
   Enable(&bund->conf.options, BUND_CONF_SHORTSEQ);
@@ -729,14 +761,14 @@ fail:
   Disable(&bund->conf.options, BUND_CONF_COMPRESSION);
   Disable(&bund->conf.options, BUND_CONF_ENCRYPTION);
   Disable(&bund->conf.options, BUND_CONF_CRYPT_REQD);
+  Disable(&bund->conf.options, BUND_CONF_RADIUSAUTH);
+  Disable(&bund->conf.options, BUND_CONF_RADIUSFALLBACK);
 
   /* Init NCP's */
   IpcpInit();
   CcpInit();
   EcpInit();
-  
-  AuthInit();
-  
+
   /* Done */
   return(0);
 }
@@ -781,7 +813,6 @@ BundStat(int ac, char *av[], void *arg)
   printf("\tLinks          : ");
   BundShowLinks(sb);
   printf("\tStatus         : %s\n", sb->open ? "OPEN" : "CLOSED");
-  printf("\tSession-Id     : %s\n", sb->session_id);
   printf("\tTotal bandwidth: %u\n", tbw);
   printf("\tAvail bandwidth: %u\n", bw);
   printf("\tPeer authname  : \"%s\"\n", sb->peer_authname);
@@ -789,7 +820,7 @@ BundStat(int ac, char *av[], void *arg)
 
   /* Show configuration */
   printf("Configuration:\n");
-  printf("\tMy auth name   : \"%s\"\n", sb->conf.auth.authname);
+  printf("\tMy auth name   : \"%s\"\n", sb->conf.authname);
   printf("\tMy MRRU        : %d bytes\n", sb->conf.mrru);
   printf("\tRetry timeout  : %d seconds\n", sb->conf.retry_timeout);
   printf("\tSample period  : %d seconds\n", sb->conf.bm_S);
@@ -797,6 +828,7 @@ BundStat(int ac, char *av[], void *arg)
   printf("\tHigh water mark: %d%%\n", sb->conf.bm_Hi);
   printf("\tMin connected  : %d seconds\n", sb->conf.bm_Mc);
   printf("\tMax connected  : %d seconds\n", sb->conf.bm_Md);
+  printf("\tMax logins     : %ld\n", sb->conf.max_logins);
   printf("Bundle level options:\n");
   OptStat(&sb->conf.options, gConfList);
 
@@ -1086,6 +1118,18 @@ BundSetCommand(int ac, char *av[], void *arg)
       break;
     case SET_MIN_DISCONNECT:
       bund->conf.bm_Md = atoi(*av);
+      break;
+
+    case SET_AUTHNAME:
+      snprintf(bund->conf.authname, sizeof(bund->conf.authname), "%s", *av);
+      break;
+
+    case SET_PASSWORD:
+      snprintf(bund->conf.password, sizeof(bund->conf.password), "%s", *av);
+      break;
+
+    case SET_MAX_LOGINS:
+      bund->conf.max_logins = atoi(*av);
       break;
 
     case SET_RETRY:

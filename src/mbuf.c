@@ -14,13 +14,66 @@
 #include "ppp.h"
 
 /*
+ * DEFINITIONS
+ */
+
+  #define MBUF_CHECK_OVERRUNS
+
+  #define MBUF_MAGIC_1	0x99999999
+  #define MBUF_MAGIC_2	0xaaaaaaaa
+
+  struct typestat
+  {
+    const short	type;
+    const char	*name;
+    int		count;
+  };
+
+/*
+ * INTERNAL VARIABLES
+ */
+
+  static int		total_alloced;
+
+/* This list must correspond exactly with array in mbuf.h */
+
+  static struct typestat	gMbufStats[] =
+  {
+    { MB_FSM,		"FSM" },
+    { MB_PHYS,		"PHYS" },
+    { MB_FRAME_IN,	"FRAME_IN" },
+    { MB_FRAME_OUT,	"FRAME_OUT" },
+    { MB_BUND,		"BUND" },
+    { MB_ECHO,		"ECHO" },
+    { MB_VJCOMP,	"VJCOMP" },
+    { MB_LOG,		"LOG" },
+    { MB_IPQ,		"IPQ" },
+    { MB_MP,		"MP" },
+    { MB_AUTH,		"AUTH" },
+    { MB_UTIL,		"UTIL" },
+    { MB_CHAT,		"CHAT" },
+    { MB_COMP,		"COMP" },
+    { MB_CRYPT,		"CRYPT" },
+    { MB_PPTP,		"PPTP" },
+    { MB_RADIUS,	"RADIUS" },
+  };
+
+  #define NUM_TYPE_STATS	(sizeof(gMbufStats) / sizeof(*gMbufStats))
+
+/*
+ * INTERNAL FUNCTIONS
+ */
+
+  static void		MbufTypeCount(int type, int change);
+
+/*
  * Malloc()
  *
  * Replacement for the ususal malloc()
  */
 
 void *
-Malloc(const char *type, int size)
+Malloc(int type, int size)
 {
   Mbuf	bp;
 
@@ -36,15 +89,34 @@ Malloc(const char *type, int size)
  */
 
 void
-Freee(const char *type, const void *ptr)
+Freee(const void *ptr)
 {
   Mbuf	bp;
 
   if (ptr == NULL)
     return;
-
   bp = *((Mbuf *) ptr - 1);
   PFREE(bp);
+}
+
+/*
+ * Asprintf()
+ */
+
+char *
+Asprintf(int type, const char *format, ...)
+{
+  char *s;
+  va_list args;
+
+  va_start(args, format);
+  vasprintf(&s, format, args);
+  va_end(args);
+  if (s == NULL) {
+    Perror("%s", __FUNCTION__);
+    DoExit(EX_ERRDEAD);
+  }
+  return strcpy(Malloc(type, strlen(s) + 1), s);
 }
 
 /*
@@ -54,28 +126,56 @@ Freee(const char *type, const void *ptr)
  */
 
 Mbuf
-mballoc(const char *type, int size)
+mballoc(int type, int size)
 {
   u_char	*memory;
   u_long	amount;
   Mbuf		bp;
 
-  amount = sizeof(*bp) + size;
+/* Sanity */
 
-  if ((memory = MALLOC(type, amount)) == NULL)
+  assert(size < ((1 << ((sizeof(short) * 8) - 1)) - 1));
+
+/* Get memory */
+
+  #ifdef MBUF_CHECK_OVERRUNS
+    amount = sizeof(*bp) + size + (2 * sizeof(u_int32_t));
+  #else
+    amount = sizeof(*bp) + size;
+  #endif
+
+  if ((memory = malloc(amount)) == NULL)
   {
     Perror("mballoc: malloc");
     DoExit(EX_ERRDEAD);
   }
   memset(memory, 0, amount);
 
-  /* Put mbuf at front of memory region */
+/* Put mbuf at front of memory region */
 
   bp = (Mbuf)(void *)memory;
   bp->size = bp->cnt = size;
   bp->type = type;
 
-  bp->base = memory + sizeof(*bp);
+  #ifdef MBUF_CHECK_OVERRUNS
+    bp->base = memory + sizeof(*bp) + sizeof(u_int32_t);
+  #else
+    bp->base = memory + sizeof(*bp);
+  #endif
+
+/* Straddle buffer with magic values to detect overruns */
+
+  #ifdef MBUF_CHECK_OVERRUNS
+    *((u_int32_t *)(void *)(memory + sizeof(*bp))) = MBUF_MAGIC_1;
+    *((u_int32_t *)(void *)(memory + sizeof(*bp)
+	+ sizeof(u_int32_t) + size)) = MBUF_MAGIC_2;
+  #endif
+
+/* Keep tabs on who's got how much memory */
+
+  MbufTypeCount(bp->type, bp->size);
+
+/* Done */
 
   return(bp);
 }
@@ -94,10 +194,14 @@ mbfree(Mbuf bp)
   if (bp)
   {
 
-   /* Sanity checks */
+  /* Sanity checks */
 
     assert(bp->base);
-    assert(bp == (Mbuf)(void *)(bp->base - sizeof(*bp)));
+    #ifdef MBUF_CHECK_OVERRUNS
+      assert(bp == (Mbuf)(void *)(bp->base - sizeof(u_int32_t) - sizeof(*bp)));
+    #else
+      assert(bp == (Mbuf)(void *)(bp->base - sizeof(*bp)));
+    #endif
 
     #ifdef MBUF_CHECK_OVERRUNS
       assert(*((u_int32_t *)(void *)(bp->base
@@ -106,11 +210,15 @@ mbfree(Mbuf bp)
 	+ bp->size)) == MBUF_MAGIC_2);
     #endif
 
-   /* Free it */
+  /* Keep tabs on who's got how much memory */
+
+    MbufTypeCount(bp->type, -bp->size);
+
+  /* Free it */
 
     next = bp->next;
     bp->base = NULL;
-    FREE(bp->type, bp);
+    free(bp);
     return(next);
   }
   return(NULL);
@@ -316,13 +424,44 @@ mbsplit(Mbuf bp, int cnt)
 }
 
 /*
+ * MbufTypeCount()
+ */
+
+static void
+MbufTypeCount(int type, int change)
+{
+  int	index;
+
+/* Find structure for this type */
+
+  for (index = 0;
+    index < NUM_TYPE_STATS && gMbufStats[index].type != type;
+    index++);
+  assert(index < NUM_TYPE_STATS);
+
+/* Update counters */
+
+  gMbufStats[index].count += change;
+  total_alloced += change;
+  assert(total_alloced >= 0);
+}
+
+/*
  * MemStat()
  */
 
 int
 MemStat(int ac, char *av[], void *arg)
 {
-  typed_mem_dump(stdout);
+  int	index;
+
+  for (index = 0; index < NUM_TYPE_STATS; index++)
+    printf("%12s: %8d%c",
+      gMbufStats[index].name, gMbufStats[index].count,
+	(index & 1) ? '\n' : ' ');
+  if (index & 1)
+    printf("\n");
+  printf("Total bytes allocated: %d\n", total_alloced);
   return(0);
 }
 

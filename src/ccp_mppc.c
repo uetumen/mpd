@@ -12,6 +12,7 @@
 #include "msoft.h"
 #include "ngfunc.h"
 #include "bund.h"
+#include "radius.h"
 #include <md4.h>
 
 #include <netgraph/ng_message.h>
@@ -28,7 +29,11 @@
 
   /* #define DEBUG_KEYS */
 
+#ifdef ENCRYPTION_MPPE
 #define MPPC_SUPPORTED	(MPPC_BIT | MPPE_BITS | MPPE_STATELESS)
+#else
+#define MPPC_SUPPORTED	(MPPC_BIT | MPPE_STATELESS)
+#endif
 
 /*
  * INTERNAL FUNCTIONS
@@ -45,10 +50,13 @@
   static int	MppcNegotiated(int xmit);
 
   /* Encryption stuff */
+#ifdef ENCRYPTION_MPPE
   static void	MppeInitKey(MppcInfo mppc, int dir);
+  static int	MppeGetKeyInfo(char **secretp, u_char **challengep);
   static void	MppeInitKeyv2(MppcInfo mppc, int dir);
+  static int	MppeGetKeyInfov2(char **secretp, u_char **responsep);
   static short	MppcEnabledMppeType(short type);
-  static short	MppcAcceptableMppeType(short type);
+  static short	MppcAcceptableMppeType(short type);  
 
 #ifdef DEBUG_KEYS
   static void	KeyDebug(const u_char *data, int len, const char *fmt, ...);
@@ -56,6 +64,8 @@
 #else
   #define KEYDEBUG(x)
 #endif
+
+#endif	/* ENCRYPTION_MPPE */
 
 /*
  * GLOBAL VARIABLES
@@ -107,22 +117,28 @@ MppcInit(int dir)
       ppphook = NG_PPP_HOOK_COMPRESS;
       mppchook = NG_MPPC_HOOK_COMP;
       conf.bits = mppc->xmit_bits;
-      if (mschap == CHAP_ALG_MSOFT)
-	MppeInitKey(mppc, dir);
-      else
+#ifdef ENCRYPTION_MPPE
+      if (mschap == CHAP_ALG_MSOFTv2) {
         MppeInitKeyv2(mppc, dir);
+      } else {
+        MppeInitKey(mppc, dir);
+      }
       memcpy(conf.startkey, mppc->xmit_key0, sizeof(conf.startkey));
+#endif
       break;
     case COMP_DIR_RECV:
       cmd = NGM_MPPC_CONFIG_DECOMP;
       ppphook = NG_PPP_HOOK_DECOMPRESS;
       mppchook = NG_MPPC_HOOK_DECOMP;
       conf.bits = mppc->recv_bits;
-      if (mschap == CHAP_ALG_MSOFT)
-	MppeInitKey(mppc, dir);
-      else
-	MppeInitKeyv2(mppc, dir);
+#ifdef ENCRYPTION_MPPE
+      if (mschap == CHAP_ALG_MSOFTv2) {
+        MppeInitKeyv2(mppc, dir);
+      } else {
+        MppeInitKey(mppc, dir);
+      }
       memcpy(conf.startkey, mppc->recv_key0, sizeof(conf.startkey));
+#endif
       break;
     default:
       assert(0);
@@ -269,12 +285,14 @@ MppcBuildConfigReq(u_char *cp)
       && !CCP_PEER_REJECTED(ccp, gMppcCompress))
     bits |= MPPC_BIT;
 
+#ifdef ENCRYPTION_MPPE
   /* Encryption */
   if (MppcEnabledMppeType(40)) bits |= MPPE_40;
 #ifndef MPPE_56_UNSUPPORTED
   if (MppcEnabledMppeType(56)) bits |= MPPE_56;
 #endif
   if (MppcEnabledMppeType(128)) bits |= MPPE_128;
+#endif
 
   /* Stateless mode */
   if (Enabled(&ccp->options, gMppcStateless)
@@ -331,6 +349,8 @@ MppcDecodeConfigReq(Fsm fp, FsmOption opt, int mode)
       if ((bits & MPPC_BIT) && !Acceptable(&ccp->options, gMppcCompress))
 	bits &= ~MPPC_BIT;
 
+#ifdef ENCRYPTION_MPPE
+
       /* Check encryption */
       if ((bits & MPPE_40) && !MppcAcceptableMppeType(40))
 	bits &= ~MPPE_40;
@@ -360,6 +380,7 @@ MppcDecodeConfigReq(Fsm fp, FsmOption opt, int mode)
 #endif
 	if (MppcEnabledMppeType(128)) bits |= MPPE_128;
       }
+#endif
 
       /* Stateless mode */
       if ((bits & MPPE_STATELESS) && !Acceptable(&ccp->options, gMppcStateless))
@@ -379,12 +400,14 @@ MppcDecodeConfigReq(Fsm fp, FsmOption opt, int mode)
     case MODE_NAK:
       if (!(bits & MPPC_BIT))
 	CCP_PEER_REJ(ccp, gMppcCompress);
+#ifdef ENCRYPTION_MPPE
       if (!(bits & MPPE_40))
 	CCP_PEER_REJ(ccp, gMppe40);
       if (!(bits & MPPE_56))
 	CCP_PEER_REJ(ccp, gMppe56);
       if (!(bits & MPPE_128))
 	CCP_PEER_REJ(ccp, gMppe128);
+#endif
       if (!(bits & MPPE_STATELESS))
 	CCP_PEER_REJ(ccp, gMppcStateless);
       break;
@@ -444,14 +467,14 @@ static short
 MppcEnabledMppeType(short type)
 {
   CcpState	const ccp = &bund->ccp;
-  Auth		const a = &lnk->lcp.auth;
-  short		ret, policy_auth = FALSE;
+  struct radius	*rad = &bund->radius;
+  short		ret, radius = FALSE;
  
   switch (type) {
   case 40:
-    if (Enabled(&bund->conf.auth.options, AUTH_CONF_MPPC_POL)) {
-      policy_auth = TRUE;
-      ret = (a->msoft.types & MPPE_TYPE_40BIT) && !CCP_PEER_REJECTED(ccp, gMppe40);
+    if (Enabled(&ccp->options, gCcpRadius) && rad->valid) {
+      radius = TRUE;
+      ret = (rad->mppe.types & MPPE_TYPE_40BIT) && !CCP_PEER_REJECTED(ccp, gMppe40);
     } else {
       ret = Enabled(&ccp->options, gMppe40) && !CCP_PEER_REJECTED(ccp, gMppe40);
     }
@@ -459,9 +482,9 @@ MppcEnabledMppeType(short type)
 
 #ifndef MPPE_56_UNSUPPORTED
   case 56:
-    if (Enabled(&bund->conf.auth.options, AUTH_CONF_MPPC_POL)) {
-      policy_auth = TRUE;    
-      ret = (a->msoft.types & MPPE_TYPE_56BIT) && !CCP_PEER_REJECTED(ccp, gMppe56);
+    if (Enabled(&ccp->options, gCcpRadius) && rad->valid) {
+      radius = TRUE;    
+      ret = (rad->mppe.types & MPPE_TYPE_56BIT) && !CCP_PEER_REJECTED(ccp, gMppe56);
     } else {
       ret = Enabled(&ccp->options, gMppe56) && !CCP_PEER_REJECTED(ccp, gMppe56);
     }
@@ -471,15 +494,15 @@ MppcEnabledMppeType(short type)
       
   case 128:
   default:
-    if (Enabled(&bund->conf.auth.options, AUTH_CONF_MPPC_POL)) {
-      policy_auth = TRUE;    
-      ret = (a->msoft.types & MPPE_TYPE_128BIT) && !CCP_PEER_REJECTED(ccp, gMppe128);
+    if (Enabled(&ccp->options, gCcpRadius) && rad->valid) {
+      radius = TRUE;    
+      ret = (rad->mppe.types & MPPE_TYPE_128BIT) && !CCP_PEER_REJECTED(ccp, gMppe128);
     } else {
       ret = Enabled(&ccp->options, gMppe128) && !CCP_PEER_REJECTED(ccp, gMppe128);
     }
   }
   Log(LG_CCP, ("[%s] CCP: Checking whether %d bits are enabled -> %s%s", 
-    lnk->name, type, ret ? "yes" : "no", policy_auth ? " (AUTH)" : "" ));
+    lnk->name, type, ret ? "yes" : "no", radius ? " (RADIUS)" : "" ));
   return ret;
 }
 
@@ -487,14 +510,14 @@ static short
 MppcAcceptableMppeType(short type)
 {
   CcpState	const ccp = &bund->ccp;
-  Auth		const a = &lnk->lcp.auth;
-  short		ret, policy_auth = FALSE;
+  struct radius	*rad = &bund->radius;
+  short		ret, radius = FALSE;
   
   switch (type) {
   case 40:
-    if (Enabled(&bund->conf.auth.options, AUTH_CONF_MPPC_POL)) {
-      policy_auth = TRUE;
-      ret = a->msoft.types & MPPE_TYPE_40BIT;
+    if (Enabled(&ccp->options, gCcpRadius) && rad->valid) {
+      radius = TRUE;
+      ret = rad->mppe.types & MPPE_TYPE_40BIT;
     } else {
       ret = Acceptable(&ccp->options, gMppe40);
     }
@@ -502,9 +525,9 @@ MppcAcceptableMppeType(short type)
 
 #ifndef MPPE_56_UNSUPPORTED
   case 56:
-    if (Enabled(&bund->conf.auth.options, AUTH_CONF_MPPC_POL)) {
-      policy_auth = TRUE;
-      ret = a->msoft.types & MPPE_TYPE_56BIT;
+    if (Enabled(&ccp->options, gCcpRadius) && rad->valid) {
+      radius = TRUE;
+      ret = rad->mppe.types & MPPE_TYPE_56BIT;
     } else {
       ret = Acceptable(&ccp->options, gMppe56);
     }
@@ -514,19 +537,20 @@ MppcAcceptableMppeType(short type)
       
   case 128:
   default:
-    if (Enabled(&bund->conf.auth.options, AUTH_CONF_MPPC_POL)) {
-      policy_auth = TRUE;    
-      ret = a->msoft.types & MPPE_TYPE_128BIT;
+    if (Enabled(&ccp->options, gCcpRadius) && rad->valid) {
+      radius = TRUE;    
+      ret = rad->mppe.types & MPPE_TYPE_128BIT;
     } else {
       ret = Acceptable(&ccp->options, gMppe128);
     }
   }
 
-  Log(LG_CCP, ("[%s] CCP: Checking whether %d bits are acceptable -> %s%s",
-    lnk->name, type, ret ? "yes" : "no", policy_auth ? " (AUTH)" : "" ));
+  Log(LG_CCP, ("[%s] CCP: Checking whether %d bits are acceptable -> %s%s", 
+    lnk->name, type, ret ? "yes" : "no", radius ? " (RADIUS)" : "" ));
   return ret;
 
 }
+#ifdef ENCRYPTION_MPPE
 
 #define KEYLEN(b)	(((b) & MPPE_128) ? 16 : 8)
 
@@ -537,21 +561,80 @@ MppcAcceptableMppeType(short type)
 static void
 MppeInitKey(MppcInfo mppc, int dir)
 {
-  CcpState	const ccp = &bund->ccp;
   u_int32_t	const bits = (dir == COMP_DIR_XMIT) ?
 			mppc->xmit_bits : mppc->recv_bits;
   u_char	*const key0 = (dir == COMP_DIR_XMIT) ?
 			mppc->xmit_key0 : mppc->recv_key0;
   u_char	hash[16];
+  char		*pass;
   u_char	*chal;
+
+  /* Get credential info */
+  if (MppeGetKeyInfo(&pass, &chal) < 0)
+    return;
+
+  /* Compute basis for the session key (ie, "start key" or key0) */
+  if (bits & MPPE_128) {
+    MD4_CTX	c;
+
+    if (bund->radius.valid)
+      memcpy(hash, bund->radius.mppe.nt_hash, sizeof(hash));
+    else {
+      NTPasswordHash(pass, hash);
+      KEYDEBUG((hash, sizeof(hash), "NTPasswordHash"));
+      MD4Init(&c);
+      MD4Update(&c, hash, 16);
+      MD4Final(hash, &c);
+      KEYDEBUG((hash, sizeof(hash), "MD4 of that"));
+      KEYDEBUG((chal, CHAP_MSOFT_CHAL_LEN, "Challenge"));
+    }
+    MsoftGetStartKey(chal, hash);
+    KEYDEBUG((hash, sizeof(hash), "NT StartKey"));
+  } else {
+    if (bund->radius.valid)
+      memcpy(hash, bund->radius.mppe.lm_key, 8);
+    else
+      LMPasswordHash(pass, hash);
+    KEYDEBUG((hash, sizeof(hash), "LM StartKey"));
+  }
+  memcpy(key0, hash, MPPE_KEY_LEN);
+  KEYDEBUG((key0, (bits & MPPE_128) ? 16 : 8, "InitialKey"));
+}
+
+/*
+ * MppeGetKeyInfo()
+ *
+ * This is described in:
+ *   draft-ietf-pppext-mschapv1-keys-00.txt
+ */
+
+static int
+MppeGetKeyInfo(char **secretp, u_char **challengep)
+{
+  CcpState		const ccp = &bund->ccp;
+  u_char		*challenge;
 
   /* The secret comes from the originating caller's credentials */
   switch (lnk->originate) {
     case LINK_ORIGINATE_LOCAL:
-      chal = bund->ccp.mppc.peer_msChal;
+      if (lnk->lcp.peer_auth != PROTO_CHAP
+	  || (lnk->lcp.peer_chap_alg != CHAP_ALG_MSOFT
+	    && lnk->lcp.peer_chap_alg != CHAP_ALG_MSOFTv2)) {
+	Log(LG_ERR,
+	  ("[%s] \"%s chap\" required for MPPE", lnk->name, "accept"));
+	goto fail;
+      }
+      challenge = bund->peer_msChal;
       break;
     case LINK_ORIGINATE_REMOTE:
-      chal = bund->ccp.mppc.self_msChal;
+      if (lnk->lcp.want_auth != PROTO_CHAP
+	  || (lnk->lcp.want_chap_alg != CHAP_ALG_MSOFT
+	    && lnk->lcp.want_chap_alg != CHAP_ALG_MSOFTv2)) {
+	Log(LG_ERR,
+	  ("[%s] \"%s chap\" required for MPPE", lnk->name, "enable"));
+	goto fail;
+      }
+      challenge = bund->self_msChal;
       break;
     case LINK_ORIGINATE_UNKNOWN:
     default:
@@ -559,35 +642,15 @@ MppeInitKey(MppcInfo mppc, int dir)
       goto fail;
   }
 
-  /* Compute basis for the session key (ie, "start key" or key0) */
-  if (bits & MPPE_128) {
-    if (!lnk->lcp.auth.msoft.has_nt_hash) {
-      Log(LG_ERR, ("[%s] The NT-Hash is not set, but needed for MS-CHAPv1 and MPPE 128", 
-        lnk->name));
-      goto fail;
-    }
-    memcpy(hash, lnk->lcp.auth.msoft.nt_hash_hash, sizeof(hash));
-    KEYDEBUG((hash, sizeof(hash), "NT Password Hash Hash"));
-    KEYDEBUG((chal, CHAP_MSOFT_CHAL_LEN, "Challenge"));
-    MsoftGetStartKey(chal, hash);
-    KEYDEBUG((hash, sizeof(hash), "NT StartKey"));
-  } else {
-    if (!lnk->lcp.auth.msoft.has_lm_hash) {
-      Log(LG_ERR, ("[%s] The LM-Hash is not set, but needed for MS-CHAPv1 and MPPE 40, 56", 
-        lnk->name));
-      goto fail;
-    }
-
-    memcpy(hash, lnk->lcp.auth.msoft.lm_hash, 8);
-    KEYDEBUG((hash, sizeof(hash), "LM StartKey"));
-  }
-  memcpy(key0, hash, MPPE_KEY_LEN);
-  KEYDEBUG((key0, (bits & MPPE_128) ? 16 : 8, "InitialKey"));
-  return;
+  /* Return info */
+  *secretp = bund->msPassword;
+  *challengep = challenge;  
+  return(0);
 
 fail:
+  Log(LG_ERR, ("[%s] can't determine credentials for MPPE", bund->name));
   FsmFailure(&ccp->fsm, FAIL_CANT_ENCRYPT);
-  FsmFailure(&bund->ipcp.fsm, FAIL_CANT_ENCRYPT);
+  return(-1);
 }
 
 /*
@@ -597,42 +660,34 @@ fail:
 static void
 MppeInitKeyv2(MppcInfo mppc, int dir)
 {
-  CcpState	const ccp = &bund->ccp;
   u_char	*const key0 = (dir == COMP_DIR_XMIT) ?
 			mppc->xmit_key0 : mppc->recv_key0;
   u_char	hash[16];
+  char		*pass;
   u_char	*resp;
+  MD4_CTX	c;
 
-  if (lnk->lcp.auth.msoft.has_keys)
-  { 
-    memcpy(mppc->xmit_key0, lnk->lcp.auth.msoft.xmit_key, MPPE_KEY_LEN);
-    memcpy(mppc->recv_key0, lnk->lcp.auth.msoft.recv_key, MPPE_KEY_LEN);
+  /* If using RADIUS, key info comes from the server */
+  if (bund->radius.valid) {
+    if (dir == COMP_DIR_XMIT) {
+      memcpy(mppc->xmit_key0, bund->radius.mppe.sendkey, MPPE_KEY_LEN);
+    } else {
+      memcpy(mppc->recv_key0, bund->radius.mppe.recvkey, MPPE_KEY_LEN);
+    }
     return;
   }
 
-  /* The secret comes from the originating caller's credentials */
-  switch (lnk->originate) {
-    case LINK_ORIGINATE_LOCAL:
-      resp = bund->ccp.mppc.self_ntResp;
-      break;
-    case LINK_ORIGINATE_REMOTE:
-      resp = bund->ccp.mppc.peer_ntResp;
-      break;
-    case LINK_ORIGINATE_UNKNOWN:
-    default:
-      Log(LG_ERR, ("[%s] can't determine link direction for MPPE", lnk->name));
-      goto fail;
-  }
-
-  if (!lnk->lcp.auth.msoft.has_nt_hash) {
-    Log(LG_ERR, ("[%s] The NT-Hash is not set, but needed for MS-CHAPv2 and MPPE", 
-      lnk->name));
-    goto fail;
-  }
+  /* Get credential info */
+  if (MppeGetKeyInfov2(&pass, &resp) < 0)
+    return;
 
   /* Compute basis for the session key (ie, "start key" or key0) */
-  memcpy(hash, lnk->lcp.auth.msoft.nt_hash_hash, sizeof(hash));
-  KEYDEBUG((hash, sizeof(hash), "NT Password Hash Hash"));
+  NTPasswordHash(pass, hash);
+  KEYDEBUG((hash, sizeof(hash), "NTPasswordHash"));
+  MD4Init(&c);
+  MD4Update(&c, hash, 16);
+  MD4Final(hash, &c);
+  KEYDEBUG((hash, sizeof(hash), "MD4 of that"));
   KEYDEBUG((resp, CHAP_MSOFTv2_CHAL_LEN, "Response"));
   MsoftGetMasterKey(resp, hash);
   KEYDEBUG((hash, sizeof(hash), "GetMasterKey"));
@@ -642,12 +697,58 @@ MppeInitKeyv2(MppcInfo mppc, int dir)
   KEYDEBUG((hash, sizeof(hash), "GetAsymmetricKey"));
   memcpy(key0, hash, MPPE_KEY_LEN);
   KEYDEBUG((key0, MPPE_KEY_LEN, "InitialKey"));
-  return;
+}
+
+/*
+ * MppeGetKeyInfov2()
+ */
+
+static int
+MppeGetKeyInfov2(char **secretp, u_char **responsep)
+{
+  CcpState		const ccp = &bund->ccp;
+  u_char		*response;
+
+  /* The secret comes from the originating caller's credentials */
+  switch (lnk->originate) {
+    case LINK_ORIGINATE_LOCAL:
+      if (lnk->lcp.peer_auth != PROTO_CHAP
+	  || (lnk->lcp.peer_chap_alg != CHAP_ALG_MSOFT
+	    && lnk->lcp.peer_chap_alg != CHAP_ALG_MSOFTv2)) {
+	Log(LG_ERR,
+	  ("[%s] \"%s chap\" required for MPPE", lnk->name, "accept"));
+	goto fail;
+      }
+      response = bund->self_ntResp;
+      break;
+    case LINK_ORIGINATE_REMOTE:
+      if (lnk->lcp.want_auth != PROTO_CHAP
+	  || (lnk->lcp.want_chap_alg != CHAP_ALG_MSOFT
+	    && lnk->lcp.want_chap_alg != CHAP_ALG_MSOFTv2)) {
+	Log(LG_ERR,
+	  ("[%s] \"%s chap\" required for MPPE", lnk->name, "enable"));
+	goto fail;
+      }
+      response = bund->peer_ntResp;
+      break;
+    case LINK_ORIGINATE_UNKNOWN:
+    default:
+      Log(LG_ERR, ("[%s] can't determine link direction for MPPE", lnk->name));
+      goto fail;
+  }
+
+  /* Return info */
+  *secretp = bund->msPassword;
+  *responsep = response;
+  return(0);
 
 fail:
+  Log(LG_ERR, ("[%s] can't determine credentials for MPPE", bund->name));
   FsmFailure(&ccp->fsm, FAIL_CANT_ENCRYPT);
-  FsmFailure(&bund->ipcp.fsm, FAIL_CANT_ENCRYPT);
+  return(-1);
 }
+
+#endif	/* ENCRYPTION_MPPE */
 
 #ifdef DEBUG_KEYS
 

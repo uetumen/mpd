@@ -96,10 +96,8 @@
     { 1,	LINK_CONF_CHAPMD5,	"chap-md5"	},
     { 1,	LINK_CONF_CHAPMSv1,	"chap-msv1"	},
     { 1,	LINK_CONF_CHAPMSv2,	"chap-msv2"	},
-    { 1,	LINK_CONF_EAP,		"eap"		},
     { 1,	LINK_CONF_ACFCOMP,	"acfcomp"	},
     { 1,	LINK_CONF_PROTOCOMP,	"protocomp"	},
-    { 0,	LINK_CONF_MSDOMAIN,	"keep-ms-domain"},
     { 0,	LINK_CONF_MAGICNUM,	"magicnum"	},
     { 0,	LINK_CONF_PASSIVE,	"passive"	},
     { 0,	LINK_CONF_CHECK_MAGIC,	"check-magic"	},
@@ -161,6 +159,7 @@ LinkMsg(int type, void *arg)
   switch (type) {
     case MSG_OPEN:
       lnk->num_redial = 0;
+      lnk->radius.authentic = 0;
       LcpOpen();
       break;
     case MSG_CLOSE:
@@ -208,7 +207,7 @@ LinkMsg(int type, void *arg)
 Link
 LinkNew(char *name)
 {
-  int		k;
+  int k;
 
   /* Check if name is already used */
   for (k = 0; k < gNumLinks; k++) {
@@ -249,12 +248,7 @@ LinkNew(char *name)
 
   Disable(&lnk->conf.options, LINK_CONF_PAP);
   Accept(&lnk->conf.options, LINK_CONF_PAP);
-
-  Disable(&lnk->conf.options, LINK_CONF_EAP);
-  Accept(&lnk->conf.options, LINK_CONF_EAP);
-
-  Disable(&lnk->conf.options, LINK_CONF_MSDOMAIN);
-
+ 
   Enable(&lnk->conf.options, LINK_CONF_ACFCOMP);
   Accept(&lnk->conf.options, LINK_CONF_ACFCOMP);
 
@@ -268,7 +262,6 @@ LinkNew(char *name)
   /* Initialize link layer stuff */
   lnk->phys = PhysInit();
   LcpInit();
-  EapInit();
 
   /* Read special configuration for link, if any */
   (void) ReadFile(LINKS_FILE, name, DoCommand);
@@ -278,29 +271,7 @@ LinkNew(char *name)
 }
 
 /*
- * LinkCopy()
- *
- * Makes a copy of the active Link.
- */
-
-Link
-LinkCopy(void)
-{
-  Link	nlnk;
-  
-  nlnk = Malloc(MB_BUND, sizeof(*nlnk));
-  memcpy(nlnk, lnk, sizeof(*lnk));
-  nlnk->downReason = NULL;
-  if (lnk->downReason != NULL) {
-    nlnk->downReason = Malloc(MB_BUND, strlen(lnk->downReason) + 1);
-    strcpy(nlnk->downReason, lnk->downReason);
-  }
-
-  return nlnk;
-}
-
-/*
- * LinkCommand()
+ * LinkShow()
  */
 
 int
@@ -311,8 +282,8 @@ LinkCommand(int ac, char *av[], void *arg)
   if (ac != 1)
     return(-1);
 
-  k = gNumLinks;
-  if ((sscanf(av[0], "[%x]", &k) != 1) || (k < 0) || (k >= gNumLinks)) {
+  k=gNumLinks;
+  if ((sscanf(av[0],"[%x]",&k)!=1)||(k<0)||(k>=gNumLinks)) {
      /* Find link */
     for (k = 0;
 	k < gNumLinks && (!gLinks[k] || strcmp(gLinks[k]->name, av[0]));
@@ -352,7 +323,6 @@ LinkStat(int ac, char *av[], void *arg)
     printf("every %d secs, timeout %d\n",
       lnk->lcp.fsm.conf.echo_int, lnk->lcp.fsm.conf.echo_max);
   printf("\tIdent string   : \"%s\"\n", lnk->conf.ident ? lnk->conf.ident : "");
-  printf("\tSession-Id     : %s\n", lnk->session_id);
   printf("Link level options\n");
   OptStat(&lnk->conf.options, gConfList);
   LinkUpdateStats();
@@ -526,7 +496,7 @@ LinkSetCommand(int ac, char *av[], void *arg)
       if (ac != 1)
 	return(-1);
       if (lnk->conf.ident != NULL) {
-	Freee(MB_FSM, lnk->conf.ident);
+	Freee(lnk->conf.ident);
 	lnk->conf.ident = NULL;
       }
       if (*av[0] != '\0')

@@ -78,7 +78,7 @@ MsgUnRegister(MsgHandler *m)
   close((*m)->pipe[PIPE_WRITE]);
   close((*m)->pipe[PIPE_READ]);
   EventUnRegister(&(*m)->event);
-  Freee(MB_UTIL, *m);
+  Freee(*m);
   *m = NULL;
 }
 

@@ -297,7 +297,7 @@ PhysMsg(int type, void *arg)
 	}
 	p->state = PHYS_DOWN;
 	LinkDown(lnk);
-	Freee(MB_UTIL, dm);
+	Freee(dm);
       }
       break;
     case MSG_UP:

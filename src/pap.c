@@ -12,14 +12,28 @@
  */
 
 #include "ppp.h"
+#include "pap.h"
+#include "radius.h"
 #include "auth.h"
+#include "ngfunc.h"
+
+/*
+ * DEFINITIONS
+ */
+
+  #define PAP_REQUEST		1
+  #define PAP_ACK		2
+  #define PAP_NAK		3
 
 /*
  * INTERNAL FUNCTIONS
  */
 
   static void	PapSendRequest(PapInfo pap);
+  static void	PapOutput(u_int code, u_int id,
+			const u_char *buf, int len, int add_len);
   static void	PapTimeout(void *ptr);
+  static const	char *PapCode(int code);
 
 /*
  * PapStart()
@@ -70,15 +84,15 @@ PapStop(PapInfo pap)
 static void
 PapSendRequest(PapInfo pap)
 {
-  struct authdata	auth;    
+  struct authdata	auth;
   int			name_len, pass_len;
   u_char		*pkt;
 
   /* Get password corresponding to my authname */
   memset(&auth, 0, sizeof(auth));
-  strlcpy(auth.authname, bund->conf.auth.authname, sizeof(auth.authname));
+  strlcpy(auth.authname, bund->conf.authname, sizeof(auth.authname));
   Log(LG_AUTH, ("[%s] PAP: using authname \"%s\"", lnk->name, auth.authname));
-  if (AuthGetData(&auth, 1) < 0)
+  if (AuthGetData(&auth, 1, NULL) < 0)
     Log(LG_AUTH, (" Warning: no secret for \"%s\" found", auth.authname));
 
   /* Build response packet */
@@ -92,9 +106,8 @@ PapSendRequest(PapInfo pap)
   memcpy(pkt + 1 + name_len + 1, auth.password, pass_len);
 
   /* Send it off */
-  AuthOutput(PROTO_PAP, PAP_REQUEST, pap->next_id++, pkt,
-    1 + name_len + 1 + pass_len, 0, 0);
-  Freee(MB_AUTH, pkt);
+  PapOutput(PAP_REQUEST, pap->next_id++, pkt, 1 + name_len + 1 + pass_len, 0);
+  Freee(pkt);
 }
 
 /*
@@ -104,56 +117,125 @@ PapSendRequest(PapInfo pap)
  */
 
 void
-PapInput(AuthData auth, const u_char *pkt, u_short len)
+PapInput(Mbuf bp)
 {
+  struct fsmheader	php;
+  int			len;
   Auth			const a = &lnk->lcp.auth;
   PapInfo		const pap = &a->pap;
 
+  /* Sanity check */
+  if (lnk->lcp.phase != PHASE_AUTHENTICATE && lnk->lcp.phase != PHASE_NETWORK) {
+    Log(LG_AUTH, ("[%s] PAP: rec'd stray packet", lnk->name));
+    PFREE(bp);
+    return;
+  }
+
+  /* Make packet a single mbuf */
+  len = plength(bp = mbunify(bp));
+
+  /* Sanity check length */
+  if (len < sizeof(php)) {
+    Log(LG_AUTH, ("[%s] PAP: rec'd runt packet: %d bytes", lnk->name, len));
+    PFREE(bp);
+    return;
+  }
+  bp = mbread(bp, (u_char *) &php, sizeof(php), NULL);
+  len -= sizeof(php);
+  if (len > ntohs(php.length))
+    len = ntohs(php.length);
+
   /* Deal with packet */
   Log(LG_AUTH, ("[%s] PAP: rec'd %s #%d",
-    lnk->name, PapCode(auth->code), auth->id));
-  switch (auth->code) {
+    lnk->name, PapCode(php.code), php.id));
+  switch (php.code) {
     case PAP_REQUEST:
       {
+	struct authdata	auth;
+	char		*pkt;
 	char		*name_ptr, name[256];
 	char		*pass_ptr, pass[256];
+	const char	*failMesg;
 	int		name_len, pass_len;
+	int		whyFail;
+	int		radRes = RAD_NACK;
 
 	/* Is this appropriate? */
 	if (a->peer_to_self != PROTO_PAP) {
 	  Log(LG_AUTH, ("[%s] PAP: %s not expected",
-	    lnk->name, PapCode(auth->code)));
-	  auth->why_fail = AUTH_FAIL_NOT_EXPECTED;
-	  PapInputFinish(auth);
-	  break;
+	    lnk->name, PapCode(php.code)));
+	  whyFail = AUTH_FAIL_NOT_EXPECTED;
+	  goto badRequest;
 	}
 
-	name_len = pkt[0];
-	name_ptr = (char *)pkt + 1;
-
 	/* Sanity check packet and extract fields */
-	if (1 + name_len >= len
+	if (bp) {
+	  pkt = (char *) MBDATA(bp);
+	  name_len = pkt[0];
+	  name_ptr = pkt + 1;
+	}
+	if (bp == NULL
+	  || 1 + name_len >= len
 	  || ((pass_len = pkt[1 + name_len]) && FALSE)
-	  || ((pass_ptr = (char *)pkt + 1 + name_len + 1) && FALSE)
+	  || ((pass_ptr = pkt + 1 + name_len + 1) && FALSE)
 	  || name_len + 1 + pass_len + 1 > len)
 	{
 	  Log(LG_AUTH, (" Bad packet"));
-	  auth->why_fail = AUTH_FAIL_INVALID_PACKET;
-	  PapInputFinish(auth);
-	  break;
+	  whyFail = AUTH_FAIL_INVALID_PACKET;
+	  goto badRequest;
 	}
 	memcpy(name, name_ptr, name_len);
 	name[name_len] = 0;
 	memcpy(pass, pass_ptr, pass_len);
 	pass[pass_len] = 0;
 
-	strlcpy(pap->peer_name, name, sizeof(pap->peer_name));
-	strlcpy(pap->peer_pass, pass, sizeof(pap->peer_pass));
-	strlcpy(auth->authname, name, sizeof(auth->authname));
+	/* Initialize 'auth' info */
+	memset(&auth, 0, sizeof(auth));
+	strlcpy(auth.authname, name, sizeof(auth.authname));
 
-	auth->finish = PapInputFinish;
-	AuthAsyncStart(auth);
+	/* perform pre authentication checks (single-login, etc.) */
+	if (AuthPreChecks(&auth, 1, &whyFail) < 0) {
+	  Log(LG_AUTH, (" AuthPreCheck failed for \"%s\"", auth.authname));
+	  goto badRequest;
+	}
 
+	/* Try RADIUS auth if configured */
+	if (Enabled(&bund->conf.options, BUND_CONF_RADIUSAUTH)) {
+	  radRes = RadiusPAPAuthenticate(name, pass);
+	  if (radRes == RAD_ACK) {
+	    RadiusSetAuth(&auth);
+	    goto goodRequest;
+	  }
+	  if (!Enabled(&bund->conf.options, BUND_CONF_RADIUSFALLBACK)) {
+	    whyFail = AUTH_FAIL_INVALID_LOGIN;
+	    goto badRequest;
+	  }
+	}
+
+	/* Get auth data for this system */
+	Log(LG_AUTH, (" Peer name: \"%s\"", auth.authname));
+	if (AuthGetData(&auth, 1, &whyFail) < 0) {
+	  Log(LG_AUTH, (" Can't get credentials for \"%s\"", auth.authname));
+	  goto badRequest;
+	}
+
+	/* Do name & password match? */
+	if (strcmp(auth.authname, name) || strcmp(auth.password, pass)) {
+	  Log(LG_AUTH, (" Invalid response"));
+	  whyFail = AUTH_FAIL_INVALID_LOGIN;
+badRequest:
+	  failMesg = AuthFailMsg(PROTO_PAP, 0, whyFail);
+	  PapOutput(PAP_NAK, php.id, failMesg, strlen(failMesg), 1);
+	  AuthFinish(AUTH_PEER_TO_SELF, FALSE, &auth);
+	  break;
+	}
+
+goodRequest:
+	/* Login accepted */
+	Log(LG_AUTH, (" Response is valid"));
+	PapOutput(PAP_ACK, php.id,
+	  AUTH_MSG_WELCOME, strlen(AUTH_MSG_WELCOME), 1);
+	AuthFinish(AUTH_PEER_TO_SELF, TRUE, &auth);
       }
       break;
 
@@ -166,7 +248,7 @@ PapInput(AuthData auth, const u_char *pkt, u_short len)
 	/* Is this appropriate? */
 	if (a->self_to_peer != PROTO_PAP) {
 	  Log(LG_AUTH, ("[%s] PAP: %s not expected",
-	    lnk->name, PapCode(auth->code)));
+	    lnk->name, PapCode(php.code)));
 	  break;
 	}
 
@@ -174,14 +256,16 @@ PapInput(AuthData auth, const u_char *pkt, u_short len)
 	TimerStop(&pap->timer);
 
 	/* Show reply message */
-	msg_len = pkt[0];
-	msg = (char *) &pkt[1];
-	if (msg_len < len - 1)
-	  msg_len = len - 1;
-	ShowMesg(LG_AUTH, msg, msg_len);
+	if (bp) {
+	  msg_len = MBDATA(bp)[0];
+	  msg = (char *) &MBDATA(bp)[1];
+	  if (msg_len < len - 1)
+	    msg_len = len - 1;
+	  ShowMesg(LG_AUTH, msg, msg_len);
+	}
 
 	/* Done with my auth to peer */
-	AuthFinish(AUTH_SELF_TO_PEER, auth->code == PAP_ACK, NULL);	
+	AuthFinish(AUTH_SELF_TO_PEER, php.code == PAP_ACK, NULL);
       }
       break;
 
@@ -189,52 +273,39 @@ PapInput(AuthData auth, const u_char *pkt, u_short len)
       Log(LG_AUTH, ("[%s] PAP: unknown code", lnk->name));
       break;
   }
+
+  /* Done with packet */
+  PFREE(bp);
 }
 
 /*
- * ChapInputFinish()
- *
- * Possible return point from the asynch auth handler.
- * 
+ * PapOutput()
  */
- 
-void PapInputFinish(AuthData auth)
+
+static void
+PapOutput(u_int code, u_int id, const u_char *buf, int len, int add_len)
 {
-  PapInfo	pap = &lnk->lcp.auth.pap;
-  const char	*failMesg;
-  
-  Log(LG_AUTH, ("[%s] PAP: PapInputFinish: status %s", 
-    lnk->name, AuthStatusText(auth->status)));
+  struct fsmheader	lh;
+  Mbuf			bp;
+  int			plen;
 
-  if (auth->status == AUTH_STATUS_FAIL)
-    goto badRequest;
-  else if (auth->status == AUTH_STATUS_SUCCESS)
-    goto goodRequest;
-  
-  /* Do name & password match? */
-  if (strcmp(auth->authname, pap->peer_name) ||
-      strcmp(auth->password, pap->peer_pass)) {
-    Log(LG_AUTH, (" Invalid response"));
-    auth->why_fail = AUTH_FAIL_INVALID_LOGIN;
-    goto badRequest;
-  }
-  
-  goto goodRequest;
+  /* Setup header */
+  add_len = !!add_len;
+  plen = sizeof(lh) + add_len + len;
+  lh.id = id;
+  lh.code = code;
+  lh.length = htons(plen);
 
-badRequest:
-  failMesg = AuthFailMsg(auth, 0);
-  AuthOutput(PROTO_PAP, PAP_NAK, auth->id, failMesg, strlen(failMesg), 1, 0);
-  AuthFinish(AUTH_PEER_TO_SELF, FALSE, auth);
-  AuthDataDestroy(auth);  
-  return;
-  
-goodRequest:
-  /* Login accepted */
-  Log(LG_AUTH, (" Response is valid"));
-  AuthOutput(PROTO_PAP, PAP_ACK, auth->id, AUTH_MSG_WELCOME,
-    strlen(AUTH_MSG_WELCOME), 1, 0);
-  AuthFinish(AUTH_PEER_TO_SELF, TRUE, auth);  
-  AuthDataDestroy(auth);
+  /* Build packet */
+  bp = mballoc(MB_AUTH, plen);
+  memcpy(MBDATA(bp), &lh, sizeof(lh));
+  if (add_len)
+	*(MBDATA(bp) + sizeof(lh)) = (u_char)len;
+  memcpy(MBDATA(bp) + sizeof(lh) + add_len, buf, len);
+
+  /* Send it out */
+  Log(LG_AUTH, ("[%s] PAP: sending %s", lnk->name, PapCode(code)));
+  NgFuncWritePppFrame(lnk->bundleIndex, PROTO_PAP, bp);
 }
 
 /*
@@ -259,7 +330,7 @@ PapTimeout(void *ptr)
  * PapCode()
  */
 
-const char *
+static const char *
 PapCode(int code)
 {
   static char	buf[12];

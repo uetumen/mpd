@@ -18,8 +18,9 @@
 #include "chap.h"
 #include "ccp.h"
 #include "ecp.h"
+#include "vars.h"
 #include "msg.h"
-#include "auth.h"
+#include "radius.h"
 #include "command.h"
 #include <netgraph/ng_message.h>
 
@@ -38,6 +39,9 @@
     BUND_CONF_CRYPT_REQD,	/* encryption is required */
     BUND_CONF_BWMANAGE,		/* dynamic bandwidth */
     BUND_CONF_ROUNDROBIN,	/* round-robin MP scheduling */
+    BUND_CONF_RADIUSAUTH,	/* enable radius auth */
+    BUND_CONF_RADIUSFALLBACK,	/* enable fallback to mpd.secret */
+    BUND_CONF_RADIUSACCT,	/* enable radius accounting */
     BUND_CONF_NORETRY,		/* don't retry failed links */
     BUND_CONF_TCPWRAPPER,	/* enable tcp-wrapper */
   };
@@ -99,6 +103,9 @@
   /* Configuration for a bundle */
   struct bundconf {
     int			mrru;			/* Initial MRU value */
+    char		authname[AUTH_MAX_AUTHNAME];
+    char		password[AUTH_MAX_PASSWORD];
+    u_long		max_logins;		/* max. number of concurrent logins */
     short		retry_timeout;		/* Timeout for retries */
     u_short		bm_S;			/* Bandwidth mgmt constants */
     u_short		bm_Hi;
@@ -107,13 +114,15 @@
     u_short		bm_Md;
     char		script[BUND_MAX_SCRIPT];/* Link change script */
     struct optinfo	options;		/* Configured options */
-    struct authconf	auth;			/* Auth backends, RADIUS, etc. */
+#ifdef IA_CUSTOM
+    struct optinfo	custopt;		/* Custom options */
+    char		netname[8];		/* Custom network name */
+#endif
   };
-  
+
   /* Total state of a bundle */
   struct bundle {
-    char		name[LINK_MAX_NAME];	/* Name of this bundle */
-    char		session_id[AUTH_MAX_SESSIONID];	/* a uniq session-id */    
+    char		name[20];		/* Name of this bundle */
     MsgHandler		msgs;			/* Bundle events */
     char		interface[10];		/* Interface I'm using */
     short		n_links;		/* Number of links in bundle */
@@ -126,7 +135,15 @@
     char		peer_authname[AUTH_MAX_AUTHNAME]; /* Peer's authname */
     struct in_range	peer_allow;		/* Peer's allowed IP (if any) */
     struct discrim	peer_discrim;		/* Peer's discriminator */
+    u_char		self_msChal[CHAP_MSOFTv2_CHAL_LEN]; /* MSOFT challng */
+    u_char		peer_msChal[CHAP_MSOFTv2_CHAL_LEN]; /* MSOFT challng */
+    u_char		self_ntResp[CHAP_MSOFTv2_RESP_LEN]; /* MSOFT response */
+    u_char		peer_ntResp[CHAP_MSOFTv2_RESP_LEN]; /* MSOFT response */
+    char		msPassword[AUTH_MAX_PASSWORD];	    /* For MSOFT MPPE */
     u_char		numRecordUp;		/* # links recorded up */
+
+    /* RADIUS info */
+    struct radius	radius;
 
     /* PPP node config */
 #if NGM_PPP_COOKIE < 940897794
@@ -153,7 +170,7 @@
     u_char		open:1;		/* In the open state */
     u_char		multilink:1;	/* Doing multi-link on this bundle */
   };
-  
+
 /*
  * VARIABLES
  */

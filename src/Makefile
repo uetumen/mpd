@@ -10,7 +10,7 @@
 PROG?=			mpd
 PREFIX?=		/usr/local
 BINDIR?=		${PREFIX}/sbin
-VERSION=		4.0b1
+VERSION=		3.18
 NOMAN=
 
 # Default configuration directory
@@ -35,9 +35,11 @@ PHYSTYPE_PPPOE=		yes
 #COMPRESSION_PRED1=	yes
 #COMPRESSION_STAC=	yes
 #COMPRESSION_DEFLATE=	yes
+#COMPRESSION_MPPC=	yes
 
 # Define supported encryption types
 
+ENCRYPTION_MPPE=	yes
 ENCRYPTION_DES=		yes
 
 # Set syslog logging facility. Change LOG_DAEMON to whatever you like.
@@ -46,22 +48,12 @@ SYSLOG_FACILITY=	LOG_DAEMON
 
 # Compiler & linker flags
 
-LDADD+=		-lmd 
+LDADD+=		-lmd -lwrap
 DPADD+=		${LIBMD}
-LDADD+=		-lwrap
-DPADD+=		${LIBWRAP}
-LDADD+=		-lcrypt
-DPADD+=		${LIBCRYPT}
-LDADD+=		-lopie
-DPADD+=		${LIBOPIE}
-LDADD+=		-lutil
-DPADD+=		${LIBUTIL}
 LDADD+=		-lnetgraph
 DPADD+=		${LIBNETGRAPH}
-LDADD+=		-L/usr/lib -lradius
+LDADD+=		-lradius
 DPADD+=		${LIBRADIUS}
-
-LDADD+=		-L/usr/local/lib -lpdel -lssl -lexpat
 
 MPD_VERSION!=	echo -n "${VERSION} (`id -un`@`uname -n` `LC_TIME=C date +'%R %v'`)"
 
@@ -78,9 +70,7 @@ COPTS+=		-Wall \
 		-Wmissing-prototypes \
 		-Wnested-externs \
 		-Wpointer-arith \
-		-Wwrite-strings \
-		-pthread \
-		-I/usr/local/include
+		-Wwrite-strings
 
 # Standard sources
 
@@ -88,7 +78,7 @@ STDSRCS=        assert.c auth.c bund.c ccp.c chap.c \
 		console.c command.c ecp.c fsm.c iface.c input.c \
 		ip.c ipcp.c lcp.c link.c log.c main.c mbuf.c mp.c \
 		msg.c ngfunc.c pap.c phys.c proto.c radius.c timer.c \
-		util.c vars.c custom.c eap.c ccp_mppc.c msoft.c
+		util.c vars.c custom.c
 
 # Mpd is event based, using this handy little event library..
 
@@ -128,6 +118,9 @@ COPTS+=		-DPHYSTYPE_PPPOE
 
 # Compression
 
+.if defined ( COMPRESSION_MPPC )
+NEED_MPPC=	yes
+.endif
 .if defined ( COMPRESSION_PRED1 )
 SRCS+=		ccp_pred1.c
 COPTS+=		-DCOMPRESSION_PRED1
@@ -150,10 +143,21 @@ SRCS+=		ecp_des.c
 COPTS+=		-DENCRYPTION_DES
 NEED_DES=	yes
 .endif
+.if defined ( ENCRYPTION_MPPE )
+COPTS+=		-DENCRYPTION_MPPE
+NEED_MPPC=	yes
+NEED_MSOFT=	yes
+.endif
 
 # Add in required support files and libraries
 
-
+.if defined ( NEED_MPPC )
+SRCS+=		ccp_mppc.c
+COPTS+=		-DCOMPRESSION_MPPC
+.endif
+.if defined ( NEED_MSOFT )
+SRCS+=		msoft.c
+.endif
 .if defined ( NEED_DES )
 LDADD+=		-lcrypto
 DPADD+=		${LIBCRYPTO}

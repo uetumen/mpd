@@ -14,6 +14,9 @@
 #include "modem.h"
 #include "ngfunc.h"
 #include "lcp.h"
+#ifdef IA_CUSTOM
+#include "custom.h"
+#endif
 
 #include <netgraph/ng_socket.h>
 #include <netgraph/ng_message.h>
@@ -97,7 +100,6 @@
   static void		ModemUpdate(PhysInfo p);
   static void		ModemStat(PhysInfo p);
   static int		ModemOriginated(PhysInfo p);
-  static int		ModemPeerAddr(PhysInfo p, void *buf, int buf_len);
 
   static void		ModemStart(void *arg);
   static void		ModemDoClose(ModemInfo m, int opened);
@@ -135,7 +137,6 @@
     NULL,
     ModemStat,
     ModemOriginated,
-    ModemPeerAddr,
   };
 
   const struct cmdtab ModemSetCmds[] = {
@@ -266,10 +267,10 @@ fail:
 
   /* Preset some special chat variables */
   ChatPresetVar(m->chat, CHAT_VAR_DEVICE, m->device);
-  ChatPresetVar(m->chat, CHAT_VAR_LOGIN, bund->conf.auth.authname);
+  ChatPresetVar(m->chat, CHAT_VAR_LOGIN, bund->conf.authname);
   memset(&auth, 0, sizeof(auth));
-  strlcpy(auth.authname, bund->conf.auth.authname, sizeof(auth.authname));
-  if (AuthGetData(&auth, 0) >= 0)
+  strlcpy(auth.authname, bund->conf.authname, sizeof(auth.authname));
+  if (AuthGetData(&auth, 0, NULL) >= 0)
     ChatPresetVar(m->chat, CHAT_VAR_PASSWORD, auth.password);
 
   /* Run connect or idle script as appropriate */
@@ -379,7 +380,7 @@ failed:
   if ((cspeed = ChatGetVar(m->chat, CHAT_VAR_CONNECT_SPEED)) != NULL) {
     if ((bw = (int) strtoul(cspeed, NULL, 10)) > 0)
       lnk->bandwidth = bw;
-    Freee(MB_CHAT, cspeed);
+    Freee(cspeed);
   }
 
   /* Do async <-> sync conversion via netgraph node */
@@ -453,7 +454,7 @@ ModemChatIdleResult(void *arg, int result, const char *msg)
       lnk->name, idleResult));
     ModemDoClose(m, FALSE);
   }
-  Freee(MB_CHAT, idleResult);
+  Freee(idleResult);
 }
 
 /*
@@ -637,7 +638,7 @@ ModemChatMalloc(void *arg, size_t size)
 static void
 ModemChatFree(void *arg, void *mem)
 {
-  Freee(MB_CHAT, mem);
+  Freee(mem);
 }
 
 /*
@@ -857,21 +858,6 @@ ModemOriginated(PhysInfo p)
 
   return(m->originated ? LINK_ORIGINATE_LOCAL : LINK_ORIGINATE_REMOTE);
 }
-
-/* XXX mbretter: the phone-number would be correct */
-static int
-ModemPeerAddr(PhysInfo p, void *buf, int buf_len)
-{
-  ModemInfo	const m = (ModemInfo) p;
-
-  if (buf_len < sizeof(m->ttynode))
-    return(-1);
-
-  memcpy(buf, m->ttynode, sizeof(m->ttynode));
-
-  return(0);
-}
-
 
 /*
  * ModemStat()

@@ -96,8 +96,6 @@
 				    LogPrintf args;		\
 				} while (0)			\
 
-  #define LogDepr(name, old, new) \
-    Log(LG_ERR, ("[%s] '%s' is deprecated, use '%s' instead", name, old, new));
 /*
  * VARIABLES
  */

@@ -21,13 +21,6 @@
  * DEFINITIONS
  */
 
-  #define CHAP_CHALLENGE	1
-  #define CHAP_RESPONSE		2
-  #define CHAP_SUCCESS		3
-  #define CHAP_FAILURE		4
-  #define CHAP_MS_V1_CHANGE_PW	5
-  #define CHAP_MS_V2_CHANGE_PW	7
-
   #define CHAP_MAX_NAME		64
   #define CHAP_MAX_VAL		64
 
@@ -44,7 +37,7 @@
   #define MSCHAP_ERROR_PASSWD_EXPIRED		648 
   #define MSCHAP_ERROR_NO_DIALIN_PERMISSION	649 
   #define MSCHAP_ERROR_AUTHENTICATION_FAILURE	691 
-  #define MSCHAP_ERROR_CHANGING_PASSWORD	709
+  #define MSCHAP_ERROR_CHANGING_PASSWORD	709 
 
   struct chapinfo
   {
@@ -53,15 +46,12 @@
     struct pppTimer	chalTimer;			/* Challenge timer */
     struct pppTimer	respTimer;			/* Reponse timer */
     char		chal_data[CHAP_MAX_VAL];	/* Challenge sent */
-    short		chal_len;			/* Challenge length */
     u_char		xmit_alg;			/* Peer auth us with */
     u_char		recv_alg;			/* We auth peer with */
     u_char		resp_id;			/* Response ID */
-    u_char		*resp;				/* Response packet */
+    short		chal_len;			/* Challenge length */
     short		resp_len;			/* Response length */
-    u_char		value[CHAP_MAX_VAL];		/* Chap packet */
-    int			value_len;			/* Packet length */
-    int			proto;				/* CHAP, EAP */
+    u_char		*resp;				/* Response packet */
   };
   typedef struct chapinfo	*ChapInfo;
 
@@ -87,18 +77,13 @@
     u_char	flags[2];
   };
  
-  struct authdata;
 /*
  * FUNCTIONS
  */
 
   extern void	ChapStart(ChapInfo chap, int which);
   extern void	ChapStop(ChapInfo chap);
-  extern void	ChapInput(struct authdata *auth, const u_char *pkt, u_short len);
-  extern void	ChapSendChallenge(ChapInfo chap);
-  extern void	ChapChalTimeout(void *ptr);
-  extern const	char *ChapCode(int code);
-  extern void	ChapInputFinish(struct authdata *auth);
+  extern void	ChapInput(Mbuf bp);
 
 #endif
 

@@ -28,6 +28,8 @@
  */
 
   /* Bounds */
+  #define LINK_MAX_NAME		20
+
   /* Default bundle-layer FSM retry timeout */
   #define LINK_DEFAULT_RETRY	2
 
@@ -41,10 +43,8 @@
     LINK_CONF_CHAPMD5,
     LINK_CONF_CHAPMSv1,
     LINK_CONF_CHAPMSv2,
-    LINK_CONF_EAP,
     LINK_CONF_ACFCOMP,
     LINK_CONF_PROTOCOMP,
-    LINK_CONF_MSDOMAIN,
     LINK_CONF_MAGICNUM,
     LINK_CONF_PASSIVE,
     LINK_CONF_CHECK_MAGIC,
@@ -110,7 +110,6 @@
   /* Total state of a link */
   struct linkst {
     char		name[LINK_MAX_NAME];	/* Human readable name */
-    char		session_id[AUTH_MAX_SESSIONID];	/* a uniq session-id */
     Bund		bund;			/* My bundle */
     int			bundleIndex;		/* Link number in bundle */
     MsgHandler		msgs;			/* Link events */
@@ -139,9 +138,11 @@
     struct in_range	peer_allow;	/* Range from /etc/ppp/secrets */
     struct discrim	peer_discrim;
     char		peer_authname[AUTH_MAX_AUTHNAME];
+    
+    /* some Infos needed for RADIUS */
+    struct radius_linkinfo	radius;
   };
 
-  
 /*
  * VARIABLES
  */
@@ -158,7 +159,6 @@
   extern void	LinkClose(Link l);
 
   extern Link	LinkNew(char *name);
-  extern Link	LinkCopy(void);
   extern int	LinkNuke(Link link);
   extern int	LinkStat(int ac, char *av[], void *arg);
   extern void	LinkUpdateStats(void);

@@ -11,6 +11,7 @@
 #include "ccp.h"
 #include "fsm.h"
 #include "ngfunc.h"
+#include "radius.h"
 
 /*
  * DEFINITIONS
@@ -85,6 +86,8 @@
   int		gMppe128;
   int		gMppcStateless;
   
+  /* whether to enable radius for ccp layer */
+  int		gCcpRadius;
 
 /*
  * INTERNAL VARIABLES
@@ -100,6 +103,7 @@
     { "mpp-e56",	&gMppe56 },
     { "mpp-e128",	&gMppe128 },
     { "mpp-stateless",	&gMppcStateless },
+    { "radius",		&gCcpRadius },    
   };
   #define CCP_NUM_MPPC_OPT	(sizeof(gMppcOptions) / sizeof(*gMppcOptions))
 
@@ -114,7 +118,9 @@
 #ifdef COMPRESSION_DEFLATE
     &gCompDeflateInfo,
 #endif
+#ifdef COMPRESSION_MPPC
     &gCompMppcInfo,
+#endif
   };
   #define CCP_NUM_PROTOS	(sizeof(gCompTypes) / sizeof(*gCompTypes))
 
@@ -241,6 +247,7 @@ CcpRecvMsg(struct ng_mesg *msg, int len)
   Fsm		const fp = &ccp->fsm;
 
   switch (msg->header.typecookie) {
+#ifdef COMPRESSION_MPPC
     case NGM_MPPC_COOKIE:
       switch (msg->header.cmd) {
 	case NGM_MPPC_RESETREQ: {
@@ -258,6 +265,7 @@ CcpRecvMsg(struct ng_mesg *msg, int len)
 	  break;
       }
       break;
+#endif
     default:
       break;
   }
@@ -597,7 +605,7 @@ static int
 CcpCheckEncryption(void)
 {
   CcpState	const ccp = &bund->ccp;
-  Auth		const a = &lnk->lcp.auth;
+  struct radius	*rad = &bund->radius;
 
   /* Already checked? */
   if (ccp->crypt_check)
@@ -605,19 +613,20 @@ CcpCheckEncryption(void)
   ccp->crypt_check = 1;
 
   /* Is encryption required? */
-  if (Enabled(&bund->conf.auth.options, AUTH_CONF_MPPC_POL)) {
-    if (a->msoft.policy != MPPE_POLICY_REQUIRED) 
+  if (Enabled(&ccp->options, gCcpRadius) && rad->valid) {
+    if (bund->radius.mppe.policy != MPPE_POLICY_REQUIRED) 
       return(0);
   } else {
     if (!Enabled(&bund->conf.options, BUND_CONF_CRYPT_REQD))
       return(0);
   }
 
+#ifdef COMPRESSION_MPPC
   /* Was MPPE encryption enabled? If not, ignore requirement */
   if (!Enabled(&ccp->options, gMppe40)
       && !Enabled(&ccp->options, gMppe56)
       && !Enabled(&ccp->options, gMppe128)
-      && !Enabled(&bund->conf.auth.options, AUTH_CONF_MPPC_POL))
+      && !Enabled(&ccp->options, gCcpRadius))
     return(0);
 
   /* Make sure MPPE was negotiated in both directions */
@@ -637,6 +646,9 @@ fail:
   FsmFailure(&ccp->fsm, FAIL_CANT_ENCRYPT);
   FsmFailure(&bund->ipcp.fsm, FAIL_CANT_ENCRYPT);
   return(-1);
+#else
+  return (0);
+#endif
 }
 
 /*
