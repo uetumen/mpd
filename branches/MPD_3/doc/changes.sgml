@@ -21,7 +21,10 @@
         Submitted by: Damir Bikmukhametov, boco at ufanet dot ru
 	</item>	
 	<item>
-        BugFix: fix a SEGV when no bundles are defined.
+        BugFix: fix a SEGV when no bundles are defined and user types "quit".
+	</item>	
+	<item>
+        BugFix: fix a SEGV when no bundles are defined and the telnet console was opened (in this case the tcp-wrapper option can't be checked).
 	</item>	
     </itemize>
   </p>
