@@ -6,6 +6,14 @@
   <sect><heading>Change history<label id="changes"></heading>
 
   <p>
+    Changes since version 3.18:
+    <itemize>
+	<item>Fix <tt>va_args</tt> bug on certain non-i386 platforms.
+	</item>
+    </itemize>
+  </p>
+
+  <p>
     Changes since version 3.17:
     <itemize>
 	<item>
