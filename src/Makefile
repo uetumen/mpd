@@ -10,7 +10,7 @@
 PROG?=			mpd
 PREFIX?=		/usr/local
 BINDIR?=		${PREFIX}/sbin
-VERSION=		3.17
+VERSION=		3.18
 NOMAN=
 
 # Default configuration directory
