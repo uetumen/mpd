@@ -1,0 +1,32 @@
+<!-- $Id$ -->
+<!-- mpd netgraph enabled user mode PPP daemon -->
+
+<!-- <!DOCTYPE linuxdoc PUBLIC '-//FreeBSD//DTD linuxdoc//EN'> -->
+
+  <sect><heading>Change history<label id="changes"></heading>
+
+  <p>
+    Changes since version 3.2:
+    <itemize>
+    <item>There is no longer a fixed limit to the number of
+	bundles and/or links that may be created.
+    </item>
+    <item>Better random number generation using <tt>srandomdev(4)</tt>.
+    </item>
+    <item>Miscellaneous minor bug fixes.
+    </item>
+    <item>
+	Support for authenticating to the peer using Microsoft CHAP Version 2
+	has been added.
+    <bf>Note:</bf>
+	When authenticating the peer, only Version 1 is requested.
+    </item>
+    <item>Hostnames are allowed in the configuration files.
+    </item>
+    </itemize>
+
+  The latter two are thanks to Franco Venturi
+    <tt><htmlurl url='mailto:fventuri@mediaone.net'
+	  name='&lt;fventuri@mediaone.net&gt;'></tt>
+  </p>
+
