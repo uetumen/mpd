@@ -10,6 +10,9 @@
     <itemize>
 	<item>Fix <tt>va_args</tt> bug on certain non-i386 platforms.
 	</item>
+	<item>Added some RFC2868 RADIUS atributes like Tunnel-Type
+	for PPTP links to make possible some link type differentiation.
+	</item>
     </itemize>
   </p>
 

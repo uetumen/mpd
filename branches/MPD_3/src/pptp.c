@@ -374,6 +374,20 @@ PptpGetPeerIp(void)
 }
 
 /*
+ * PptpGetOurIp()
+ */
+
+struct in_addr *
+PptpGetOurIp(void)
+{
+  if (lnk->phys->type == &gPptpPhysType) {
+     return(&(gLocalIp));
+  } else {
+     return((struct in_addr *)NULL);
+  };
+}
+
+/*
  * PptpOriginated()
  */
 
