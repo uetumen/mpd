@@ -8,9 +8,17 @@
   <p>
     Changes since version 3.17:
     <itemize>
-	<item>BugFix: an empty authname was passed to the iface up/down scripts
-
-	      in client-mode
+	<item>
+        BugFix: an empty authname was passed to the iface up/down scripts
+        in client-mode.
+	</item>	
+	<item>
+        BugFix: fix a mem-leak in the PPTP-Ctrl handling.
+	</item>	
+	<item>
+        BugFix: handle IP-Address-Assignement correctly, if the RADIUS 
+        server doesen't send the Framed-IP-Address attribute.
+        Submitted by: Damir Bikmukhametov, boco at ufanet dot ru
 	</item>	
     </itemize>
   </p>
