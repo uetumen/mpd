@@ -12,7 +12,6 @@
 #include "ipcp.h"
 #include "chap.h"
 #include "pap.h"
-#include "eap.h"
 #include "lcp.h"
 #include "ip.h"
 #include "ccp.h"
@@ -125,9 +124,10 @@ InputDispatch(const char *label, int linkNum, int proto, Mbuf bp)
       LcpInput(bp, linkNum);
       return(0);
     case PROTO_PAP:
+      PapInput(bp);
+      return(0);
     case PROTO_CHAP:
-    case PROTO_EAP:
-      AuthInput(proto, bp);
+      ChapInput(bp);
       return(0);
     case PROTO_IPCP:
       IpcpInput(bp, linkNum);

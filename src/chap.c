@@ -20,18 +20,33 @@
 #include <openssl/md5.h>
 
 /*
+ * DEFINITIONS
+ */
+
+  #define CHAP_CHALLENGE	1
+  #define CHAP_RESPONSE		2
+  #define CHAP_SUCCESS		3
+  #define CHAP_FAILURE		4
+  #define CHAP_MS_V1_CHANGE_PW	5
+  #define CHAP_MS_V2_CHANGE_PW	7
+
+/*
  * INTERNAL FUNCTIONS
  */
 
+  static void	ChapSendChallenge(ChapInfo chap);
+  static void	ChapOutput(u_int code, u_int id, const u_char *ptr, int cnt);
+  static int	ChapParsePkt(Mbuf bp, const int pkt_len,
+		  char *peer_name, u_char *chap_value,
+		  int *chap_value_size);
+  static void	ChapGenRandom(u_char *buf, int len);
   static int	ChapHash(int alg, u_char *hash_value, u_char id,
 		  const char *username, const char *secret,
 		  const u_char *challenge, int clen, int local);
   static int	ChapHashAgree(int alg, const u_char *self, int slen,
 		  const u_char *peer, int plen);
-  static int	ChapParsePkt(const u_char *pkt, const int pkt_len,
-		  char *peer_name, u_char *chap_value,
-		  int *chap_value_size);
-  static void	ChapGenRandom(u_char *buf, int len);
+  static void	ChapChalTimeout(void *ptr);
+  static const	char *ChapCode(int code);
 
 /*
  * INTERNAL VARIABLES
@@ -60,7 +75,6 @@ ChapStart(ChapInfo chap, int which)
       /* Initialize retry counter and timer */
       chap->next_id = 1;
       chap->retry = AUTH_RETRIES;
-      chap->proto = PROTO_CHAP;
 
       TimerInit(&chap->chalTimer, "ChalTimer",
 	lnk->conf.retry_timeout * SECONDS, ChapChalTimeout, (void *) chap);
@@ -85,7 +99,7 @@ ChapStop(ChapInfo chap)
   TimerStop(&chap->chalTimer);
   TimerStop(&chap->respTimer);
   if (chap->resp) {
-    Freee(MB_AUTH, chap->resp);
+    Freee(chap->resp);
     chap->resp = NULL;
   }
 }
@@ -94,11 +108,10 @@ ChapStop(ChapInfo chap)
  * ChapSendChallenge()
  */
 
-void
+static void
 ChapSendChallenge(ChapInfo chap)
 {
   u_char	*pkt;
-  u_char	eap_type = EAP_TYPE_NAK;
 
   /* Put random challenge data in buffer (only once for Microsoft CHAP) */
   switch (chap->recv_alg) {
@@ -112,7 +125,6 @@ ChapSendChallenge(ChapInfo chap)
       break;
     case CHAP_ALG_MSOFTv2:
       chap->chal_len = CHAP_MSOFTv2_CHAL_LEN;
-      eap_type = EAP_TYPE_MSCHAP_V2;
       if (!memcmp(bund->self_msChal, gMsoftZeros, chap->chal_len)) {
 	ChapGenRandom(chap->chal_data, chap->chal_len);
 	memcpy(bund->self_msChal, chap->chal_data, chap->chal_len);
@@ -120,7 +132,6 @@ ChapSendChallenge(ChapInfo chap)
       break;
     case CHAP_ALG_MD5:
       chap->chal_len = random() % 32 + 16;
-      eap_type = EAP_TYPE_MD5CHAL;
       ChapGenRandom(chap->chal_data, chap->chal_len);
       break;
     default:
@@ -136,12 +147,9 @@ ChapSendChallenge(ChapInfo chap)
     bund->conf.authname, strlen(bund->conf.authname));
 
   /* Send it off */
-  AuthOutput(chap->proto,
-    chap->proto == PROTO_CHAP ? CHAP_CHALLENGE : EAP_REQUEST,
-    chap->next_id++, pkt,
-    1 + chap->chal_len + strlen(bund->conf.authname), 0,
-    eap_type);
-  Freee(MB_AUTH, pkt);
+  ChapOutput(CHAP_CHALLENGE, chap->next_id++,
+    pkt, 1 + chap->chal_len + strlen(bund->conf.authname));
+  Freee(pkt);
 }
 
 /*
@@ -151,19 +159,13 @@ ChapSendChallenge(ChapInfo chap)
 static void
 ChapSendResponse(ChapInfo chap)
 {
-  u_char	eap_type;
 
   /* Stop response timer */
   TimerStop(&chap->respTimer);
 
-  eap_type = chap->xmit_alg == CHAP_ALG_MD5 ?
-    EAP_TYPE_MD5CHAL : EAP_TYPE_MSCHAP_V2;
-
   /* Send response (possibly again) */
   assert(chap->resp);
-  AuthOutput(chap->proto,
-    chap->proto == PROTO_CHAP ? CHAP_RESPONSE : EAP_RESPONSE,
-    chap->resp_id, chap->resp, chap->resp_len, 0, eap_type);
+  ChapOutput(CHAP_RESPONSE, chap->resp_id, chap->resp, chap->resp_len);
 
   /* Start re-send timer (only during authenticate phase where the
      authentication timer is still running) */
@@ -176,15 +178,44 @@ ChapSendResponse(ChapInfo chap)
 }
 
 /*
+ * ChapOutput()
+ */
+
+static void
+ChapOutput(u_int code, u_int id, const u_char *ptr, int count)
+{
+  struct fsmheader	lh;
+  Mbuf			bp;
+  int			plen;
+
+  /* Setup header */
+  plen = sizeof(lh) + count;
+  lh.code = code;
+  lh.id = id;
+  lh.length = htons(plen);
+
+  /* Build packet */
+  bp = mballoc(MB_AUTH, plen);
+  memcpy(MBDATA(bp), &lh, sizeof(lh));
+  memcpy(MBDATA(bp) + sizeof(lh), ptr, count);
+
+  /* Send it out */
+  Log(LG_AUTH, ("[%s] CHAP: sending %s", lnk->name, ChapCode(code)));
+  NgFuncWritePppFrame(lnk->bundleIndex, PROTO_CHAP, bp);
+}
+
+/*
  * ChapParsePkt()
  *
+ * Note assumption that "bp" is a single mbuf, not a chain.
  */
 
 static int
-ChapParsePkt(const u_char *pkt, const int pkt_len,
+ChapParsePkt(Mbuf bp, const int pkt_len,
   char *peer_name, u_char *chap_value, int *chap_value_size)
 {
   int		val_len, name_len;
+  u_char	*const pkt = bp ? MBDATA(bp) : NULL;
 
   /* Compute and check lengths */
   if (pkt == NULL
@@ -215,7 +246,7 @@ ChapParsePkt(const u_char *pkt, const int pkt_len,
  * Timer expired for reply to challenge packet
  */
 
-void
+static void
 ChapChalTimeout(void *ptr)
 {
   ChapInfo	const chap = (ChapInfo) ptr;
@@ -232,30 +263,53 @@ ChapChalTimeout(void *ptr)
  */
 
 void
-ChapInput(int proto, u_char code, u_char id, const u_char *pkt, u_short len)
+ChapInput(Mbuf bp)
 {
   Auth			const a = &lnk->lcp.auth;
   ChapInfo		const chap = &a->chap;
+  struct fsmheader	chp;
   struct authdata	auth;
   char			peer_name[CHAP_MAX_NAME + 1];
   u_char		chap_value[CHAP_MAX_VAL];
   u_char		hash_value[CHAP_MAX_VAL];
-  int			chap_value_size, hash_value_size;
+  int			len, chap_value_size, hash_value_size;
+
+  /* Sanity check */
+  if (lnk->lcp.phase != PHASE_AUTHENTICATE && lnk->lcp.phase != PHASE_NETWORK) {
+    Log(LG_AUTH, ("[%s] CHAP: rec'd stray packet", lnk->name));
+    PFREE(bp);
+    return;
+  }
+
+  /* Make packet a single mbuf */
+  len = plength(bp = mbunify(bp));
+
+  /* Sanity check length */
+  if (len < sizeof(chp)) {
+    Log(LG_AUTH, ("[%s] CHAP: rec'd runt packet: %d bytes",
+      lnk->name, len));
+    PFREE(bp);
+    return;
+  }
+  bp = mbread(bp, (u_char *) &chp, sizeof(chp), NULL);
+  len -= sizeof(chp);
+  if (len > ntohs(chp.length))
+    len = ntohs(chp.length);
 
   /* Deal with packet */
   Log(LG_AUTH, ("[%s] CHAP: rec'd %s #%d",
-    lnk->name, ChapCode(code), id));
-  switch (code) {
+    lnk->name, ChapCode(chp.code), chp.id));
+  switch (chp.code) {
     case CHAP_CHALLENGE:
       {
 	char	*name;
 	int	name_len, idFail;
 
 	/* Check packet */
-	if ((a->self_to_peer != PROTO_CHAP && a->self_to_peer != PROTO_EAP)
+	if (a->self_to_peer != PROTO_CHAP
 	    || lnk->lcp.phase != PHASE_AUTHENTICATE)
 	  Log(LG_AUTH, (" Not expected, but that's OK"));
-	if (ChapParsePkt(pkt, len, peer_name, chap_value, &chap_value_size) < 0)
+	if (ChapParsePkt(bp, len, peer_name, chap_value, &chap_value_size) < 0)
 	  break;
 
 	/* Never respond to our own outstanding challenge */
@@ -339,7 +393,7 @@ ChapInput(int proto, u_char code, u_char id, const u_char *pkt, u_short len)
 	}
 
 	/* Get hash value */
-	if ((hash_value_size = ChapHash(chap->xmit_alg, hash_value, id,
+	if ((hash_value_size = ChapHash(chap->xmit_alg, hash_value, chp.id,
 	    name, auth.password, chap_value, chap_value_size, 1)) < 0) {
 	  Log(LG_AUTH, (" Hash failure"));
 	  break;
@@ -366,14 +420,13 @@ ChapInput(int proto, u_char code, u_char id, const u_char *pkt, u_short len)
 
 	/* Build response packet */
 	if (chap->resp)
-	  Freee(MB_AUTH, chap->resp);
+	  Freee(chap->resp);
 	chap->resp = Malloc(MB_AUTH, 1 + hash_value_size + name_len);
 	chap->resp[0] = hash_value_size;
 	memcpy(&chap->resp[1], hash_value, hash_value_size);
 	memcpy(&chap->resp[1 + hash_value_size], name, name_len);
 	chap->resp_len = 1 + hash_value_size + name_len;
-	chap->resp_id = id;
-	chap->proto = proto;
+	chap->resp_id = chp.id;
 
 	/* Send response to peer */
 	ChapSendResponse(chap);
@@ -386,19 +439,15 @@ ChapInput(int proto, u_char code, u_char id, const u_char *pkt, u_short len)
 	char		ackMesg[128];
 	int		whyFail;
 	int		radRes = RAD_NACK;
-	u_char		eap_type = 0;
 
 	/* Stop challenge timer */
 	TimerStop(&chap->chalTimer);
 
-	eap_type = chap->recv_alg == CHAP_ALG_MD5 ? EAP_TYPE_MD5CHAL :
-	  EAP_TYPE_MSCHAP_V2;
-
 	/* Check response */
-	if ((a->peer_to_self != PROTO_CHAP && a->peer_to_self != PROTO_EAP)
+	if (a->peer_to_self != PROTO_CHAP
 	    || lnk->lcp.phase != PHASE_AUTHENTICATE)
 	  Log(LG_AUTH, (" Not expected, but that's OK"));
-	if (ChapParsePkt(pkt, len,
+	if (ChapParsePkt(bp, len,
 	    peer_name, chap_value, &chap_value_size) < 0) {
 	  whyFail = AUTH_FAIL_INVALID_PACKET;
 	  goto badResponse;
@@ -430,7 +479,7 @@ ChapInput(int proto, u_char code, u_char id, const u_char *pkt, u_short len)
 	/* Try RADIUS auth if configured */
 	if (Enabled(&bund->conf.options, BUND_CONF_RADIUSAUTH)) {
 	  radRes = RadiusCHAPAuthenticate(peer_name, chap_value,
-	    chap_value_size, chap->chal_data, chap->chal_len, id,
+	    chap_value_size, chap->chal_data, chap->chal_len, chp.id,
 	    chap->recv_alg);
 	  if (radRes == RAD_ACK) {
 	    RadiusSetAuth(&auth);
@@ -450,7 +499,7 @@ ChapInput(int proto, u_char code, u_char id, const u_char *pkt, u_short len)
 	}
 
 	/* Get expected hash value */
-	if ((hash_value_size = ChapHash(chap->recv_alg, hash_value, id,
+	if ((hash_value_size = ChapHash(chap->recv_alg, hash_value, chp.id,
 	    peer_name, auth.password, chap->chal_data, chap->chal_len,
 	    0)) < 0) {
 	  Log(LG_AUTH, (" Hash failure"));
@@ -466,9 +515,13 @@ ChapInput(int proto, u_char code, u_char id, const u_char *pkt, u_short len)
 	  whyFail = AUTH_FAIL_INVALID_LOGIN;
 badResponse:
 	  failMesg = AuthFailMsg(PROTO_CHAP, chap->recv_alg, whyFail);
-	  AuthOutput(proto, proto == PROTO_CHAP ? CHAP_FAILURE : EAP_FAILURE,
-	    id, failMesg, strlen(failMesg), 0, eap_type);
-	  AuthFinish(AUTH_PEER_TO_SELF, FALSE, &auth);
+	  ChapOutput(CHAP_FAILURE, chp.id, failMesg, strlen(failMesg));
+/* XXX mbretter: HACK look if the peer should change the password 
+          if (strstr(failMesg, "E=648") != NULL) {
+	    Log(LG_AUTH, (" Password change requested"));
+          } else {*/
+	    AuthFinish(AUTH_PEER_TO_SELF, FALSE, &auth);
+/*          }*/
 	  break;
 	}
 
@@ -507,8 +560,7 @@ goodResponse:
 	  }
 	}
 
-	AuthOutput(proto, proto == PROTO_CHAP ? CHAP_SUCCESS : EAP_SUCCESS,
-	    id, ackMesg, strlen(ackMesg), 0, eap_type);
+	ChapOutput(CHAP_SUCCESS, chp.id, ackMesg, strlen(ackMesg));
 	AuthFinish(AUTH_PEER_TO_SELF, TRUE, &auth);
       }
       break;
@@ -519,7 +571,7 @@ goodResponse:
       /* Stop response timer */
       TimerStop(&chap->respTimer);
       if (chap->resp) {
-	Freee(MB_AUTH, chap->resp);
+	Freee(chap->resp);
 	chap->resp = NULL;
       }
 
@@ -531,27 +583,47 @@ goodResponse:
       }
 
       /* Log message */
-      ShowMesg(LG_AUTH, (char *) pkt, len);
-      AuthFinish(AUTH_SELF_TO_PEER, code == CHAP_SUCCESS, NULL);
+      if (bp)
+	ShowMesg(LG_AUTH, (char *) MBDATA(bp), len);
+      AuthFinish(AUTH_SELF_TO_PEER, chp.code == CHAP_SUCCESS, NULL);
       break;
       
     case CHAP_MS_V1_CHANGE_PW:
-      Log(LG_AUTH, ("[%s] CHAP: Sorry changing passwords using MS-CHAPv1 is not yet implemented",
-	lnk->name));
+      Log(LG_AUTH, ("[%s] CHAP: Sorry changing passwords using MS-CHAPv1 is not yet implemented", lnk->name));
       goto badResponse;
       break;
 
     case CHAP_MS_V2_CHANGE_PW:
-      Log(LG_AUTH, ("[%s] CHAP: Sorry changing passwords using MS-CHAPv2 is not yet implemented",
-	lnk->name));
-      goto badResponse;
+      {
+/* XXX mbretter: HACK */
+/*        u_char	*const mschap_cpw = bp ? MBDATA(bp) : NULL;
+        int	res;
+	int	whyFail;        
+*/
+
+	Log(LG_AUTH, ("[%s] CHAP: Sorry changing passwords using MS-CHAPv2 is not yet implemented", lnk->name));
+        goto badResponse;
+        
+/*	res = RadiusMSCHAPChangePassword(mschap_cpw, len, chap->chal_data, chap->chal_len, chp.id, chap->recv_alg);
+        if (res == RAD_NACK) {
+	  whyFail = AUTH_FAIL_INVALID_LOGIN;
+	  goto badResponse;
+        } else {
+	  RadiusSetAuth(&auth);
+	  goto goodResponse;
+        }*/
+
+      }
+
       break;
 
     default:
-      Log(LG_AUTH, ("[%s] CHAP: unknown code %d", lnk->name, code));
+      Log(LG_AUTH, ("[%s] CHAP: unknown code %d", lnk->name, chp.code));
       break;
   }
 
+  /* Done with packet */
+  PFREE(bp);
 }
 
 /*
@@ -677,7 +749,7 @@ ChapHashAgree(int alg, const u_char *self, int slen,
  * ChapCode()
  */
 
-const char *
+static const char *
 ChapCode(int code)
 {
   static char	buf[12];

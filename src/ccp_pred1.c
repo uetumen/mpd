@@ -113,13 +113,13 @@ Pred1Cleanup(int direction)
   if (direction & CCP_DIR_INPUT)
   {
     assert(p->InputGuessTable);
-    Freee(MB_COMP, p->InputGuessTable);
+    Freee(p->InputGuessTable);
     p->InputGuessTable = NULL;
   }
   if (direction & CCP_DIR_OUTPUT)
   {
     assert(p->OutputGuessTable);
-    Freee(MB_COMP, p->OutputGuessTable);
+    Freee(p->OutputGuessTable);
     p->OutputGuessTable = NULL;
   }
 }

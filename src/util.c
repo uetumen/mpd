@@ -45,7 +45,7 @@
  */
 
 void
-LengthenArray(void *array, int esize, int *alenp, const char *type)
+LengthenArray(void *array, int esize, int *alenp, int type)
 {
   void **const arrayp = (void **)array;
   void *newa;
@@ -53,7 +53,7 @@ LengthenArray(void *array, int esize, int *alenp, const char *type)
   newa = Malloc(type, (*alenp + 1) * esize);
   if (*arrayp != NULL) {
     memcpy(newa, *arrayp, *alenp * esize);
-    Freee(type, *arrayp);
+    Freee(*arrayp);
   }
   *arrayp = newa;
   (*alenp)++;
@@ -240,7 +240,7 @@ void
 FreeArgs(int ac, char *av[])
 {
   while (ac > 0)
-    Freee(MB_UTIL, av[--ac]);
+    Freee(av[--ac]);
 }
 
 /*
@@ -315,11 +315,11 @@ ReadFile(const char *filename, const char *target,
   {
     if (!isspace(*line))
     {
-      Freee(MB_UTIL, line);
+      Freee(line);
       break;
     }
     ac = ParseLine(line, av, sizeof(av) / sizeof(*av));
-    Freee(MB_UTIL, line);
+    Freee(line);
     memcpy(av_copy, av, sizeof(av));
     (*func)(ac, av);
     FreeArgs(ac, av_copy);
@@ -356,11 +356,11 @@ SeekToLabel(FILE *fp, const char *label, int *lineNum)
 
     if (isspace(*line))
     {
-      Freee(MB_UTIL, line);
+      Freee(line);
       continue;
     }
     found = (s = strtok(line, " \t\f:")) && !strcmp(s, label);
-    Freee(MB_UTIL, line);
+    Freee(line);
     if (found)
       return(0);
   }

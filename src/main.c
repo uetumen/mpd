@@ -82,8 +82,6 @@
   int			gNumLinks;
   int			gNumBundles;
 
-  pthread_mutex_t	gGiantMutex;
-
   const char		*gConfigFile = CONF_FILE;
   const char		*gConfDirectory = PATH_CONF_DIR;
 
@@ -100,11 +98,10 @@
   static Option		OptDecode(char *arg, int longform);
   static void		EventWarnx(const char *fmt, ...);
 
-  static void		SendSignal(int sig);
-  static void		OpenSignal(int sig);
-  static void		CloseSignal(int sig);
-  static void		FatalSignal(int sig);
-  static void		SignalHandler(int type, void *arg);
+  static void		OpenSignal(int type, void *cookie);
+  static void		CloseSignal(int type, void *cookie);
+  static void		FatalSignal(int type, void *cookie);
+  static void		FatalSignal2(int sig);
   static void		CloseIfaces(void);
 
 /*
@@ -118,8 +115,10 @@
   static int		gKillProc = FALSE;
   static const char	*gPidFile = PID_FILE;
   static const char	*gPeerSystem = NULL;
-  static int		gSignalPipe[2];
-  static EventRef	gSignalEvent;
+
+  static EventRef	gFatalSigRef;
+  static EventRef	gOpenSigRef;
+  static EventRef	gCloseSigRef;
 
 /*
  * main()
@@ -130,11 +129,7 @@ main(int ac, char *av[])
 {
   int	listen_fd;
   int	console_fd;
-  int	ret;
   char	*args[MAX_ARGS];
-
-  /* enable libpdel typed_mem */
-  typed_mem_enable();
 
   /* Read and parse command line */
   if (ac > MAX_ARGS)
@@ -169,36 +164,24 @@ main(int ac, char *av[])
   LocatPush(LOCAT_MAIN_FILE);
 #endif
 
-  ret = pthread_mutex_init (&gGiantMutex, NULL);
-  if (ret != 0) {
-    Log(LG_ERR, ("Could not create giant mutex %d", ret));
-    exit(EX_UNAVAILABLE);
-  }
-
+  /* Log event stuff to our log */
   EventSetLog(1, EventWarnx);
 
-  /* Creating signaling pipe */
-  if ((ret = pipe(gSignalPipe)) != 0) {
-    Log(LG_ERR, ("Could not create signal pipe %d", ret));
-    exit(EX_UNAVAILABLE);
-  }
-
-  if (EventRegister(&gSignalEvent, EVENT_READ, gSignalPipe[0], DEV_PRIO, SignalHandler, NULL) != 0)
-    exit(EX_UNAVAILABLE);
-
   /* Register for some common fatal signals so we can exit cleanly */
-  signal(SIGINT, SendSignal);
-  signal(SIGTERM, SendSignal);
-  signal(SIGHUP, SendSignal);
+  EventRegister(&gFatalSigRef, EVENT_SIGNAL, SIGINT,
+    0, FatalSignal, (void *) SIGINT);
+  EventRegister(&gFatalSigRef, EVENT_SIGNAL, SIGTERM,
+    0, FatalSignal, (void *) SIGTERM);
+  EventRegister(&gFatalSigRef, EVENT_SIGNAL, SIGHUP,
+    0, FatalSignal, (void *) SIGHUP);
 
-  /* Catastrophic signals */
-  signal(SIGSEGV, SendSignal);
-  signal(SIGBUS, SendSignal);
-  signal(SIGABRT, SendSignal);
+  /* Catastrophic signals require direct handling */
+  signal(SIGSEGV, FatalSignal2);
+  signal(SIGBUS, FatalSignal2);
 
   /* Other signals make us do things */
-  signal(SIGUSR1, SendSignal);
-  signal(SIGUSR2, SendSignal);
+  OpenSignal(-1, NULL);
+  CloseSignal(-1, NULL);
 
   /* Signals we ignore */
   signal(SIGPIPE, SIG_IGN);
@@ -231,9 +214,8 @@ main(int ac, char *av[])
   /* Intialize console */
   ConsoleInit(console_fd, listen_fd);
 
-  while(1)
-    sleep(10000000);
-
+  /* Do whatever */
+  EventStart();
   assert(0);
   return(1);	/* Never reached, but needed to silence compiler warning */
 }
@@ -317,53 +299,7 @@ DoExit(int code)
   Log(LG_ALWAYS, ("mpd: process %d terminated", getpid()));
   LogClose();
   (void) unlink(gPidFile);
-
   exit(code == EX_TERMINATE ? EX_NORMAL : code);
-}
-
-/*
- * SendSignal()
- *
- * Send a signal through the signaling pipe
- * don't add printf's here or any function
- * wich isn't re-entrant
- */
-
-static void
-SendSignal(sig)
-{
-  if (sig == SIGSEGV || sig == SIGBUS || sig == SIGABRT) {
-    FatalSignal(sig);
-  }
-  write(gSignalPipe[1], &sig, 1);
-}
-
-/*
- * SignalHandler()
- *
- * dispatch signal
- */
-static void
-SignalHandler(int type, void *arg)
-{
-  u_char	sig;
-
-  read(gSignalPipe[0], &sig, sizeof(sig));
-
-  switch(sig) {
-    case SIGUSR1:
-      OpenSignal(sig);
-      break;
-
-    case SIGUSR2:
-      CloseSignal(sig);
-      break;
-
-    default:
-      FatalSignal(sig);
-  }
-
-  EventRegister(&gSignalEvent, EVENT_READ, gSignalPipe[0], DEV_PRIO, SignalHandler, NULL);
 }
 
 /*
@@ -373,8 +309,9 @@ SignalHandler(int type, void *arg)
  */
 
 static void
-FatalSignal(sig)
+FatalSignal(int type, void *cookie)
 {
+  const int			sig = (intptr_t)cookie;
   static struct pppTimer	gDeathTimer;
   int				k;
 
@@ -384,16 +321,24 @@ FatalSignal(sig)
     if ((bund = gBundles[k]))
       RecordLinkUpDownReason(NULL, 0, STR_PORT_SHUTDOWN, NULL);
   }
-
-  signal(SIGUSR1, SIG_IGN);
-  signal(SIGUSR2, SIG_IGN);
   if (sig != SIGTERM)
     DoExit(EX_ERRDEAD);
-
+  EventUnRegister(&gOpenSigRef);
+  EventUnRegister(&gCloseSigRef);
   TimerInit(&gDeathTimer, "DeathTimer",
-    TERMINATE_DEATH_WAIT, (void (*)(void *)) DoExit, (void *) &gBackground);
+    TERMINATE_DEATH_WAIT, (void (*)(void *)) DoExit, (void *) EX_TERMINATE);
   TimerStart(&gDeathTimer);
   CloseIfaces();
+}
+
+/*
+ * FatalSignal2()
+ */
+
+static void
+FatalSignal2(int sig)
+{
+  FatalSignal(EVENT_SIGNAL, (void *)(intptr_t)sig);
 }
 
 /*
@@ -401,8 +346,16 @@ FatalSignal(sig)
  */
 
 static void
-OpenSignal(int sig)
+OpenSignal(int type, void *cookie)
 {
+  const int	sig = (intptr_t)cookie;
+
+  /* (Re)register */
+  EventRegister(&gOpenSigRef, EVENT_SIGNAL, SIGUSR1,
+    0, OpenSignal, (void *) SIGUSR1);
+  if (type == -1)
+    return;
+
   /* Apply signal to console bundle & link */
   lnk = gConsoleLink;
   bund = gConsoleBund;
@@ -416,7 +369,6 @@ OpenSignal(int sig)
     BundOpen();
   } else
     Log(LG_ALWAYS, ("mpd: rec'd signal %s, ignored", sys_signame[sig]));
-
 }
 
 /*
@@ -424,8 +376,15 @@ OpenSignal(int sig)
  */
 
 static void
-CloseSignal(int sig)
+CloseSignal(int type, void *cookie)
 {
+  const int	sig = (intptr_t)cookie;
+
+  /* (Re)register */
+  EventRegister(&gCloseSigRef, EVENT_SIGNAL, SIGUSR2,
+    0, CloseSignal, (void *) SIGUSR2);
+  if (type == -1)
+    return;
 
   /* Apply signal to console bundle & link */
   lnk = gConsoleLink;
@@ -439,7 +398,6 @@ CloseSignal(int sig)
     IpcpClose();
   } else
     Log(LG_ALWAYS, ("mpd: rec'd signal %s, ignored", sys_signame[sig]));
-
 }
 
 /*
@@ -515,8 +473,6 @@ OptParse(int ac, char *av[])
 static int
 OptApply(Option opt, int ac, char *av[])
 {
-  memset(gSysLogIdent, 0, sizeof(gSysLogIdent));
-
   if (opt == NULL)
     Usage(EX_USAGE);
   if (ac < opt->n_args)

@@ -1,8 +1,9 @@
+
 /*
- * See ``COPYRIGHT.mpd''
+ * radius.h
  *
- * $Id$
- *
+ * Written by Michael Bretterklieber <michael@bretterklieber.com>
+ * Written by Brendan Bank <brendan@gnarst.net>
  */
 
 #include "ppp.h"
@@ -34,14 +35,6 @@
 
 #ifndef RAD_ACCT_INTERIM_INTERVAL
 #define RAD_ACCT_INTERIM_INTERVAL 85
-#endif
-
-#ifndef RAD_EAP_MESSAGE
-#define RAD_EAP_MESSAGE 79
-#endif
-
-#ifndef RAD_MESSAGE_AUTHENTIC
-#define RAD_MESSAGE_AUTHENTIC 80
 #endif
 
 /* for mppe-keys */
@@ -76,10 +69,13 @@ extern int	RadiusPAPAuthenticate(const char *name, const char *password);
 extern int	RadiusCHAPAuthenticate(const char *name, const char *password,
 			int passlen, const char *challenge, int challenge_size,
 			u_char chapid, int chap_type);
+extern int	RadiusMSCHAPChangePassword(const char *mschapvalue, int mschapvaluelen, const char *challenge, 
+			int challenge_size, u_char chapid, int chap_type);
 extern int	RadiusStart(short request_type);
 extern int	RadiusPutAuth(const char *name, const char *password,
 			int passlen, const char *challenge, int challenge_size,
 			u_char chapid, int auth_type);
+extern int	RadiusPutChangePassword(const char *mschapvalue, int mschapvaluelen, u_char chapid, int chap_type); 
 extern int	RadiusSendRequest(void);
 extern int	RadiusGetParams(void);
 extern int	RadiusAccount(short acct_type);

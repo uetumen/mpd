@@ -10,7 +10,7 @@
 PROG?=			mpd
 PREFIX?=		/usr/local
 BINDIR?=		${PREFIX}/sbin
-VERSION=		4.0
+VERSION=		3.17
 NOMAN=
 
 # Default configuration directory
@@ -48,16 +48,12 @@ SYSLOG_FACILITY=	LOG_DAEMON
 
 # Compiler & linker flags
 
-LDADD+=		-lmd 
+LDADD+=		-lmd -lwrap
 DPADD+=		${LIBMD}
-LDADD+=		-lwrap
-DPADD+=		${LIBWRAP}
 LDADD+=		-lnetgraph
 DPADD+=		${LIBNETGRAPH}
-LDADD+=		-L/usr/lib -lradius
+LDADD+=		-lradius
 DPADD+=		${LIBRADIUS}
-
-LDADD+=		-L/usr/local/lib -lpdel -lssl -lexpat
 
 MPD_VERSION!=	echo -n "${VERSION} (`id -un`@`uname -n` `LC_TIME=C date +'%R %v'`)"
 
@@ -74,9 +70,7 @@ COPTS+=		-Wall \
 		-Wmissing-prototypes \
 		-Wnested-externs \
 		-Wpointer-arith \
-		-Wwrite-strings \
-		-pthread \
-		-I/usr/local/include
+		-Wwrite-strings
 
 # Standard sources
 
@@ -84,7 +78,7 @@ STDSRCS=        assert.c auth.c bund.c ccp.c chap.c \
 		console.c command.c ecp.c fsm.c iface.c input.c \
 		ip.c ipcp.c lcp.c link.c log.c main.c mbuf.c mp.c \
 		msg.c ngfunc.c pap.c phys.c proto.c radius.c timer.c \
-		util.c vars.c custom.c eap.c
+		util.c vars.c custom.c
 
 # Mpd is event based, using this handy little event library..
 
