@@ -13,6 +13,8 @@
 	</item>	
 	<item>Added sample configs for ADSL-Austria.
 	</item>	
+	<item>Fixed missing command line flags in man page and manual.
+	</item>	
     </itemize>
   </p>
   <p>
