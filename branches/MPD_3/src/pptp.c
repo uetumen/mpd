@@ -70,6 +70,9 @@
 #if NGM_PPTPGRE_COOKIE >= 942783547
     PPTP_CONF_ALWAYS_ACK,	/* include ack with all outgoing data packets */
 #endif
+#if NGM_PPTPGRE_COOKIE >= 1082548365
+    PPTP_CONF_WINDOWING,	/* control (stupid) windowing algorithm */
+#endif
   };
 
 /*
@@ -154,6 +157,9 @@
 #if NGM_PPTPGRE_COOKIE >= 942783547
     { 0,	PPTP_CONF_ALWAYS_ACK,	"always-ack"	},
 #endif
+#if NGM_PPTPGRE_COOKIE >= 1082548365
+    { 0,	PPTP_CONF_WINDOWING,	"windowing"	},
+#endif
     { 0,	0,			NULL		},
   };
 
@@ -185,6 +191,9 @@ PptpInit(PhysInfo p)
   pptp = (PptpInfo) (p->info = Malloc(MB_PHYS, sizeof(*pptp)));
   Enable(&pptp->options, PPTP_CONF_OUTCALL);
   Enable(&pptp->options, PPTP_CONF_DELAYED_ACK);
+#if NGM_PPTPGRE_COOKIE >= 1082548365
+  Enable(&pptp->options, PPTP_CONF_WINDOWING);
+#endif
   return(0);
 }
 
@@ -540,6 +549,10 @@ PptpHookUp(PptpInfo pptp)
 #if NGM_PPTPGRE_COOKIE >= 942783547
   gc.enableAlwaysAck = Enabled(&pptp->options, PPTP_CONF_ALWAYS_ACK);
 #endif
+#if NGM_PPTPGRE_COOKIE >= 1082548365
+  gc.enableWindowing = Enabled(&pptp->options, PPTP_CONF_WINDOWING);
+#endif
+
   if (NgSendMsg(bund->csock, pptppath, NGM_PPTPGRE_COOKIE,
       NGM_PPTPGRE_SET_CONFIG, &gc, sizeof(gc)) < 0) {
     Log(LG_PHYS, ("[%s] can't config %s node: %s",
