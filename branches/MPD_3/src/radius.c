@@ -1321,7 +1321,8 @@ RadiusSetAuth(AuthData auth)
     Log(LG_RADIUS, ("[%s] RADIUS: %s: Trying to use IP-address from radius-server",
       lnk->name, function));
 
-    if (strcmp(inet_ntoa(bund->radius.ip), "255.255.255.255") == 0) {
+    if (strcmp(inet_ntoa(bund->radius.ip), "255.255.255.255") == 0
+	|| bund->radius.ip.s_addr == INADDR_ANY) {
       /* the peer can choose an address */
       Log(LG_RADIUS, ("[%s] RADIUS: %s: server says that the peer can choose an address",
         lnk->name, function));
