@@ -6,6 +6,16 @@
   <sect><heading>Change history<label id="changes"></heading>
 
   <p>
+    Changes since version 3.16:
+    <itemize>
+	<item>BugFix: keep-alives were b0rked, and every other function wich relys on 
+		valid link-stats.
+	</item>	
+	<item>Added sample configs for ADSL-Austria.
+	</item>	
+    </itemize>
+  </p>
+  <p>
     Changes since version 3.15:
     <itemize>
     <item>Added <tt>set bundle max-logins <em>num</em></tt> option at bundle level
