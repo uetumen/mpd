@@ -26,8 +26,8 @@
   static const char * RadiusMPPEPolicyname(int policy);
   static const char * RadiusMPPETypesname(int types);
   /* compatibility functions until libradius has these builtin */
-  static int rad_demangle(struct rad_handle *, const void *, size_t, u_char *);
-  static int rad_demangle_mppe_key(struct rad_handle *, const void *, size_t, u_char *, size_t *);
+  static int rad_demangle2(struct rad_handle *, const void *, size_t, u_char *);
+  static int rad_demangle_mppe_key2(struct rad_handle *, const void *, size_t, u_char *, size_t *);
 
 
 /* Set menu options */
@@ -972,14 +972,14 @@ RadiusGetParams()
 		got_mppe_keys = TRUE;
 		Log(LG_RADIUS, ("[%s] RADIUS: %s: RAD_MICROSOFT_MS_MPPE_RECV_KEY",
 		  lnk->name, function));
-		rad_demangle_mppe_key(rad->radh, data, len, rad->mppe.recvkey, &rad->mppe.recvkeylen);
+		rad_demangle_mppe_key2(rad->radh, data, len, rad->mppe.recvkey, &rad->mppe.recvkeylen);
 		break;
 
 	      case RAD_MICROSOFT_MS_MPPE_SEND_KEY:
 		got_mppe_keys = TRUE;
 		Log(LG_RADIUS, ("[%s] RADIUS: %s: RAD_MICROSOFT_MS_MPPE_SEND_KEY",
 		  lnk->name, function));
-		rad_demangle_mppe_key(rad->radh, data, len, rad->mppe.sendkey, &rad->mppe.sendkeylen);
+		rad_demangle_mppe_key2(rad->radh, data, len, rad->mppe.sendkey, &rad->mppe.sendkeylen);
 		break;
 
               /* MPPE Keys MS-CHAPv1 */
@@ -994,7 +994,7 @@ RadiusGetParams()
 		  return RAD_NACK;
 		}
 
-		if (rad_demangle(rad->radh, data, len, rad->mppe.lm_key) == -1) {
+		if (rad_demangle2(rad->radh, data, len, rad->mppe.lm_key) == -1) {
 		  Log(LG_RADIUS, ("[%s] RADIUS: %s: rad_demangle failed: %s",
 		    lnk->name, function, rad_strerror(rad->radh)));
 		  return RAD_NACK;
@@ -1448,7 +1448,7 @@ RadiusMPPETypesname(int types) {
 
 /* compatibility functions until libradius has these builtin */
 static int
-rad_demangle(struct rad_handle *h, const void *mangled, size_t mlen, u_char *demangled) 
+rad_demangle2(struct rad_handle *h, const void *mangled, size_t mlen, u_char *demangled) 
 {
   char  function[] = "rad_demangle";
   char R[AUTH_LEN];
@@ -1500,7 +1500,7 @@ rad_demangle(struct rad_handle *h, const void *mangled, size_t mlen, u_char *dem
 }
 
 static int
-rad_demangle_mppe_key(struct rad_handle *h, const void *mangled, size_t mlen, u_char *demangled, size_t *len)
+rad_demangle_mppe_key2(struct rad_handle *h, const void *mangled, size_t mlen, u_char *demangled, size_t *len)
 {
   char  function[] = "rad_demangle_mppe_key";
   char R[AUTH_LEN];    /* variable names as per rfc2548 */
