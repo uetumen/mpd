@@ -1658,6 +1658,7 @@ PptpCtrlNewCtrlState(PptpCtrl c, int new)
     c->id, gPptpCtrlStates[c->state], gPptpCtrlStates[new]));
   if (new == PPTP_CTRL_ST_FREE) {
     gPptpCtrl[c->id] = NULL;
+    Freee(c->channels);
     memset(c, 0, sizeof(*c));
     Freee(c);
     return;
