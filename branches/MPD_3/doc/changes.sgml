@@ -6,6 +6,15 @@
   <sect><heading>Change history<label id="changes"></heading>
 
   <p>
+    Changes since version 3.17:
+    <itemize>
+	<item>BugFix: an empty authname was passed to the iface up/down scripts
+
+	      in client-mode
+	</item>	
+    </itemize>
+  </p>
+  <p>
     Changes since version 3.16:
     <itemize>
 	<item>BugFix: keep-alives were b0rked, and every other function wich relys on 
