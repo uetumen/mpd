@@ -13,6 +13,9 @@
 	<item>Added some RFC2868 RADIUS atributes like Tunnel-Type
 	for PPTP links to make possible some link type differentiation.
 	</item>
+	<item>Auto-load <tt>ng_ether</tt> for PPPoE connections;
+		fix default path for undefined service.
+	</item>
     </itemize>
   </p>
 
