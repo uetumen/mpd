@@ -8,6 +8,8 @@
 #include "radius.h"
 #include "pptp.h"
 #include "pppoe.h"
+#include "ng.h"
+#include "modem.h"
 #include "chap.h"
 #include "ngfunc.h"
 
@@ -298,6 +300,7 @@ int RadiusStart(short request_type)
   char			*peeripname;
   u_char		*peer_mac;
   char			peermacname[18];
+  int			porttype;
 
   if (RadiusInit(request_type) == RAD_NACK) 
     return RAD_NACK;
@@ -335,7 +338,14 @@ int RadiusStart(short request_type)
     return (RAD_NACK);
   }
 
-  if (rad_put_int(rad->radh, RAD_NAS_PORT_TYPE, RAD_VIRTUAL) == -1) {
+  if (lnk->phys->type == &gModemPhysType) {
+    porttype=RAD_ASYNC;
+  } else if (lnk->phys->type == &gNgPhysType) {
+    porttype=RAD_SYNC;
+  } else {
+    porttype=RAD_VIRTUAL;
+  };
+  if (rad_put_int(rad->radh, RAD_NAS_PORT_TYPE, porttype) == -1) {
     Log(LG_RADIUS, ("[%s] RADIUS: %s: rad_put_int(RAD_NAS_PORT_TYPE) failed %s", lnk->name,
       function, rad_strerror(rad->radh)));
     RadiusClose();
@@ -356,31 +366,76 @@ int RadiusStart(short request_type)
     return (RAD_NACK);
   }
 
-  peer_ip = PptpGetPeerIp();
-  if (peer_ip != NULL && peer_ip->s_addr != 0) {
-    peeripname = inet_ntoa(*peer_ip);
-    if (peeripname != NULL) {
-      if (rad_put_string(rad->radh, RAD_CALLING_STATION_ID, peeripname) == -1) {
-	Log(LG_RADIUS, ("[%s] RADIUS: %s: rad_put_string(RAD_CALLING_STATION_ID) failed %s", lnk->name,
+#define RAD_TUNNEL_TYPE			64
+#define RAD_TT_PPTP			1
+#define RAD_TUNNEL_MEDIUM_TYPE		65
+#define RAD_TMT_IPV4			1
+#define RAD_TUNNEL_CLIENT_ENDPOINT	66
+#define RAD_TUNNEL_SERVER_ENDPOINT	67
+
+  if (lnk->phys->type == &gPptpPhysType) {
+    peer_ip = PptpGetPeerIp();
+    if (peer_ip != NULL && peer_ip->s_addr != 0) {
+      peeripname = inet_ntoa(*peer_ip);
+      if (peeripname != NULL) {
+        if (rad_put_string(rad->radh, RAD_CALLING_STATION_ID, peeripname) == -1) {
+	  Log(LG_RADIUS, ("[%s] RADIUS: %s: rad_put_string(RAD_CALLING_STATION_ID) failed %s", lnk->name,
+	    function, rad_strerror(rad->radh)));
+	  RadiusClose();
+	  return (RAD_NACK);
+        }  
+        if (rad_put_string(rad->radh, RAD_TUNNEL_CLIENT_ENDPOINT, peeripname) == -1) {
+	  Log(LG_RADIUS, ("[%s] RADIUS: %s: rad_put_string(RAD_TUNNEL_CLIENT_ENDPOINT) failed %s", lnk->name,
+	    function, rad_strerror(rad->radh)));
+	  RadiusClose();
+	  return (RAD_NACK);
+        }  
+      } 
+    }
+    peer_ip = PptpGetOurIp();
+    if (peer_ip != NULL && peer_ip->s_addr != 0) {
+      peeripname = inet_ntoa(*peer_ip);
+      if (peeripname != NULL) {
+        if (rad_put_string(rad->radh, RAD_CALLED_STATION_ID, peeripname) == -1) {
+	  Log(LG_RADIUS, ("[%s] RADIUS: %s: rad_put_string(RAD_CALLED_STATION_ID) failed %s", lnk->name,
+	    function, rad_strerror(rad->radh)));
+	  RadiusClose();
+	  return (RAD_NACK);
+        }  
+        if (rad_put_string(rad->radh, RAD_TUNNEL_SERVER_ENDPOINT, peeripname) == -1) {
+	  Log(LG_RADIUS, ("[%s] RADIUS: %s: rad_put_string(RAD_TUNNEL_SERVER_ENDPOINT) failed %s", lnk->name,
+	    function, rad_strerror(rad->radh)));
+	  RadiusClose();
+	  return (RAD_NACK);
+        }  
+      } 
+    }
+    if (rad_put_int(rad->radh, RAD_TUNNEL_TYPE, RAD_TT_PPTP) == -1) {
+	Log(LG_RADIUS, ("[%s] RADIUS: %s: rad_put_int(RAD_TUNNEL_TYPE) failed %s", lnk->name,
 	  function, rad_strerror(rad->radh)));
 	RadiusClose();
 	return (RAD_NACK);
-      }  
-    } 
-  }
-
-  peer_mac = PppoeGetPeerAddr();
-  if ((peer_mac != NULL) && 
-      ((peer_mac[0] != 0) || (peer_mac[1] != 0) || (peer_mac[2] != 0) || 
-       (peer_mac[3] !=0 ) || (peer_mac[4] != 0) || (peer_mac[5] != 0))
-    ) {
-    snprintf(peermacname, sizeof(peermacname), "%02x%02x%02x%02x%02x%02x",
-      peer_mac[0], peer_mac[1], peer_mac[2], peer_mac[3], peer_mac[4], peer_mac[5]);
-    if (rad_put_string(rad->radh, RAD_CALLING_STATION_ID, peermacname) == -1) {
-      Log(LG_RADIUS, ("[%s] RADIUS: %s: rad_put_string(RAD_CALLING_STATION_ID) failed %s", lnk->name,
-	function, rad_strerror(rad->radh)));
-      RadiusClose();
-      return (RAD_NACK);
+    }  
+    if (rad_put_int(rad->radh, RAD_TUNNEL_MEDIUM_TYPE, RAD_TMT_IPV4) == -1) {
+	Log(LG_RADIUS, ("[%s] RADIUS: %s: rad_put_int(RAD_TUNNEL_MEDIUM_TYPE) failed %s", lnk->name,
+	  function, rad_strerror(rad->radh)));
+	RadiusClose();
+	return (RAD_NACK);
+    }  
+  } else if (lnk->phys->type == &gPppoePhysType) {
+    peer_mac = PppoeGetPeerAddr();
+    if ((peer_mac != NULL) && 
+        ((peer_mac[0] != 0) || (peer_mac[1] != 0) || (peer_mac[2] != 0) || 
+         (peer_mac[3] != 0) || (peer_mac[4] != 0) || (peer_mac[5] != 0))
+       ) {
+	snprintf(peermacname, sizeof(peermacname), "%02x%02x%02x%02x%02x%02x",
+        peer_mac[0], peer_mac[1], peer_mac[2], peer_mac[3], peer_mac[4], peer_mac[5]);
+	if (rad_put_string(rad->radh, RAD_CALLING_STATION_ID, peermacname) == -1) {
+    	    Log(LG_RADIUS, ("[%s] RADIUS: %s: rad_put_string(RAD_CALLING_STATION_ID) failed %s", lnk->name,
+		function, rad_strerror(rad->radh)));
+    	    RadiusClose();
+    	    return (RAD_NACK);
+	}
     }
   }
   

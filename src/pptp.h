@@ -26,6 +26,7 @@
  */
 
   extern struct in_addr		*PptpGetPeerIp(void);
+  extern struct in_addr		*PptpGetOurIp(void);
 
 #endif
 
