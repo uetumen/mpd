@@ -1,0 +1,107 @@
+<!-- $Id$ -->
+<!-- mpd netgraph enabled user mode PPP daemon -->
+
+<!-- <!DOCTYPE linuxdoc PUBLIC '-//FreeBSD//DTD linuxdoc//EN'> -->
+
+  <sect><heading>Troubleshooting<label id="trouble"></heading>
+
+  <p>
+  Some tips for troubleshooting.
+  (This section is under construction).
+
+  <p>
+  For further help, subscribe to the <tt>freebsd-net@freebsd.org</tt>
+  mailing list and ask your question there.
+
+<descrip>
+
+<tag><bf>
+Packets won't flow.
+</bf></tag>
+
+Make sure you have set <tt><bf>gateway_enable="YES"</bf></tt>
+in <tt>/etc/rc.conf</tt>, otherwise your FreeBSD box will not
+route packets.
+Alternately, invoke <tt>sysctl -w net.inet.ip.forwarding=1</tt>
+for immediate effect.
+
+Also, check your firewall settings. Mpd will create new interfaces
+which may need to be incorporated into your firewall rules.
+If you're doing PPTP, you need to allow TCP port 1723 and IP protocol
+47 (GRE).
+
+<tag><bf>
+It doesn't work, and there are strange netgraph-related errors in the log.
+</bf></tag>
+
+Make sure you have all the required netgraph KLD's loaded.
+You can check them by doing <tt> kldstat -v | grep ng_ </tt>.
+
+Usually these are loaded on demand. If not, you can load them
+manually using <tt>kldload(8)</tt>.
+
+The following node types are or may be needed:
+
+<itemize>
+<item><tt>ng_ppp</tt></item>
+<item><tt>ng_socket</tt></item>
+<item><tt>ng_iface</tt></item>
+<item><tt>ng_bpf</tt></item>
+<item><tt>ng_vjc</tt></item>
+<item><tt>ng_mppc</tt></item>
+<item><tt>ng_pptpgre</tt></item>
+<item><tt>ng_ksocket</tt></item>
+<item><tt>ng_tty</tt></item>
+<item><tt>ng_pppoe</tt></item>
+</itemize>
+
+<tag><bf>
+Poor performance with Mac OS X PPTP clients.
+</bf></tag>
+
+Upgrade to a version of FreeBSD newer than 4.7-RELEASE.  Or apply
+<htmlurl url="http://www.freebsd.org/cgi/cvsweb.cgi/src/sys/netgraph/ng_pptpgre.c.diff?r1=1.25&amp;r2=1.26" name="this patch">
+manually.
+
+<tag><bf>
+My configuration doesn't seem to be working as expected.
+</bf></tag>
+
+Make sure your <tt>mpd.conf</tt> and <tt>mpd.links</tt> files are
+formatted properly. Labels must be left-justified, and blank lines
+must exist between sections to separate them.
+
+<tag><bf>
+I'm getting no valid response from the RADIUS server.
+</bf></tag>
+
+Double-check the shared secret in the RADIUS servers config and the
+one specified in <tt>mpd.conf</tt> or <tt>radius.conf</tt>.
+Check the ports of the RADIUS server: they should be 1812 (authentication)
+and 1813 (accounting), wich are also the default ports of mpd. In
+the past unofficial port numbers (1645 and 1646) were used for RADIUS,
+but these are deprecated.
+
+<tag><bf>
+I'm getting ``Operation not permitted'' errors trying to run mpd.
+</bf></tag>
+
+This is often caused by a combination of (a) using netgraph in KLD module
+form instead of statically compiling the various modules into the kernel
+via kernel <tt>config(8)</tt> options, and (b) increasing your 
+kernel security level (see the <tt>init(8)</tt> man page), which prevents
+KLD modules from being loaded. Change one of these things to fix the problem.
+
+<tag><bf>
+I've configured a link for dial-in, and sometimes after disconnecting
+mpd gets into some kind of infinite loop.
+</bf></tag>
+
+This is because mpd is trying to ``redial,'' which of course is not
+appropriate for dial-in links. Use <tt>set link max-redial -1</tt>
+to disable the redial function.
+
+</descrip>
+
+</p>
+
