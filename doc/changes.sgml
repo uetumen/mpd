@@ -20,6 +20,9 @@
         server doesen't send the Framed-IP-Address attribute.
         Submitted by: Damir Bikmukhametov, boco at ufanet dot ru
 	</item>	
+	<item>
+        BugFix: fix a SEGV when no bundles are defined.
+	</item>	
     </itemize>
   </p>
   <p>
