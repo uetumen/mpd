@@ -113,10 +113,14 @@ ChapSendChallenge(ChapInfo chap)
 {
   u_char	*pkt;
 
+  /* don't generate new challenges on re-transmit */
+  if (chap->chal_len)
+    goto send_pkt;
+
   /* Put random challenge data in buffer (only once for Microsoft CHAP) */
   switch (chap->recv_alg) {
     case CHAP_ALG_MSOFT: {
-	chap->chal_len = CHAP_MSOFT_CHAL_LEN;
+  	chap->chal_len = CHAP_MSOFT_CHAL_LEN;
 	if (!memcmp(bund->self_msChal, gMsoftZeros, chap->chal_len)) {
 	  ChapGenRandom(chap->chal_data, chap->chal_len);
 	  memcpy(bund->self_msChal, chap->chal_data, chap->chal_len);
@@ -139,6 +143,7 @@ ChapSendChallenge(ChapInfo chap)
   }
   assert(chap->chal_len <= sizeof(chap->chal_data));
 
+send_pkt:
   /* Build a challenge packet */
   pkt = Malloc(MB_AUTH, 1 + chap->chal_len + strlen(bund->conf.authname) + 1);
   pkt[0] = chap->chal_len;
@@ -147,7 +152,7 @@ ChapSendChallenge(ChapInfo chap)
     bund->conf.authname, strlen(bund->conf.authname));
 
   /* Send it off */
-  ChapOutput(CHAP_CHALLENGE, chap->next_id++,
+  ChapOutput(CHAP_CHALLENGE, chap->next_id,
     pkt, 1 + chap->chal_len + strlen(bund->conf.authname));
   Freee(pkt);
 }
