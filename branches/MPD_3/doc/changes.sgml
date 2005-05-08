@@ -8,6 +8,9 @@
   <p>
     Changes since version 3.18:
     <itemize>
+	<item>BugFix: don't generate new challenges, while retransmitting
+	them.
+	</item>
 	<item>Fix <tt>va_args</tt> bug on certain non-i386 platforms.
 	</item>
 	<item>Added some RFC2868 RADIUS atributes like Tunnel-Type
