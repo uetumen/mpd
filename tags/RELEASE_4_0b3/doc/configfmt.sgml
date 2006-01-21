@@ -1,0 +1,194 @@
+<!-- $Id$ -->
+<!-- mpd netgraph enabled user mode PPP daemon -->
+
+<!-- <!DOCTYPE linuxdoc PUBLIC '-//FreeBSD//DTD linuxdoc//EN'> -->
+
+  <sect><heading>Configuration file format<label id="configfmt"></heading>
+
+<p>
+Mpd uses four different configuration files when it executes. These files
+are described below.
+
+<sect1><heading>General properties</heading>
+
+<p>
+For all of the configuration files, the following things are true:
+
+<itemize>
+	<item>
+	Any line whose first character is a number sign
+	(<tt>#</tt>) is considered a comment and is ignored.
+
+	<item>
+	Strings may be quoted using double quotes. The string
+	is decoded according to normal C language rules.
+</itemize>
+
+<sect1><heading><tt>mpd.conf</tt> and <tt>mpd.links</tt></heading>
+
+<p>
+The <tt>mpd.conf</tt> and <tt>mpd.links</tt> files have the same
+simple structure.
+An <em>entry</em> consists of a <em>label</em> followed by a sequence of
+mpd commands.
+A label begins at the first column and ends with a colon
+character. Commands are usually indented with a tab character
+(this is not required) and follow the label immediately on the
+next and subsequent lines.
+An entry ends at the first blank line after the label.
+</p>
+
+<p>
+Here is an example <tt>mpd.conf</tt> that contains a single
+configuration <tt>config1</tt> that defines a single bundle <tt>myisp</tt>,
+containing two links <tt>modem1</tt> and <tt>modem2</tt>:
+<tscreen><verb>
+#
+# mpd.conf configuration file
+#
+
+config1:
+	new myisp modem1 modem2
+	set auth authname "mylogin1"
+	set iface enable on-demand
+	set iface addrs 1.2.3.4 5.6.7.8
+	set iface route default
+	set iface idle 300
+	link modem1
+	set modem var $Telephone "123-4567"
+	link modem2
+	set modem var $Telephone "123-4567"
+</verb></tscreen>
+
+<p>
+The corresponding <tt>mpd.links</tt> file might look like this:
+<tscreen><verb>
+#
+# mpd.links configuration file
+#
+
+# my internal modem which is on COM3
+modem1:
+	set link type modem
+	set modem device /dev/cuaa2
+
+# my external modem which is on COM2
+modem2:
+	set link type modem
+	set modem device /dev/cuaa1
+</verb></tscreen>
+
+Note that the telephone number to dial for each link is set
+in <tt>mpd.conf</tt> instead of <tt>mpd.links</tt>, because
+this is specific to <tt>config1</tt>. On the other hand,
+the serial port device is a property of the link and independent
+of the configuration; hence this is set for each link
+in <tt>mpd.links</tt>.
+</p>
+
+<sect1><heading><tt>mpd.secret</tt></heading>
+
+<p>
+	This file contains login, password pairs, one entry per line.
+	Each entry may have an optional third argument, which is
+	an IP address with optional netmask width. This is used
+	when netgotiating IP addresses with the corresponding peer.
+	We restrict the allowable IP addresses we'll assign to the
+	peer to lie within the specified range.
+</p>
+
+<p>
+	In the example below, we define two ISP accounts that we
+	use to connect to the Internet. Also, we have three friends
+	who are allowed to connect to us, and we want to restrict
+	the IP addresses that we'll let them have. Finally, the last
+	user's password is retrieved by an external program.
+<tscreen><verb>
+#
+# mpd.secrets configuration file
+#
+
+# my two ISP accounts
+mylogin1    password1
+mylogin2    "Xka \r\n"
+
+# my three friends
+bob         "akd\"ix23"   192.168.1.100
+jerry       "33dk88kz3"   192.168.1.101
+phil        "w*d9m&_4X"   192.168.1.128/25
+
+# An external password access program
+gregory     "!/usr/local/etc/mpd/get_passwd.sh"
+</verb></tscreen>
+	Here <tt>bob</tt> and <tt>jerry</tt> must negotiate 
+	<tt>192.168.1.100</tt> and <tt>192.168.1.101</tt>,
+	respectively, while <tt>phil</tt> can ask for any
+	address from <tt>192.168.1.128</tt> through <tt>192.168.1.255</tt>.
+</p>
+
+<p>
+The leading ``!'' means that the password for user <tt>gregory</tt> is not
+stored in the <tt>mpd.secret</tt> file directly.  Instead, the
+named program is run with the username being authenticated as an
+additional argument (so in this case the command line would be
+``<tt>/usr/local/etc/mpd/get_passwd.sh gregory</tt>''). The command string
+may include initial, fixed arguments as well. This program
+should print the plaintext password for the named user as a
+single line to standard output, and then exit.  <tt>Mpd</tt> will block
+for this operation, so the program should respond and exit quickly.
+If there is an error, the command should print an empty line, or just not
+print anything.
+</p>
+
+<p>
+Once authentication has completed, this script is run a second time,
+this time with two extra arguments.  The first extra argument is
+either ``-y'' or ``-n'' depending on whether this user was properly
+authenticated or not.  The second extra argument is the username, so
+in this example if Gregory entered his password correctly the command
+would be ``<tt>/usr/local/etc/mpd/get_passwd.sh -y gregory</tt>''.
+</p>
+
+<p>
+As a special case, if the username in the <tt>mpd.secret</tt> file
+is ``*'', then this line must be last as it matches any username.
+Then it is up to the external program to determine whether the
+username is valid. This wildcard matching only works for ``!'' lines.
+</p>
+
+<p>
+This external password program is intented to allow links to other
+authentication types, such as one-time passwords or hardware
+authentication dongles. The second invocation of the program is
+intended to perform tasks such as incrementing the password generation
+for one-time password schemes (when called with ``-y''), or disabling
+hardware dongles after a number of failures (when called with ``-n'').
+</p>
+
+<p>
+The total length of the executed command must be less than 128
+characters.  The program is run as the same user who runs
+<tt>mpd</tt>, which is usually <tt>root</tt>, so the usual
+care should be taken with scripts run as root, e.g., make sure the
+script is not world-readable or world-writable.  Standard input and
+standard error are inherited from the parent <tt>mpd</tt> process.
+Note that any additional arguments will be visible to users on the
+local machine running <tt>ps(1)</tt>.
+</p>
+
+<sect1><heading><tt>mpd.script</tt></heading>
+
+<p>
+This file has a format similar to <tt>mpd.conf</tt> and
+<tt>mpd.links</tt>, but it contains chat script commands
+instead of mpd commands. Each line contains a single command, and
+labels identify starting points and/or subroutines
+in the script. Unlike <tt>mpd.conf</tt> and <tt>mpd.links</tt>,
+a blank line <em>does not</em> end the processing of
+commands.
+
+See <ref id="chat" name="Chat Scripting">
+for a complete decscription of chat scripting.
+</p>
+
+
