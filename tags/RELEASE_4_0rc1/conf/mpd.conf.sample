@@ -1,0 +1,382 @@
+#################################################################
+#
+#	MPD configuration file
+#
+# This file defines the configuration for mpd: what the
+# bundles are, what the links are in those bundles, how
+# the interface should be configured, various PPP parameters,
+# etc. It contains commands just as you would type them
+# in at the console. A blank line ends an entry. Lines
+# starting with a "#" are comments and get completely
+# ignored.
+#
+# $Id$
+#
+#################################################################
+
+startup:
+	# enable TCP-Wrapper (hosts_access(5)) to block unfriendly clients
+	set global enable tcp-wrapper
+	# configure the console
+	set console port 5005
+	set console ip 0.0.0.0
+	set console user foo bar
+	set console user foo1 bar1
+	set console open
+
+#
+# Default configuration is "myisp"
+
+default:
+	load myisp
+
+#
+# Example of a simple PPP dialup account using "usr" modem device.
+# This will connect whenever there is outgoing demand, and hangup
+# after a 15 minute idle time. It also connects and disconnects
+# when signals SIGUSR1 and SIGUSR2 are received, respectively.
+#
+# Note the "set iface addrs ..." is needed because we're doing
+# dial-on-demand and therefore can't wait for the peer to assign
+# us IP addresses for the interface. These can be completely phoney
+# IP addresses.
+#
+# We also enable the idle-script "Ringback", which means if we're
+# not connected and we detect an incoming call, we don't answer it
+# BUT we do initiate a call to the ISP to get connected. This is
+# nice to connect yourself when you're away from home, etc.
+#
+
+myisp:
+	new -i ng0 myisp usr
+# Configure the interface: dial on demand, default route, idle timeout.
+	set iface addrs 1.1.1.1 2.2.2.2
+	set iface route default
+	set iface enable on-demand
+	set iface idle 900
+# Configure the account name.
+	set auth authname MyLogin
+# Configure IP addressing -- we get both endpoint assignments from peer.
+	set ipcp ranges 0.0.0.0/0 0.0.0.0/0
+	set ipcp yes vjcomp
+# Configure the (only) link. We expect to be authenticated by peer.
+	set link disable chap pap
+	set link accept chap pap
+# Deny weak MS-CHAP version
+	set link deny chap-msv1
+	set link yes acfcomp protocomp
+# Configure modem telephone number, and enable ringback
+	set modem script DialPeer
+	set modem var $Telephone "1-415-555-1212"
+	set modem idle-script Ringback
+# "Open" interface (but don't actually dial until there's demand)
+	open iface
+
+#
+# This setup answers incoming calls from a remote peer,
+# but is not intended for dialing out.
+#
+# The local IP address is 1.1.1.1 and the remote is 2.2.2.2.
+#
+
+dialin:
+	new -i ng0 dialin usr
+	set iface addrs 1.1.1.1 2.2.2.2
+	set iface idle 900
+	set iface session 0
+	set bundle enable noretry
+	set ipcp ranges 1.1.1.1/32 2.2.2.2/32
+	set ipcp yes vjcomp
+	set link enable chap-md5
+	set link disable pap chap-msv1 chap-msv2
+	set link deny chap pap
+	set link yes acfcomp protocomp
+	set modem idle-script AnswerCall
+
+#
+# Example of a multi-link dialup setup, using links "usr1" and "usr2"
+# Similar to the first example, but uses two links together, and
+# does not do dial-on-demand (you have to use SIGUSR1 and SIGUSR2).
+#
+# You must have entries for "usr1" and "usr2" in the mpd.links file.
+#
+# This also forces using the "ng0" netgraph interface.
+#
+
+multi:
+	new -i ng0 multi usr1 usr2
+	set iface route default
+	set iface disable on-demand
+	set iface idle 900
+	set auth authname MyLogin
+	set ipcp ranges 0.0.0.0/0 0.0.0.0/0
+	set ipcp yes vjcomp
+	set link disable chap pap
+	set link accept chap pap
+	set link yes acfcomp protocomp
+	set link usr1
+	set modem script DialPeer
+	set modem var $Telephone "1-415-555-1212"
+	set link usr2
+	set modem script DialPeer
+	set modem var $Telephone "1-415-555-1212"
+
+#
+# Dedicated synchronous line using "sync" netgraph link from mpd.links.
+# The remote router is connected to the 192.168.2.0/24 subnet.
+# No authentication required.
+#
+
+sync:
+	new -i ng0 sync sync
+	set iface route 192.168.2.0/24
+	set ipcp ranges 192.168.1.153/32 192.168.2.1/24
+	set ipcp yes vjcomp
+	set link no chap pap
+	set link yes acfcomp protocomp
+	open
+
+#
+# Mpd as a PPTP server compatible with Microsoft Dial-Up Networking clients.
+#
+# Suppose you have a private Office LAN numbered 192.168.1.0/24 and the
+# machine running mpd is at 192.168.1.1, and also has an externally visible
+# IP address of 1.2.3.4.
+#
+# We want to allow a client to connect to 1.2.3.4 from out on the Internet
+# via PPTP.  We will assign that client the address 192.168.1.50 and proxy-ARP
+# for that address, so the virtual PPP link will be numbered 192.168.1.1 local
+# and 192.168.1.50 remote.  From the client machine's perspective, it will
+# appear as if it is actually on the 192.168.1.0/24 network, even though in
+# reality it is somewhere far away out on the Internet.
+#
+# We 'set link mtu 1460' to avoid GRE packet fragmentation.
+#
+# Our DNS server is at 192.168.1.3 and our NT workstation is at 192.168.1.4.
+# If you don't have an NBNS server (eg, NT workstation), leave that line out.
+#
+# Note, you can have as many of these configurations as you like, eg:
+#	
+#	default:
+#		load client1
+#		load client2
+#		...
+#	
+#	client1:
+#		new -i ng0 pptp1 pptp1
+#		set ipcp ranges 192.168.1.1/32 192.168.1.50/32
+#		load client_standard
+#		...
+#	
+#	client2:
+#		new -i ng1 pptp2 pptp2
+#		set ipcp ranges 192.168.1.1/32 192.168.1.51/32
+#		load client_standard
+#		...
+#	
+#	client_standard:
+#		set iface disable on-demand
+#		set iface enable proxy-arp
+#		set iface idle 1800
+#		set iface enable tcpmssfix
+#		set bundle enable multilink
+#		set link yes acfcomp protocomp
+#		set link no pap chap
+#		set link enable chap
+#		set link mtu 1460
+#		set link keep-alive 10 60
+#		set ipcp yes vjcomp
+#		set ipcp dns 192.168.1.3
+#		set ipcp nbns 192.168.1.4
+#		set bundle enable compression
+#		set ccp yes mppc
+#		set ccp yes mpp-e40
+#		set ccp yes mpp-e128
+#		set ccp yes mpp-stateless
+#
+#	
+# See also the 'pptp' link entry in mpd.links.sample.
+#
+# Note: If you cut & paste from the above example, be sure to left-justify
+# the labels or else mpd won't parse them correctly.
+#
+
+pptp:
+	new -i ng0 pptp pptp
+	set iface disable on-demand
+	set iface enable proxy-arp
+	set iface idle 1800
+	set iface enable tcpmssfix
+	set bundle enable multilink
+# use RADIUS servers 
+#	load radius
+	set link yes acfcomp protocomp
+	set link no pap chap
+	set link enable chap
+	set link keep-alive 10 60
+	set link mtu 1460
+	set ipcp yes vjcomp
+	set ipcp ranges 192.168.1.1/32 192.168.1.50/32
+	set ipcp dns 192.168.1.3
+	set ipcp nbns 192.168.1.4
+#
+# The five lines below enable Microsoft Point-to-Point encryption
+# (MPPE) using the ng_mppc(8) netgraph node type.
+#
+	set bundle enable compression
+	set ccp yes mppc
+	set ccp yes mpp-e40
+	set ccp yes mpp-e128
+	set ccp yes mpp-stateless
+
+#
+# Mpd using PPTP for LAN to LAN VPN, always connected.
+#
+# Suppose you have a private Office LAN numbered 192.168.1.0/24 and another
+# remote private Office LAN numbered 192.168.2.0/24, and you wanted to route
+# between these two private networks using a PPTP VPN over the Internet.
+#
+# You run mpd on dual-homed machines on either end. Say the local machine
+# has internal address 192.168.1.1 and externally visible address 1.2.3.4,
+# and the remote machine has internal address 192.168.2.1 and externally
+# visible address 2.3.4.5.
+#
+# Note: mpd does not support the peer's "inside" IP address being the same
+# as its "outside" IP address. In the above example, this means that
+# 192.168.2.1 != 2.3.4.5.
+#
+# The "inside" IP addresses are configured by "set ipcp ranges ..."
+# (in mpd.conf) while the "outside" IP addreses are configured by
+# "set pptp self ..." and "set pptp peer ..." (in mpd.links).
+#
+# See also the 'vpn' link entry in mpd.links.sample.
+#
+
+vpn:
+	new -i ng1 vpn vpn
+	set iface disable on-demand
+	set iface addrs 192.168.1.1 192.168.2.1
+	set iface idle 0
+# disconnect the client after 8 hours
+	set iface session 28800
+	set iface route 192.168.2.0/24
+	set bundle disable multilink
+	set auth authname "VpnLogin"
+	set auth password "VpnPassword"
+	set link yes acfcomp protocomp
+	set link no pap
+	set link yes chap
+	set link mtu 1460
+# If remote machine is NT you need this..
+#	set link enable no-orig-auth
+	set link keep-alive 10 75
+	set ipcp yes vjcomp
+	set ipcp ranges 192.168.1.1/32 192.168.2.1/32
+#
+# The five lines below enable Microsoft Point-to-Point encryption
+# (MPPE) using the ng_mppc(8) netgraph node type.
+#
+	set bundle enable compression
+	set ccp yes mppc
+	set ccp yes mpp-e40
+	set ccp yes mpp-e128
+	set bundle enable crypt-reqd
+	set ccp yes mpp-stateless
+	open
+
+#
+# PPPoE client example (see also mpd.links.sample entry "PPPoE")
+#
+
+PPPoE:
+	new -i ng0 PPPoE PPPoE
+	set iface addrs 1.1.1.1 2.2.2.2
+	set iface route default
+	set iface disable on-demand
+	set iface idle 0
+	set bundle disable multilink
+	set auth authname MyLogin
+	set link no acfcomp protocomp
+	set link disable pap chap
+	set link accept chap
+	set link mtu 1492
+	set link keep-alive 10 60
+	set ipcp yes vjcomp
+	set ipcp ranges 0.0.0.0/0 0.0.0.0/0
+	open
+
+radius:
+# You can use radius.conf(5), its useful, because you can share the
+# same config with userland-ppp and other apps.
+	set radius config /etc/radius.conf
+# and/or specify the server directly here
+	set radius retries 3
+	set radius timeout 3
+	set radius server localhost testing123 1812 1813
+# send the given IP in the RAD_NAS_IP_ADDRESS attribute to the server.
+	set radius me 1.1.1.1
+# send accounting updates every 5 minutes
+	set auth acct-update 300
+# enable RADIUS, and fallback to mpd.secret, if RADIUS auth failed
+	set auth enable radius-auth
+# enable RADIUS accounting
+	set auth enable radius-acct
+# activate MPPE and let the RADIUS server assign MPPE-types and MPPE-policies
+	set bundle enable compression
+	set ccp yes mppc
+	set auth enable mppc-pol
+# protect our requests with the message-authenticator
+	set radius enable message-authentic
+
+# EAP stuff
+eap:
+	set link enable eap
+# enable CHAP-MD5 inside EAP frames
+	set eap enable md5
+# if we are just a relay between the PEER and our RADIUS server, then set this
+#	set eap enable radius-proxy
+
+# Advanced authentication options
+advanced-auth:
+# disable traditional mpd.secrets file
+	set auth disable internal
+# enable RADIUS
+	set auth enable radius-auth
+# enable OPIE
+	set auth enable opie
+# enable master.passwd (only possible with MS-CHAP and PAP)
+	set link no chap-md5
+	set auth enable system
+# enable accounting via UTMP/WTMP
+	set auth enable utmp-wtmp
+# increase our timeout to 60 secs. for authentication requests
+	set auth timeout 60
+# allow only one concurrent connection per username
+	set auth max-logins 1
+# send accounting updates every 5 minutes
+	set auth acct-update 300
+# we get our MPPE types and policy from the authentication backend
+	set auth enable mppc-pol
+
+#
+# Country specific configuration examples
+#
+
+# Austria ADSL
+adslat:
+	new -i ng0 adslat adslat
+	set iface disable on-demand
+	set iface idle 0
+	set iface session 0
+	set iface route default
+	set bundle disable multilink
+	set auth authname "<change_this>"
+	set auth password "<change_this>"
+	set link yes acfcomp protocomp
+	set link no pap chap
+	set link accept chap
+	set link mtu 1460
+	set link keep-alive 10 75
+	set ipcp yes vjcomp
+	set ipcp ranges 0/0 10.0.0.138/0
+	open
