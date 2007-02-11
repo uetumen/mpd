@@ -1,0 +1,72 @@
+<!-- $Id$ -->
+<!-- mpd netgraph enabled user mode PPP daemon -->
+
+<!-- <!DOCTYPE linuxdoc PUBLIC '-//FreeBSD//DTD linuxdoc//EN'> -->
+
+  <sect><heading>Overview<label id="overview"></heading>
+
+      <p>
+	Mpd is a netgraph(4) based implementation of the multi-link
+	PPP protocol for FreeBSD.  It is designed to be both fast
+	and flexible.  It handles configuration and negotiation in
+	user land, while routing all data packets strictly in the
+	kernel.  It supports several of the numerous PPP sub-protocols
+	and extensions, such as:
+	<itemize>
+        <item>Multi-link PPP capability 
+        <item>PAP, CHAP, MS-CHAP and EAP authentication 
+        <item>PPP compression and encryption
+        <item>IPCP and IPV6CP parameter negotiation
+        </itemize>
+      
+	Mpd have support for many link types:
+	<itemize>
+        <item><bf>Serial port modem</bf> The modem device type supports
+	    asychronous serial connections, including modems,
+	    ISDN terminal adapters, and null-modem connections.
+	    Mpd includes a fully
+	    event-driven scripting language for modem identification,
+	    setup, manual server login, etc.
+        <item><bf>Point-to-Point Tunnelling Protocol (PPTP)</bf> Mpd can connect over the Internet using
+	    the Point-to-Point Tunnelling Protocol (PPTP).
+	    This protocol is supported by the popular Microsoft Dial-Up
+	    Networking client.
+        <item><bf>Layer Two Tunnelling Protocol (L2TP)</bf> Mpd can connect over the Internet using
+	    the Layer Two Tunnelling Protocol (L2TP).
+	    This protocol is supported by the popular Microsoft Dial-Up
+	    Networking client.
+        <item><bf>PPP over Ethernet (PPPoE)</bf> Mpd can connect over an Ethernet port
+	    using the PPP-over-Ethernet (PPPoE) protocol.
+	<item><bf>PPP over TCP</bf> Mpd can tunnel PPP frames over a TCP connection.
+	    Frames are encoded in the same was as asychronous serial connections.
+        <item><bf>PPP over UDP</bf> Mpd can tunnel PPP frames over a UDP connection.
+	    Each frame is encapsulated in a UDP datagram packet.
+        <item><bf>PPP over specified netgraph(4) node</bf>
+	    Netgraph is highly modular kernel networking system,
+	    supporting synchronous serial
+	    connections, Cisco HDLC, Frame Relay, and other protocols.
+	    Mpd supports running PPP over any netgraph connection.
+	</itemize>
+
+	Mpd also includes many additional features: 
+	<itemize>
+        <item>IPv4 and IPv6 support
+        <item>RADIUS authentication and accounting
+        <item>NetFlow traffic accounting
+        <item>Network address translation (NAT)
+        <item>Dial-on-demand with idle timeout 
+        <item>Multiple active connections running simultaneously 
+        <item>Dynamic demand based link management (also known as ``rubber bandwidth'') 
+        <item>Powerful chat scripting language for asynchronous serial ports 
+        <item>Pre-tested chat scripts for several common modems and ISDN TAs
+        <item>Clean device-type independent design 
+        <item>Comprehensive logging
+        <item>Telnet and HTTP control interfaces.
+	</itemize>
+      <p>
+	Mpd was originally developed at Whistle Communications, Inc.
+	for use in the Whistle InterJet.
+	It is based on the original <tt>iij-ppp</tt> user-mode PPP code,
+	though it has pretty much been completely rewritten since then.
+	Mpd is now hosted on sourceforge.net
+	<htmlurl url="http://sourceforge.net/projects/mpd/" name="MPD Project Page">.
