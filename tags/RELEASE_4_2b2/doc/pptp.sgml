@@ -1,0 +1,222 @@
+<!-- $Id$ -->
+<!-- mpd netgraph enabled user mode PPP daemon -->
+
+<!-- <!DOCTYPE linuxdoc PUBLIC '-//FreeBSD//DTD linuxdoc//EN'> -->
+
+  <sect><heading>PPTP device type commands<label id="pptp"></heading>
+
+  <p>
+  This chapter describes commands that are specific to PPTP type links.
+  These commands apply to the currently active link, and are only
+  valid if the currently active link has type <bf>pptp</bf>.
+
+  The PPTP protocol can be most easily understood as just another
+  link layer type, where the link layer medium just happens to be
+  an IP connection. So, for example, instead of configuring a
+  telephone number to dial as you would with a modem, you configure
+  an IP address to connect to. Everything else that's above the
+  link layer functions exactly the same. Hence PPTP allows you
+  to ``tunnel'' PPP frames over IP.
+
+  Note that PPTP connections are initiated by a TCP connection from
+  one machine to another, and that servers usually listen to TCP
+  port 1723 (and this is the default for <tt><em>port</em></tt>
+  in the commands below). PPTP also uses the GRE protocol, which
+  has IP protocol number 47. Your firewall may need to be adjusted
+  to allows this type of IP packet.
+
+  Complete PPTP network topology looks like:
+<verb>
+client <- some link type -> PAC <- PPTP tunnel -> PNS
+</verb>
+
+  PAC is physical level repeater, which receives PPP connection of some 
+  type and forwards it to PNS using PPTP protocol. PNS is ppp endpoint, 
+  which receives ppp frames via PPTP tunnel and processes them.
+
+  In simple case, when physical conversion is not required, topology 
+  can be simplified to:
+<verb>
+client (PAC emulator) <- PPTP tunnel -> PNS
+</verb>
+
+<descrip>
+
+<tag><tt>
+set pptp mode [ <em>active</em> | <em>passive</em> ]
+</tt></tag>
+
+Set the link for active or passive mode. In active mode, the local
+side initiates all connections. In passive mode, the local side
+waits for incoming connections (in a future revision bi-directional
+connections will be supported).
+
+<tag><tt>
+set pptp self <em>ipaddr</em> [ <em>port</em> ]
+</tt></tag>
+
+Sets the local IP address and port for the PPTP connection.
+
+<tag><tt>
+set pptp peer <em>ipaddr</em> [ <em>port</em> ]
+</tt></tag>
+
+Sets the peer IP address and port for the PPTP connection.
+This command applies to both incoming and outgoing connections.
+For outgoing connections, this command is required in order to
+specify where to connect to. For incoming connections, this command
+is optional; if not given, mpd accepts incoming connections from any
+host. Otherwise, only connections from the stated IP address
+(and, optionally, port) are allowed.
+
+<tag><tt>
+set pptp callingnum <em>number</em>
+</tt></tag><p>
+<tag><tt>
+set pptp callednum <em>number</em>
+</tt></tag>
+
+Sets the calling and called telephone number to use when initiating a PPTP
+connection. For most VPN applications this is ignored, but in certain
+cases an actual phone number is required.
+The default is the empty string.
+
+<tag><tt>set pptp enable <em>option ...</em> </tt></tag><p>
+<tag><tt>set pptp disable <em>option ...</em> </tt></tag><p>
+
+Enable and disable PPTP device type options for the link.
+
+</descrip>
+
+<p>
+The following options are supported:
+
+<descrip>
+
+<tag><tt>originate</tt></tag>
+
+This option enables the initiation of PPTP connections to the peer.
+If this option is disabled, mpd will not initiate any PPTP connections.
+You must configure the peer's IP address with the
+<tt><bf>set pptp peer</bf></tt> command.
+
+<tag><tt>incoming</tt></tag>
+
+This option enables the acceptance of incoming PPTP connections.
+If this option is disabled, mpd will not accept any incoming connections.
+
+<tag><tt>outcall</tt></tag>
+
+In PPTP, each individual PPP connection between two IP hosts (there
+may be several, and these are not to be confused with the
+<em>single</em> TCP connection between any two IP hosts), is
+initiated as either an incoming or an outgoing call. 
+This is to allow, for example, making an outgoing telephone call (by PNS) 
+via a remote access server (PAC), as well as the more common use of forwarding
+of an incoming telephone call from an access server (PAC) to a remote
+PPTP server (PNS).
+
+When this option is enabled, mpd will initiate outgoing calls (PNS);
+otherwise mpd will initiate incoming calls (PAC). Although it seems that
+incoming would be more correct, the default is outgoing, as this
+is consistent with the behavior of the Microsoft PPTP dial-up adapter
+client.
+
+Mpd will accept either type of call on an incoming PPTP connection.
+
+<tag><tt>delayed-ack</tt></tag>
+
+Enable delayed ACK's. This can improve throughput on reliable links.
+Default is on.
+
+<tag><tt>always-ack</tt></tag>
+
+Always include ACK even if already sent. This can improve throughput
+on unreliable links. Default is off.
+
+<tag><tt>windowing</tt></tag>
+
+Enables the windowing mechanism specified by the protocol. Disabling 
+this will cause Mpd to violate the protocol, possibly confusing other 
+PPTP peers, but often results in better performance. The windowing 
+mechanism is a design error in the PPTP protocol; L2TP, the successor 
+to PPTP, removes it. You need a recent version of FreeBSD 
+(NGM_PPTPGRE_COOKIE &gt;= 1082548365) in order to get this feature.
+Default is on.
+
+</descrip>
+
+  <sect1><heading>PPTP setup hints</heading>
+
+<p>
+
+If what you want to do is setup a PPTP server for remote clients
+to connect to your LAN, you would want something like this for
+each <tt>mpd.links</tt> entry:
+<tscreen><verb>
+#
+# Act like a PPTP server allowing clients to connect
+#
+Pptp0:
+    set link type pptp
+    set pptp enable incoming
+    set pptp disable originate
+</verb></tscreen>
+You may also need to enable proxy-ARP on each interface if you're
+assigning local Ethernet LAN addresses, as well as configuring
+DNS and NBNS server information for client bundles using the
+<tt>set ipcp dns</tt> and <tt>set ipcp nbns</tt> commands.
+
+If you want multiple <em>simultaneous</em> clients to be able
+to connect, you should define (and load) multiple bundles, one
+for each potential client. Each bundle should negotiate a different
+peer proxy-ARP IP address to avoid conflicts. For example:
+<tscreen><verb>
+#
+# mpd.conf: allow up to 2 clients
+#
+default:
+    load Pptp1
+    load Pptp2
+
+Pptp1:
+    new -i ng0 Pptp1 Pptp1
+    ...
+    set ipcp ranges 1.1.1.1/32 1.1.1.101/32
+    ...
+
+Pptp2:
+    new -i ng1 Pptp2 Pptp2
+    ...
+    set ipcp ranges 1.1.1.1/32 1.1.1.102/32
+    ...
+</verb></tscreen>
+
+If instead you want to set up a peer-to-peer symmetrical
+tunnelling arrangement (i.e., normal IP routing using PPP over PPTP),
+you might want something like this (here <tt>1.1.1.1</tt>
+is the local IP address and <tt>2.2.2.2</tt> is the remote
+IP address):
+<tscreen><verb>
+#
+# Tunnelling PPP traffic over a PPTP connection with peer 2.2.2.2
+#
+Pptp1:
+    set link type pptp
+    set pptp self 1.1.1.1
+    set pptp peer 2.2.2.2
+    set pptp enable incoming originate
+</verb></tscreen>
+On the remote machine, you'd have the same entry with the
+<tt>self</tt> and <tt>peer</tt> addresses reversed.
+
+Note that if you are connecting to an NT server, your authentication
+name must include the NT domain name. For example:
+
+<tscreen><verb>
+    set auth authname "DOMAIN\\username"
+</verb></tscreen>
+
+For updating Windows 95 and 98 clients so they work properly, see
+<htmlurl url="http://support.microsoft.com/default.aspx?scid=KB;EN-US;Q191540" name="VPN Update for Windows 98 and Dial-Up Networking 1.3 Available">
+
