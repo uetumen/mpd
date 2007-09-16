@@ -430,7 +430,7 @@ PppoeCtrlReadEvent(int type, void *arg)
 		/* Restore context. */
 		for (k = 0; k < gNumPhyses; k++) {
 
-		    if (gPhyses[k] && gPhyses[k]->type != &gPppoePhysType)
+		    if (!gPhyses[k] || gPhyses[k]->type != &gPppoePhysType)
 			continue;
 
 		    p = gPhyses[k];
