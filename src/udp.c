@@ -503,7 +503,7 @@ UdpAcceptEvent(int type, void *cookie)
 		PhysInfo p2;
 	        UdpInfo pi2;
 
-		if (gPhyses[k] && gPhyses[k]->type != &gUdpPhysType)
+		if (!gPhyses[k] || gPhyses[k]->type != &gUdpPhysType)
 			continue;
 
 		p2 = gPhyses[k];
