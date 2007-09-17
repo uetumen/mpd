@@ -852,7 +852,7 @@ PptpPeerCall(struct pptpctrlinfo *cinfo,
 	PhysInfo p2;
 	PptpInfo pi2;
 
-	if (gPhyses[k] && gPhyses[k]->type != &gPptpPhysType)
+	if (!gPhyses[k] || gPhyses[k]->type != &gPptpPhysType)
 		continue;
 
 	p2 = gPhyses[k];
