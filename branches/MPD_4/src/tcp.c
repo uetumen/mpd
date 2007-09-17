@@ -452,7 +452,7 @@ TcpAcceptEvent(int type, void *cookie)
 		PhysInfo p2;
 	        TcpInfo pi2;
 
-		if (gPhyses[k] && gPhyses[k]->type != &gTcpPhysType)
+		if (!gPhyses[k] || gPhyses[k]->type != &gTcpPhysType)
 			continue;
 
 		p2 = gPhyses[k];
