@@ -800,7 +800,7 @@ PppoeListenEvent(int type, void *arg)
 		PhysInfo p;
 	        PppoeInfo pi;
 
-		if (gPhyses[k] && gPhyses[k]->type != &gPppoePhysType)
+		if (!gPhyses[k] || gPhyses[k]->type != &gPppoePhysType)
 			continue;
 
 		p = gPhyses[k];
@@ -1084,8 +1084,7 @@ PppoeListenUpdate(void *arg)
         	PhysInfo p;
 		int i, j = -1;
 
-		if (gPhyses[k] == NULL ||
-		    gPhyses[k]->type != &gPppoePhysType)
+		if (!gPhyses[k] || gPhyses[k]->type != &gPppoePhysType)
 			continue;
 
 		p = gPhyses[k];

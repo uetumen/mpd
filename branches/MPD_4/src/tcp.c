@@ -792,8 +792,7 @@ TcpListenUpdate(void *arg)
         	TcpInfo pi;
 		int i, j = -1;
 
-		if (gPhyses[k] == NULL ||
-		    gPhyses[k]->type != &gTcpPhysType)
+		if (!gPhyses[k] || gPhyses[k]->type != &gTcpPhysType)
 			continue;
 
 		p = gPhyses[k];
