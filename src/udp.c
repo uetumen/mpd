@@ -609,8 +609,7 @@ UdpListenUpdate(void *arg)
         	UdpInfo pi;
 		int i, j = -1;
 
-		if (gPhyses[k] == NULL ||
-		    gPhyses[k]->type != &gUdpPhysType)
+		if (!gPhyses[k] || gPhyses[k]->type != &gUdpPhysType)
 			continue;
 
 		p = gPhyses[k];

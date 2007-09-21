@@ -834,7 +834,7 @@ ppp_l2tp_ctrl_connected_cb(struct ppp_l2tp_ctrl *ctrl)
 		PhysInfo p;
 	        L2tpInfo pi;
 
-		if (gPhyses[k] && gPhyses[k]->type != &gL2tpPhysType)
+		if (!gPhyses[k] || gPhyses[k]->type != &gL2tpPhysType)
 			continue;
 
 		p = gPhyses[k];
@@ -931,7 +931,7 @@ ppp_l2tp_ctrl_terminated_cb(struct ppp_l2tp_ctrl *ctrl,
 		PhysInfo p;
 	        L2tpInfo pi;
 
-		if (gPhyses[k] && gPhyses[k]->type != &gL2tpPhysType)
+		if (!gPhyses[k] || gPhyses[k]->type != &gL2tpPhysType)
 			continue;
 
 		p = gPhyses[k];
@@ -1011,7 +1011,7 @@ ppp_l2tp_initiated_cb(struct ppp_l2tp_ctrl *ctrl,
 		PhysInfo p2;
 	        L2tpInfo pi2;
 
-		if (gPhyses[k] && gPhyses[k]->type != &gL2tpPhysType)
+		if (!gPhyses[k] || gPhyses[k]->type != &gL2tpPhysType)
 			continue;
 
 		p2 = gPhyses[k];
@@ -1278,7 +1278,7 @@ L2tpServerEvent(int type, void *arg)
 		PhysInfo p2;
 	        L2tpInfo pi2;
 
-		if (gPhyses[k] && gPhyses[k]->type != &gL2tpPhysType)
+		if (!gPhyses[k] || gPhyses[k]->type != &gL2tpPhysType)
 			continue;
 
 		p2 = gPhyses[k];
