@@ -6,6 +6,16 @@
   <sect><heading>Change history<label id="changes"></heading>
 
   <p>
+    Changes since version 4.3:
+    <itemize>
+	<item> Changes:
+	<itemize>
+	  <item> Added addresses arguments to the down-script call.
+	  </item>
+	</itemize>
+    </itemize>
+  </p>
+  <p>
     Changes since version 4.2.2:
     <itemize>
 	<item> New features:
