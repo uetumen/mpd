@@ -13,6 +13,13 @@
 	  <item> Added addresses arguments to the down-script call.
 	  </item>
 	</itemize>
+	<item> Bugfixes:
+	<itemize>
+	  <item> Added check for INT_MAX / 1000 timeouts limit.
+	  </item>
+	  <item> Fixed MPPE with CHAP-MSv1 auth.
+	  </item>
+	</itemize>
     </itemize>
   </p>
   <p>
