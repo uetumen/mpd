@@ -226,7 +226,6 @@ ConsoleConnect(int type, void *cookie)
   
   Log(LG_CONSOLE, ("CONSOLE: Connect"));
   cs = Malloc(MB_CONS, sizeof(*cs));
-  memset(cs, 0, sizeof(*cs));
   if ((cs->fd = TcpAcceptConnection(c->fd, &ss, FALSE)) < 0) 
     goto cleanup;
   sockaddrtou_addr(&ss, &cs->peer_addr, &cs->peer_port);
@@ -272,7 +271,6 @@ StdConsoleConnect(Console c)
     struct termios settings;
   
     cs = Malloc(MB_CONS, sizeof(*cs));
-    memset(cs, 0, sizeof(*cs));
   
     /* Init stdin */
     cs->fd = 0;
