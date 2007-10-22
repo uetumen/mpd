@@ -19,6 +19,8 @@
 	  </item>
 	  <item> Fixed MPPE with CHAP-MSv1 auth.
 	  </item>
+	  <item> Fixed netflow setup errors handeling.
+	  </item>
 	</itemize>
     </itemize>
   </p>
