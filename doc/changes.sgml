@@ -21,6 +21,9 @@
 	  </item>
 	  <item> Fixed netflow setup errors handeling.
 	  </item>
+	  <item> Restore link MRU to default after use.
+		 Should help with some EAP-TLS cases.
+	  </item>
 	</itemize>
     </itemize>
   </p>
