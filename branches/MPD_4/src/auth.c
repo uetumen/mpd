@@ -41,6 +41,7 @@
   static void		AuthAccountFinish(void *arg, int was_canceled);
   static void		AuthInternal(AuthData auth);
   static void		AuthExternal(AuthData auth);
+  static void		AuthExternalAcct(AuthData auth);
   static void		AuthSystem(AuthData auth);
   static void		AuthOpie(AuthData auth);
   static const char	*AuthCode(int proto, u_char code, char *buf, size_t len);
@@ -57,6 +58,7 @@
     SET_AUTHNAME,
     SET_PASSWORD,
     SET_EXTAUTH_SCRIPT,
+    SET_EXTACCT_SCRIPT,
     SET_MAX_LOGINS,
     SET_ACCT_UPDATE,
     SET_ACCT_UPDATE_LIMIT_IN,
@@ -77,6 +79,8 @@
 	AuthSetCommand, NULL, (void *) SET_PASSWORD },
     { "extauth-script script",		"Authentication script",
 	AuthSetCommand, NULL, (void *) SET_EXTAUTH_SCRIPT },
+    { "extacct-script script",		"Authentication script",
+	AuthSetCommand, NULL, (void *) SET_EXTACCT_SCRIPT },
     { "acct-update <seconds>",		"set update interval",
 	AuthSetCommand, NULL, (void *) SET_ACCT_UPDATE },
     { "update-limit-in <bytes>",	"set update suppresion limit",
@@ -112,6 +116,7 @@
     { 0,	AUTH_CONF_RADIUS_ACCT,	"radius-acct"	},
     { 0,	AUTH_CONF_INTERNAL,	"internal"	},
     { 0,	AUTH_CONF_EXT_AUTH,	"ext-auth"	},
+    { 0,	AUTH_CONF_EXT_ACCT,	"ext-acct"	},
     { 0,	AUTH_CONF_SYSTEM,	"system"	},
     { 0,	AUTH_CONF_OPIE,		"opie"		},
     { 0,	AUTH_CONF_UTMP_WTMP,	"utmp-wtmp"	},
@@ -620,8 +625,10 @@ AuthDataNew(Link l)
   memcpy(&auth->info.stats, &l->stats, sizeof(auth->info.stats));
 
   if (l->downReasonValid) {
-    auth->info.downReason = Malloc(MB_LINK, strlen(l->downReason) + 1);
-    strcpy(auth->info.downReason, l->downReason);
+	strlcpy(auth->info.ifname, l->bund->iface.ifname, sizeof(auth->info.ifname));
+	strlcpy(auth->info.bundname, l->bund->name, sizeof(auth->info.bundname));
+	auth->info.downReason = Malloc(MB_LINK, strlen(l->downReason) + 1);
+	strcpy(auth->info.downReason, l->downReason);
   }
 
   auth->info.last_open = l->last_open;
@@ -737,7 +744,8 @@ AuthAccountStart(Link l, int type)
   }
 
   if (!Enabled(&l->lcp.auth.conf.options, AUTH_CONF_RADIUS_ACCT)
-      && !Enabled(&l->lcp.auth.conf.options, AUTH_CONF_UTMP_WTMP))
+      && !Enabled(&l->lcp.auth.conf.options, AUTH_CONF_UTMP_WTMP)
+      && !Enabled(&l->lcp.auth.conf.options, AUTH_CONF_EXT_ACCT))
     return;
 
   if (type == AUTH_ACCT_START || type == AUTH_ACCT_STOP) {
@@ -863,6 +871,9 @@ AuthAccount(void *arg)
       logwtmp(ut.ut_line, "", "");
     }
   }
+
+    if (Enabled(&auth->conf.options, AUTH_CONF_EXT_ACCT))
+	AuthExternalAcct(auth);
 }
 
 /*
@@ -1545,6 +1556,10 @@ AuthSetCommand(Context ctx, int ac, char *av[], void *arg)
       snprintf(autc->extauth_script, sizeof(autc->extauth_script), "%s", *av);
       break;
       
+    case SET_EXTACCT_SCRIPT:
+      snprintf(autc->extacct_script, sizeof(autc->extacct_script), "%s", *av);
+      break;
+      
     case SET_MAX_LOGINS:
       gMaxLogins = atoi(*av);
       break;
@@ -1876,6 +1891,123 @@ AuthExternal(AuthData auth)
 	Log(LG_ERR, ("[%s] Ext-auth: Unknown attr:'%s'", 
 	    auth->info.lnkname, attr));
     }
+    }
+ 
+    pclose(fp);
+    return;
+}
+
+/*
+ * AuthExternalAcct()
+ * 
+ * Accounting via call external script extacct-script
+ */
+ 
+static void
+AuthExternalAcct(AuthData auth)
+{
+    char	line[256];
+    FILE	*fp;
+    char	*attr, *val;
+    int		len;
+ 
+    if (!auth->conf.extacct_script[0]) {
+	    Log(LG_ERR, ("[%s] Ext-acct: Script not specified!", 
+		auth->info.lnkname));
+	    return;
+    }
+    if (strchr(auth->params.authname, '\'') ||
+	strchr(auth->params.authname, '\n')) {
+	    Log(LG_ERR, ("[%s] Ext-acct: Denied character in USER_NAME!", 
+		auth->info.lnkname));
+	    return;
+    }
+    snprintf(line, sizeof(line), "%s '%s'", 
+	auth->conf.extacct_script, auth->params.authname);
+    Log(LG_AUTH, ("[%s] Ext-acct: Invoking acct program: '%s'", 
+	auth->info.lnkname, line));
+    if ((fp = popen(line, "r+")) == NULL) {
+	Perror("Popen");
+	return;
+    }
+
+    /* SENDING REQUEST */
+    fprintf(fp, "ACCT_STATUS_TYPE:%s\n", 
+	(auth->acct_type == AUTH_ACCT_START)?
+	    "START":((auth->acct_type == AUTH_ACCT_STOP)?
+		"STOP":"UPDATE"));
+
+    fprintf(fp, "ACCT_SESSION_ID:%s\n", auth->info.session_id);
+    fprintf(fp, "ACCT_MULTI_SESSION_ID:%s\n", auth->info.msession_id);
+    fprintf(fp, "USER_NAME:%s\n", auth->params.authname);
+    fprintf(fp, "IFACE:%s\n", auth->info.ifname);
+    fprintf(fp, "BUNDLE:%s\n", auth->info.bundname);
+    fprintf(fp, "LINK:%s\n", auth->info.lnkname);
+    fprintf(fp, "NAS_PORT:%d\n", auth->info.linkID);
+    fprintf(fp, "NAS_PORT_TYPE:%s\n", auth->info.phys_type->name);
+    fprintf(fp, "ACCT_LINK_COUNT:%d\n", auth->info.n_links);
+    if (strlen(auth->params.callingnum))
+	fprintf(fp, "CALLING_STATION_ID:%s\n", auth->params.callingnum);
+    if (strlen(auth->params.callednum))
+	fprintf(fp, "CALLED_STATION_ID:%s\n", auth->params.callednum);
+    if (strlen(auth->params.peeraddr))
+	fprintf(fp, "PEER_ADDR:%s\n", auth->params.peeraddr);
+    if (strlen(auth->params.peerport))
+	fprintf(fp, "PEER_PORT:%s\n", auth->params.peerport);
+    if (strlen(auth->info.peer_ident))
+	fprintf(fp, "PEER_IDENT:%s\n", auth->info.peer_ident);
+
+    fprintf(fp, "FRAMED_IP_ADDRESS:%s\n",
+	inet_ntoa(auth->info.peer_addr));
+
+    if (auth->acct_type == AUTH_ACCT_STOP) {
+	fprintf(fp, "ACCT_TERMINATE_CAUSE:%s\n", auth->info.downReason);
+    }
+
+    if (auth->acct_type != AUTH_ACCT_START) {
+	fprintf(fp, "ACCT_SESSION_TIME:%ld\n", 
+	    (long int)(time(NULL) - auth->info.last_open));
+	fprintf(fp, "ACCT_INPUT_OCTETS:%llu\n", 
+	    (long long unsigned)auth->info.stats.recvOctets);
+	fprintf(fp, "ACCT_INPUT_PACKETS:%llu\n", 
+	    (long long unsigned)auth->info.stats.recvFrames);
+	fprintf(fp, "ACCT_OUTPUT_OCTETS:%llu\n", 
+	    (long long unsigned)auth->info.stats.xmitOctets);
+	fprintf(fp, "ACCT_OUTPUT_PACKETS:%llu\n", 
+	    (long long unsigned)auth->info.stats.xmitFrames);
+    }
+	
+
+    /* REQUEST DONE */
+    fprintf(fp, "\n");
+
+    /* REPLY PROCESSING */
+    while (fgets(line, sizeof(line), fp)) {
+	/* trim trailing newline */
+	len = strlen(line);
+	if (len > 0 && line[len - 1] == '\n') {
+    	    line[len - 1] = '\0';
+	    len--;
+	}
+
+	/* Empty line is the end marker */
+	if (len == 0)
+	    break;
+
+	/* split line on attr:value */
+	val = line;
+	attr = strsep(&val, ":");
+
+	Log(LG_AUTH, ("[%s] Ext-acct: attr:'%s', value:'%s'", 
+	    auth->info.lnkname, attr, val));
+    
+	if (strcmp(attr, "MPD_DROP_USER") == 0) {
+	    auth->drop_user = atoi(val);
+
+	} else {
+	    Log(LG_ERR, ("[%s] Ext-acct: Unknown attr:'%s'", 
+		auth->info.lnkname, attr));
+	}
     }
  
     pclose(fp);

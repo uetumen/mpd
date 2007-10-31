@@ -97,6 +97,17 @@ command.
 
 Default <tt><bf>disable</bf></tt>.
 
+<tag><tt>ext-acct</tt></tag>
+
+Enable accounting by calling external script.
+This method pretended to be a fullfeatured alternative to the 
+<tt><bf>radius-acct</bf></tt>.
+
+Path to that script must be specified using <tt><bf>set auth extaacct-script ...</bf></tt>
+command.
+
+Default <tt><bf>disable</bf></tt>.
+
 <tag><tt>system</tt></tag>
 
 Enables authentication against the systems password database.

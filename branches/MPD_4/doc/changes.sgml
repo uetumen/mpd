@@ -8,6 +8,12 @@
   <p>
     Changes since version 4.3:
     <itemize>
+	<item> New features:
+	<itemize>
+	  <item> Added new 'ext-acct' accounting  backend as full-featured
+		 alternative to 'radius-acct'.
+	  </item>
+	</itemize>
 	<item> Changes:
 	<itemize>
 	  <item> Added addresses arguments to the down-script call.
