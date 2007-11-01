@@ -30,6 +30,8 @@
 	  <item> Restore link MRU to default after use.
 		 Should help with some EAP-TLS cases.
 	  </item>
+	  <item> Restored LCP-Ident logging.
+	  </item>
 	</itemize>
     </itemize>
   </p>
