@@ -32,6 +32,8 @@
 	  </item>
 	  <item> Restored LCP-Ident logging.
 	  </item>
+	  <item> Fixed 'set eap ...' context.
+	  </item>
 	</itemize>
     </itemize>
   </p>
