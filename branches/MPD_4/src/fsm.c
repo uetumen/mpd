@@ -1176,13 +1176,12 @@ FsmRecvDiscReq(Fsm fp, FsmHeader lhp, Mbuf bp)
 static void
 FsmRecvIdent(Fsm fp, FsmHeader lhp, Mbuf bp)
 {
-  bp = FsmCheckMagic(fp, bp);
-  if (fp->type->RecvIdent)
-    (*fp->type->RecvIdent)(fp, bp);
-  else
+    bp = FsmCheckMagic(fp, bp);
     if (bp)
       ShowMesg(fp->log, (char *) MBDATA(bp), MBLEN(bp));
-  PFREE(bp);
+    if (fp->type->RecvIdent)
+	(*fp->type->RecvIdent)(fp, bp);
+    PFREE(bp);
 }
 
 /*
@@ -1192,10 +1191,10 @@ FsmRecvIdent(Fsm fp, FsmHeader lhp, Mbuf bp)
 static void
 FsmRecvVendor(Fsm fp, FsmHeader lhp, Mbuf bp)
 {
-  bp = FsmCheckMagic(fp, bp);
-  if (fp->type->RecvVendor)
-    (*fp->type->RecvVendor)(fp, bp);
-  PFREE(bp);
+    bp = FsmCheckMagic(fp, bp);
+    if (fp->type->RecvVendor)
+	(*fp->type->RecvVendor)(fp, bp);
+    PFREE(bp);
 }
 
 /*
@@ -1205,19 +1204,17 @@ FsmRecvVendor(Fsm fp, FsmHeader lhp, Mbuf bp)
 static void
 FsmRecvTimeRemain(Fsm fp, FsmHeader lhp, Mbuf bp)
 {
-  bp = FsmCheckMagic(fp, bp);
-  if (fp->type->RecvTimeRemain)
-    (*fp->type->RecvTimeRemain)(fp, bp);
-  else {
     u_int32_t	remain = 0;
 
     bp = mbread(bp, (u_char *) &remain, sizeof(remain), NULL);
     remain = ntohl(remain);
     Log(fp->log, (" %u seconds remain", remain));
     if (bp)
-      ShowMesg(fp->log, (char *) MBDATA(bp), MBLEN(bp));
-  }
-  PFREE(bp);
+	ShowMesg(fp->log, (char *) MBDATA(bp), MBLEN(bp));
+    bp = FsmCheckMagic(fp, bp);
+    if (fp->type->RecvTimeRemain)
+	(*fp->type->RecvTimeRemain)(fp, bp);
+    PFREE(bp);
 }
 
 /*
