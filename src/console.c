@@ -332,9 +332,9 @@ ConsoleSessionClose(ConsoleSession cs)
 {
     cs->write(cs, "Console closed.\r\n");
     RWLOCK_WRLOCK(cs->console->lock);
-    EventUnRegister(&cs->readEvent);
     SLIST_REMOVE(&cs->console->sessions, cs, console_session, next);
     RWLOCK_UNLOCK(cs->console->lock);
+    EventUnRegister(&cs->readEvent);
     close(cs->fd);
     if (cs->user.username)
 	FREE(MB_CONS, cs->user.username);
