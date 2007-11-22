@@ -38,6 +38,8 @@
 	  </item>
 	  <item> Fixed 'set eap ...' context.
 	  </item>
+	  <item> Fixed /32 routes processing.
+	  </item>
 	</itemize>
     </itemize>
   </p>
