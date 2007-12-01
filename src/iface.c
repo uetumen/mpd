@@ -1873,7 +1873,7 @@ IfaceNgIpv6Shutdown(Bund b)
     NgFuncDisconnect(b->csock, b->name, MPD_HOOK_PPP, NG_PPP_HOOK_IPV6);
 
     snprintf(path, sizeof(path), "%s:", b->iface.ifname);
-    NgFuncDisconnect(b->csock, b->name, path, NG_IFACE_HOOK_INET);
+    NgFuncDisconnect(b->csock, b->name, path, NG_IFACE_HOOK_INET6);
 }
 
 #ifdef USE_NG_NAT
