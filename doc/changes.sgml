@@ -40,6 +40,8 @@
 	  </item>
 	  <item> Fixed /32 routes processing.
 	  </item>
+	  <item> Fixed originating of multiple PPTP calls via the same tunnel.
+	  </item>
 	</itemize>
     </itemize>
   </p>
