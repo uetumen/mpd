@@ -1679,7 +1679,8 @@ PptpCtrlCheckConn(PptpCtrl c)
 	  strncpy(req.dialed, ch->calledNum, sizeof(req.dialed));
 	  strncpy(req.subaddr, ch->subAddress, sizeof(req.subaddr));
 	  PptpCtrlNewChanState(ch, PPTP_CHAN_ST_WAIT_IN_REPLY);
-	  PptpCtrlWriteMsg(c, PPTP_InCallRequest, &req);
+	  if (PptpCtrlWriteMsg(c, PPTP_InCallRequest, &req) < 0)
+	    return;
 	} else {
 	  struct pptpOutCallRequest	req;
 
@@ -1696,7 +1697,8 @@ PptpCtrlCheckConn(PptpCtrl c)
 	  strncpy(req.phone, ch->calledNum, sizeof(req.phone));
 	  strncpy(req.subaddr, ch->subAddress, sizeof(req.subaddr));
 	  PptpCtrlNewChanState(ch, PPTP_CHAN_ST_WAIT_OUT_REPLY);
-	  PptpCtrlWriteMsg(c, PPTP_OutCallRequest, &req);
+	  if (PptpCtrlWriteMsg(c, PPTP_OutCallRequest, &req) < 0)
+	    return;
 	}
       }
       break;
