@@ -105,6 +105,7 @@
 			const char *ifname, char *buf, int max);
   extern int	NgFuncIfaceExists(Bund b,
 			const char *ifname, char *buf, int max);
+  extern ng_ID_t NgGetNodeID(int csock, const char *path);
 
 #endif
 

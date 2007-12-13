@@ -653,12 +653,6 @@ PptpHookUp(PhysInfo p)
   int		csock = -1;
   char        	path[NG_PATHLEN + 1];
   char		hook[NG_HOOKLEN + 1];
-    union {
-        u_char buf[sizeof(struct ng_mesg) + sizeof(struct nodeinfo)];
-        struct ng_mesg reply;
-    } repbuf;
-    struct ng_mesg *const reply = &repbuf.reply;
-    struct nodeinfo *ninfo = (struct nodeinfo *)&reply->data;
 
   /* Get session info */
   memset(&gc, 0, sizeof(gc));
@@ -694,12 +688,12 @@ PptpHookUp(PhysInfo p)
   snprintf(pptppath, sizeof(pptppath), "%s.%s", path, hook);
 
     /* Get pptpgre node ID */
-    if (NgSendMsg(csock, pptppath,
-        NGM_GENERIC_COOKIE, NGM_NODEINFO, NULL, 0) != -1) {
-	    if (NgRecvMsg(csock, reply, sizeof(repbuf), NULL) != -1) {
-	        pi->node_id = ninfo->id;
-	    }
-    }
+    if ((pi->node_id = NgGetNodeID(csock, pptppath)) == 0) {
+	Log(LG_ERR, ("[%s] Cannot get %s node id: %s",
+	    p->name, NG_PPTPGRE_NODE_TYPE, strerror(errno)));
+	close(csock);
+	return(-1);
+    };
 
   /* Attach ksocket node to PPTP/GRE node */
   snprintf(mkp.type, sizeof(mkp.type), "%s", NG_KSOCKET_NODE_TYPE);
