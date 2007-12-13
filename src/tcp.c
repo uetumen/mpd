@@ -188,12 +188,6 @@ TcpOpen(PhysInfo p)
 	struct ng_async_cfg	acfg;
 	int 			rval;
 	char 			buf[64];
-    union {
-        u_char buf[sizeof(struct ng_mesg) + sizeof(struct nodeinfo)];
-        struct ng_mesg reply;
-    } repbuf;
-    struct ng_mesg *const reply = &repbuf.reply;
-    struct nodeinfo *ninfo = (struct nodeinfo *)&reply->data;
 
 	if ((!pi->incoming) && (!Enabled(&pi->conf.options, TCP_CONF_ORIGINATE))) {
 		Log(LG_ERR, ("[%s] Originate option is not enabled",
@@ -246,17 +240,16 @@ TcpOpen(PhysInfo p)
 	if (NgSendMsg(pi->csock, path,
 	    NGM_GENERIC_COOKIE, NGM_NAME, &nm, sizeof(nm)) < 0) {
 		Log(LG_ERR, ("[%s] can't name %s node: %s",
-		    p->name, NG_BPF_NODE_TYPE, strerror(errno)));
+		    p->name, NG_ASYNC_NODE_TYPE, strerror(errno)));
 	}
 #endif
 
 	/* Get async node ID */
-	if (NgSendMsg(pi->csock, path,
-    	    NGM_GENERIC_COOKIE, NGM_NODEINFO, NULL, 0) != -1) {
-		if (NgRecvMsg(pi->csock, reply, sizeof(repbuf), NULL) != -1) {
-	    	    pi->async_node_id = ninfo->id;
-		}
-	}
+	if ((pi->async_node_id = NgGetNodeID(pi->csock, path)) == 0) {
+	    Log(LG_ERR, ("[%s] Cannot get %s node id: %s",
+		p->name, NG_ASYNC_NODE_TYPE, strerror(errno)));
+	    goto fail;
+	};
 
 	/* Configure the async converter node. */
 	memset(&acfg, 0, sizeof(acfg));

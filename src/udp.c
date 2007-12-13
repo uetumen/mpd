@@ -184,12 +184,6 @@ UdpOpen(PhysInfo p)
             struct ng_ksocket_sockopt ksso;
         } u;
         struct ng_ksocket_sockopt *const ksso = &u.ksso;
-	union {
-    	    u_char buf[sizeof(struct ng_mesg) + sizeof(struct nodeinfo)];
-    	    struct ng_mesg reply;
-	} repbuf;
-	struct ng_mesg *const reply = &repbuf.reply;
-	struct nodeinfo *ninfo = (struct nodeinfo *)&reply->data;
 	int			csock;
 
 	/* Create a new netgraph node to control TCP ksocket node. */
@@ -229,16 +223,15 @@ UdpOpen(PhysInfo p)
 	if (NgSendMsg(csock, path,
 	    NGM_GENERIC_COOKIE, NGM_NAME, &nm, sizeof(nm)) < 0) {
 		Log(LG_ERR, ("[%s] can't name %s node: %s",
-		    p->name, NG_BPF_NODE_TYPE, strerror(errno)));
+		    p->name, NG_KSOCKET_NODE_TYPE, strerror(errno)));
 	}
 
 	/* Get ksocket node ID */
-	if (NgSendMsg(csock, path,
-    	    NGM_GENERIC_COOKIE, NGM_NODEINFO, NULL, 0) != -1) {
-		if (NgRecvMsg(csock, reply, sizeof(repbuf), NULL) != -1) {
-	    	    pi->node_id = ninfo->id;
-		}
-	}
+	if ((pi->node_id = NgGetNodeID(csock, path)) == 0) {
+	    Log(LG_ERR, ("[%s] Cannot get %s node id: %s",
+		p->name, NG_KSOCKET_NODE_TYPE, strerror(errno)));
+	    goto fail;
+	};
 
   if ((pi->incoming) || (pi->conf.self_port != 0)) {
     /* Setsockopt socket. */
