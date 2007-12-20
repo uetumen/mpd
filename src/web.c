@@ -394,7 +394,7 @@ WebRunCmd(FILE *f, const char *querry)
          if (++argc >= MAX_CONSOLE_ARGS)
             break;
 
-  if (argc > 0) {
+  if (argc > 1) {
     fprintf(f, "<H2>Command '");
     for (k = 1; k < argc; k++) {
 	fprintf(f, "%s ",argv[k]);
