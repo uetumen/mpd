@@ -44,6 +44,8 @@
 	  </item>
 	  <item> Fixed bug in web command syntax check.
 	  </item>
+	  <item> Fixed bug in tcpmssfix when compression or exncriotion is used.
+	  </item>
 	</itemize>
     </itemize>
   </p>
