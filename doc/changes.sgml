@@ -22,6 +22,8 @@
 	<itemize>
 	  <item> Added addresses arguments to the down-script call.
 	  </item>
+	  <item> PPTP windowing is disabled by default.
+	  </item>
 	</itemize>
 	<item> Bugfixes:
 	<itemize>
