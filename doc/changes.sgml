@@ -42,6 +42,8 @@
 	  </item>
 	  <item> Fixed originating of multiple PPTP calls via the same tunnel.
 	  </item>
+	  <item> Fixed bug in web command syntax check.
+	  </item>
 	</itemize>
     </itemize>
   </p>
