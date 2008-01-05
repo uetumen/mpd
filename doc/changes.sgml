@@ -48,6 +48,8 @@
 	  </item>
 	  <item> Fixed bug in tcpmssfix when compression or exncriotion is used.
 	  </item>
+	  <item> Fixed incorrect IPCP options reject processing.
+	  </item>
 	</itemize>
     </itemize>
   </p>
