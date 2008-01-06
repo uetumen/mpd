@@ -10,6 +10,7 @@
 #include "fsm.h"
 #include "ip.h"
 #include "iface.h"
+#include "custom.h"
 #include "msg.h"
 #include "ngfunc.h"
 #include "util.h"
@@ -46,7 +47,7 @@
     SET_ACCEPT,
     SET_DENY,
     SET_YES,
-    SET_NO
+    SET_NO,
   };
 
 /*
@@ -73,17 +74,17 @@
 
   const struct cmdtab Ipv6cpSetCmds[] = {
     { "enable [opt ...]",		"Enable option",
-	Ipv6cpSetCommand, NULL, 2, (void *) SET_ENABLE},
+	Ipv6cpSetCommand, NULL, (void *) SET_ENABLE},
     { "disable [opt ...]",		"Disable option",
-	Ipv6cpSetCommand, NULL, 2, (void *) SET_DISABLE},
+	Ipv6cpSetCommand, NULL, (void *) SET_DISABLE},
     { "accept [opt ...]",		"Accept option",
-	Ipv6cpSetCommand, NULL, 2, (void *) SET_ACCEPT},
+	Ipv6cpSetCommand, NULL, (void *) SET_ACCEPT},
     { "deny [opt ...]",			"Deny option",
-	Ipv6cpSetCommand, NULL, 2, (void *) SET_DENY},
+	Ipv6cpSetCommand, NULL, (void *) SET_DENY},
     { "yes [opt ...]",			"Enable and accept option",
-	Ipv6cpSetCommand, NULL, 2, (void *) SET_YES},
+	Ipv6cpSetCommand, NULL, (void *) SET_YES},
     { "no [opt ...]",			"Disable and deny option",
-	Ipv6cpSetCommand, NULL, 2, (void *) SET_NO},
+	Ipv6cpSetCommand, NULL, (void *) SET_NO},
     { NULL },
   };
 
@@ -106,8 +107,8 @@
     "IPV6CP",
     PROTO_IPV6CP,
     IPV6CP_KNOWN_CODES,
-    FALSE,
     LG_IPV6CP, LG_IPV6CP2,
+    FALSE,
     NULL,
     Ipv6cpLayerUp,
     Ipv6cpLayerDown,
@@ -194,20 +195,6 @@ Ipv6cpInit(Bund b)
 
   CreateInterfaceID(ipv6cp->myintid,0);
 
-}
-
-/*
- * Ipv6cpInst()
- */
-
-void
-Ipv6cpInst(Bund b, Bund bt)
-{
-  Ipv6cpState	ipv6cp = &b->ipv6cp;
-
-  /* Init state machine */
-  memcpy(ipv6cp, &bt->ipv6cp, sizeof(*ipv6cp));
-  FsmInst(&ipv6cp->fsm, &bt->ipv6cp.fsm, b);
 }
 
 /*
@@ -361,26 +348,20 @@ Ipv6cpClose(Bund b)
  * Ipv6cpOpenCmd()
  */
 
-int
+void
 Ipv6cpOpenCmd(Context ctx)
 {
-    if (ctx->bund->tmpl)
-	Error("impossible to open template");
-    FsmOpen(&ctx->bund->ipv6cp.fsm);
-    return (0);
+  FsmOpen(&ctx->bund->ipv6cp.fsm);
 }
 
 /*
  * Ipv6cpCloseCmd()
  */
 
-int
+void
 Ipv6cpCloseCmd(Context ctx)
 {
-    if (ctx->bund->tmpl)
-	Error("impossible to close template");
-    FsmClose(&ctx->bund->ipv6cp.fsm);
-    return (0);
+  FsmClose(&ctx->bund->ipv6cp.fsm);
 }
 
 /*

@@ -52,14 +52,6 @@
   #define RAD_MESSAGE_AUTHENTIC 80
   #endif
 
-  #ifndef RAD_NAS_PORT_ID
-  #define RAD_NAS_PORT_ID	87
-  #endif
-
-  #ifndef RAD_FRAMED_POOL
-  #define RAD_FRAMED_POOL	88
-  #endif
-
   #ifndef RAD_MAX_ATTR_LEN
   #define RAD_MAX_ATTR_LEN 253
   #endif
@@ -79,17 +71,12 @@
   #define RAD_MPD_TABLE_STATIC	5
   #define RAD_MPD_FILTER	6
   #define RAD_MPD_LIMIT		7
-  #define RAD_MPD_INPUT_OCTETS	8
-  #define RAD_MPD_INPUT_PACKETS	9
-  #define RAD_MPD_OUTPUT_OCTETS	10
-  #define RAD_MPD_OUTPUT_PACKETS	11
   #define RAD_MPD_DROP_USER	154
 
   /* Configuration options */
   enum {
     RADIUS_CONF_MESSAGE_AUTHENTIC,
     RADIUS_CONF_PEER_AS_CALLING,
-    RADIUS_CONF_REPORT_MAC
   };
 
   extern const	struct cmdtab RadiusSetCmds[];

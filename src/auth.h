@@ -25,7 +25,7 @@
  * DEFINITIONS
  */
 
-  #define AUTH_RETRIES		5
+  #define AUTH_RETRIES		3
 
   #define AUTH_MSG_WELCOME	"Welcome"
   #define AUTH_MSG_INVALID	"Login incorrect"
@@ -72,21 +72,26 @@
     AUTH_CONF_INTERNAL,
     AUTH_CONF_EXT_AUTH,
     AUTH_CONF_EXT_ACCT,
-    AUTH_CONF_SYSTEM_AUTH,
-    AUTH_CONF_SYSTEM_ACCT,
-    AUTH_CONF_PAM_AUTH,
-    AUTH_CONF_PAM_ACCT,
+    AUTH_CONF_SYSTEM,
     AUTH_CONF_OPIE,
-    AUTH_CONF_MAX_LOGINS
+    AUTH_CONF_MAX_LOGINS,
+    AUTH_CONF_UTMP_WTMP,
   };  
+
+  /* max. length of acl rule */
+  #define ACL_LEN	256
 
   struct acl {			/* List of ACLs received from auth */
     u_short number;		/* ACL number given by auth server */
     u_short real_number;	/* ACL number allocated my mpd */
     struct acl *next;
-    char name[ACL_NAME_LEN]; 	/* Name of ACL */
     char rule[ACL_LEN]; 	/* Text of ACL */
   };
+
+  /* max. number of acl_filters */
+  #define ACL_FILTERS	16
+  /* max. number of acl_filters */
+  #define ACL_DIRS	2
 
   struct authparams {
     char		authname[AUTH_MAX_AUTHNAME];
@@ -98,10 +103,6 @@
     struct u_range	range;		/* IP range allowed to user */
     u_char		range_valid;	/* range is valid */
     u_char		netmask;	/* IP Netmask */
-    u_char		vjc_enable;	/* VJC requested by AAA */
-
-    u_char		ippool_used;
-    char		ippool[LINK_MAX_NAME];
 
     char		*eapmsg;	/* EAP Msg for forwarding to RADIUS server */
     int			eapmsg_len;
@@ -121,8 +122,6 @@
     u_int		session_timeout;	/* Session-Timeout */
     u_int		idle_timeout;		/* Idle-Timeout */
     u_int		acct_update;		/* interval for accouting updates */
-    u_int		acct_update_lim_recv;
-    u_int		acct_update_lim_xmit;
     char		*msdomain;		/* Microsoft domain */
     SLIST_HEAD(, ifaceroute) routes;
     u_short		mtu;			/* MTU */
@@ -133,8 +132,6 @@
     char		callednum[64];	/* hr representation of the called number */
     char		peeraddr[64];	/* hr representation of the peer address */
     char		peerport[6];	/* hr representation of the peer port */
-    char		peermacaddr[32];	/* hr representation of the peer MAC address */
-    char		peeriface[IFNAMSIZ];	/* hr representation of the peer interface */
 
     struct {
       int	policy;			/* MPPE_POLICY_* */
@@ -161,14 +158,13 @@
     struct radiusconf	radius;		/* RADIUS configuration */
     char		authname[AUTH_MAX_AUTHNAME];	/* Configured username */
     char		password[AUTH_MAX_PASSWORD];	/* Configured password */
-    u_int		acct_update;
-    u_int		acct_update_lim_recv;
-    u_int		acct_update_lim_xmit;
+    int			acct_update;
+    int			acct_update_lim_recv;
+    int			acct_update_lim_xmit;
     int			timeout;	/* Authorization timeout in seconds */
     struct optinfo	options;	/* Configured options */
     char		extauth_script[AUTH_MAX_EXTCMD];/*  External auth script */
     char		extacct_script[AUTH_MAX_EXTCMD];/*  External acct script */
-    char		ippool[LINK_MAX_NAME];
   };
   typedef struct authconf	*AuthConf;
 
@@ -199,15 +195,15 @@
     int			proto;		/* wich proto are we using, PAP, CHAP, ... */
     u_int		id;		/* Actual, packet id */    
     u_int		code;		/* Proto specific code */
-    u_char		acct_type;	/* Accounting type, Start, Stop, Update */
-    u_char		eap_radius;
-    u_char		status;
-    u_char		why_fail;
+    u_short		status;
+    int			why_fail;
     char		*reply_message;	/* Text wich may displayed to the user */
     char		*mschap_error;	/* MSCHAP Error Message */
     char		*mschapv2resp;	/* Response String for MSCHAPv2 */
     void		(*finish)(Link l, struct authdata *auth); /* Finish handler */
+    int			acct_type;	/* Accounting type, Start, Stop, Update */
     int			drop_user;	/* RAD_MPD_DROP_USER value sent by RADIUS server */
+    u_char		eap_radius;
     struct {
       struct rad_handle	*handle;	/* the RADIUS handle */
     } radius;
@@ -215,20 +211,19 @@
       struct opie	data;
     } opie;
     struct {		/* informational (read-only) data needed for e.g. accouting */
-      char		msession_id[AUTH_MAX_SESSIONID]; /* multi-session-id */
+      struct in_addr	peer_addr;	/* currently assigned IP-Address of the client */
+      short		n_links;	/* number of links in the bundle */
+      char		msession_id[AUTH_MAX_SESSIONID]; /* multy-session-id */
       char		session_id[AUTH_MAX_SESSIONID];	/* session-id */
-      char		ifname[IFNAMSIZ];	/* interface name */
+      char		ifname[IFNAMSIZ+1];	/* interface name */
       char		bundname[LINK_MAX_NAME];/* name of the bundle */
       char		lnkname[LINK_MAX_NAME];	/* name of the link */
       struct ng_ppp_link_stat64	stats;		/* Current link statistics */
-      struct svcstat	ss;
       char		*downReason;	/* Reason for link going down */
-      time_t		last_up;	/* Time this link last got up */
+      time_t		last_open;	/* Time this link last was opened */
       PhysType		phys_type;	/* Device type descriptor */
       int		linkID;		/* Absolute link number */
       char		peer_ident[64];	/* LCP ident received from peer */
-      struct in_addr	peer_addr;	/* currently assigned IP-Address of the client */
-      short		n_links;	/* number of links in the bundle */
     } info;
     struct authparams	params;		/* params to pass to from auth backend */
   };
@@ -247,7 +242,6 @@
  */
 
   extern void		AuthInit(Link l);
-  extern void		AuthShutdown(Link l);
   extern void		AuthStart(Link l);
   extern void		AuthStop(Link l);
   extern void		AuthInput(Link l, int proto, Mbuf bp);

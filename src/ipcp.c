@@ -16,9 +16,9 @@
 #include "fsm.h"
 #include "ip.h"
 #include "iface.h"
+#include "custom.h"
 #include "msg.h"
 #include "ngfunc.h"
-#include "ippool.h"
 #include "util.h"
 
 #include <netgraph.h>
@@ -70,7 +70,7 @@
     SET_ACCEPT,
     SET_DENY,
     SET_YES,
-    SET_NO
+    SET_NO,
   };
 
 /*
@@ -98,24 +98,24 @@
  */
 
   const struct cmdtab IpcpSetCmds[] = {
-    { "ranges {self}[/{width}] {peer}[/{width}]|ippool {pool}",	"Allowed IP address ranges",
-	IpcpSetCommand, NULL, 2, (void *) SET_RANGES },
+    { "ranges self/width peer/width",	"Allowed IP address ranges",
+	IpcpSetCommand, NULL, (void *) SET_RANGES },
     { "enable [opt ...]",		"Enable option",
-	IpcpSetCommand, NULL, 2, (void *) SET_ENABLE},
+	IpcpSetCommand, NULL, (void *) SET_ENABLE},
     { "dns primary [secondary]",	"Set peer DNS servers",
-	IpcpSetCommand, NULL, 2, (void *) SET_DNS},
+	IpcpSetCommand, NULL, (void *) SET_DNS},
     { "nbns primary [secondary]",	"Set peer NBNS servers",
-	IpcpSetCommand, NULL, 2, (void *) SET_NBNS},
+	IpcpSetCommand, NULL, (void *) SET_NBNS},
     { "disable [opt ...]",		"Disable option",
-	IpcpSetCommand, NULL, 2, (void *) SET_DISABLE},
+	IpcpSetCommand, NULL, (void *) SET_DISABLE},
     { "accept [opt ...]",		"Accept option",
-	IpcpSetCommand, NULL, 2, (void *) SET_ACCEPT},
+	IpcpSetCommand, NULL, (void *) SET_ACCEPT},
     { "deny [opt ...]",			"Deny option",
-	IpcpSetCommand, NULL, 2, (void *) SET_DENY},
+	IpcpSetCommand, NULL, (void *) SET_DENY},
     { "yes [opt ...]",			"Enable and accept option",
-	IpcpSetCommand, NULL, 2, (void *) SET_YES},
+	IpcpSetCommand, NULL, (void *) SET_YES},
     { "no [opt ...]",			"Disable and deny option",
-	IpcpSetCommand, NULL, 2, (void *) SET_NO},
+	IpcpSetCommand, NULL, (void *) SET_NO},
     { NULL },
   };
 
@@ -148,8 +148,8 @@
     "IPCP",
     PROTO_IPCP,
     IPCP_KNOWN_CODES,
-    FALSE,
     LG_IPCP, LG_IPCP2,
+    FALSE,
     NULL,
     IpcpLayerUp,
     IpcpLayerDown,
@@ -176,7 +176,7 @@
 int
 IpcpStat(Context ctx, int ac, char *av[], void *arg)
 {
-  char			path[NG_PATHSIZ];
+  char			path[NG_PATHLEN + 1];
   IpcpState		const ipcp = &ctx->bund->ipcp;
   Fsm			fp = &ipcp->fsm;
   union {
@@ -190,13 +190,8 @@ IpcpStat(Context ctx, int ac, char *av[], void *arg)
   Printf("Allowed IP address ranges:\r\n");
   Printf("\tSelf: %s\r\n",
     u_rangetoa(&ipcp->conf.self_allow,buf,sizeof(buf)));
-    if (ipcp->conf.ippool[0]) {
-	Printf("\tPeer: ippool %s\r\n",
-	  ipcp->conf.ippool);
-    } else {
-	Printf("\tPeer: %s\r\n",
-	  u_rangetoa(&ipcp->conf.peer_allow,buf,sizeof(buf)));
-    }
+  Printf("\tPeer: %s\r\n",
+    u_rangetoa(&ipcp->conf.peer_allow,buf,sizeof(buf)));
   Printf("IPCP Options:\r\n");
   OptStat(ctx, &ipcp->conf.options, gConfList);
   Printf("Current addressing:\r\n");
@@ -269,20 +264,6 @@ IpcpInit(Bund b)
 }
 
 /*
- * IpcpInst()
- */
-
-void
-IpcpInst(Bund b, Bund bt)
-{
-  IpcpState		const ipcp = &b->ipcp;
-
-  /* Init state machine */
-  memcpy(ipcp, &bt->ipcp, sizeof(*ipcp));
-  FsmInst(&ipcp->fsm, &bt->ipcp.fsm, b);
-}
-
-/*
  * IpcpConfigure()
  */
 
@@ -290,67 +271,39 @@ static void
 IpcpConfigure(Fsm fp)
 {
     Bund 	b = (Bund)fp->arg;
-    IpcpState	const ipcp = &b->ipcp;
+  IpcpState	const ipcp = &b->ipcp;
 
-    /* FSM stuff */
-    ipcp->peer_reject = 0;
+  /* FSM stuff */
+  ipcp->peer_reject = 0;
 
-    /* Get allowed IP addresses from config and/or from current bundle */
-    ipcp->self_allow = ipcp->conf.self_allow;
-    if ((b->params.range_valid) && (!u_rangeempty(&b->params.range)))
-	ipcp->peer_allow = b->params.range;
-    else if (b->params.ippool[0]) {
-	/* Get IP from pool if needed */
-	if (IPPoolGet(b->params.ippool, &ipcp->peer_allow.addr)) {
-	    Log(LG_IPCP, ("[%s] IPCP: Can't get IP from pool \"%s\"",
-		b->name, b->params.ippool));
-	} else {
-	    char buf[64];
-	    Log(LG_IPCP, ("[%s] IPCP: Got IP %s from pool \"%s\"",
-		b->name,
-		u_addrtoa(&ipcp->peer_allow.addr, buf, sizeof(buf)),
-		b->params.ippool));
-	    ipcp->peer_allow.width = 32;
-	    b->params.ippool_used = 1;
-	}
-    } else if (ipcp->conf.ippool[0]) {
-	if (IPPoolGet(ipcp->conf.ippool, &ipcp->peer_allow.addr)) {
-	    Log(LG_IPCP, ("[%s] IPCP: Can't get IP from pool \"%s\"",
-		b->name, ipcp->conf.ippool));
-	} else {
-	    char buf[64];
-	    Log(LG_IPCP, ("[%s] IPCP: Got IP %s from pool \"%s\"",
-		b->name,
-		u_addrtoa(&ipcp->peer_allow.addr, buf, sizeof(buf)),
-		ipcp->conf.ippool));
-	    ipcp->peer_allow.width = 32;
-	    ipcp->ippool_used = 1;
-	}
-    } else
-	ipcp->peer_allow = ipcp->conf.peer_allow;
-    
-    /* Initially request addresses as specified by config */
-    u_addrtoin_addr(&ipcp->self_allow.addr, &ipcp->want_addr);
-    u_addrtoin_addr(&ipcp->peer_allow.addr, &ipcp->peer_addr);
+  /* Get allowed IP addresses from config and/or from current bundle */
+  ipcp->self_allow = ipcp->conf.self_allow;
+  if ((b->params.range_valid) && (!u_rangeempty(&b->params.range)))
+    ipcp->peer_allow = b->params.range;
+  else
+    ipcp->peer_allow = ipcp->conf.peer_allow;
 
-    /* Van Jacobson compression */
-    ipcp->peer_comp.proto = 0;
-    ipcp->peer_comp.maxchan = IPCP_VJCOMP_DEFAULT_MAXCHAN;
-    ipcp->peer_comp.compcid = 0;
+  /* Initially request addresses as specified by config */
+  u_addrtoin_addr(&ipcp->self_allow.addr, &ipcp->want_addr);
+  u_addrtoin_addr(&ipcp->peer_allow.addr, &ipcp->peer_addr);
 
-    ipcp->want_comp.proto =
-	(b->params.vjc_enable || Enabled(&ipcp->conf.options, IPCP_CONF_VJCOMP)) ?
-	    htons(PROTO_VJCOMP) : 0;
-    ipcp->want_comp.maxchan = IPCP_VJCOMP_MAX_MAXCHAN;
+  /* Van Jacobson compression */
+  ipcp->peer_comp.proto = 0;
+  ipcp->peer_comp.maxchan = IPCP_VJCOMP_DEFAULT_MAXCHAN;
+  ipcp->peer_comp.compcid = 0;
 
-    /* DNS and NBNS servers */
-    memset(&ipcp->want_dns, 0, sizeof(ipcp->want_dns));
-    memset(&ipcp->want_nbns, 0, sizeof(ipcp->want_nbns));
+  ipcp->want_comp.proto =
+    Enabled(&ipcp->conf.options, IPCP_CONF_VJCOMP) ? htons(PROTO_VJCOMP) : 0;
+  ipcp->want_comp.maxchan = IPCP_VJCOMP_MAX_MAXCHAN;
 
-    /* If any of our links are unable to give receive error indications, we must
+  /* DNS and NBNS servers */
+  memset(&ipcp->want_dns, 0, sizeof(ipcp->want_dns));
+  memset(&ipcp->want_nbns, 0, sizeof(ipcp->want_nbns));
+
+  /* If any of our links are unable to give receive error indications, we must
      tell the peer not to compress the slot-id in VJCOMP packets (cf. RFC1144).
      To be on the safe side, we always say this. */
-    ipcp->want_comp.compcid = 0;
+  ipcp->want_comp.compcid = 0;
 }
 
 /*
@@ -360,20 +313,6 @@ IpcpConfigure(Fsm fp)
 static void
 IpcpUnConfigure(Fsm fp)
 {
-    Bund 	b = (Bund)fp->arg;
-    IpcpState	const ipcp = &b->ipcp;
-  
-    if (b->params.ippool_used) {
-	struct u_addr ip;
-	in_addrtou_addr(&ipcp->peer_addr, &ip);
-	IPPoolFree(b->params.ippool, &ip);
-	b->params.ippool_used = 0;
-    } else if (ipcp->ippool_used) {
-	struct u_addr ip;
-	in_addrtou_addr(&ipcp->peer_addr, &ip);
-	IPPoolFree(ipcp->conf.ippool, &ip);
-	ipcp->ippool_used = 0;
-    }
 }
 
 /*
@@ -384,15 +323,15 @@ static u_char *
 IpcpBuildConfigReq(Fsm fp, u_char *cp)
 {
     Bund 	b = (Bund)fp->arg;
-    IpcpState	const ipcp = &b->ipcp;
+  IpcpState	const ipcp = &b->ipcp;
 
-    /* Put in my desired IP address */
-    if (!IPCP_REJECTED(ipcp, TY_IPADDR) || ipcp->want_addr.s_addr == 0)
-	cp = FsmConfValue(cp, TY_IPADDR, 4, &ipcp->want_addr.s_addr);
+  /* Put in my desired IP address */
+  if (!IPCP_REJECTED(ipcp, TY_IPADDR) || ipcp->want_addr.s_addr == 0)
+    cp = FsmConfValue(cp, TY_IPADDR, 4, &ipcp->want_addr.s_addr);
 
-    /* Put in my requested compression protocol */
-    if (ipcp->want_comp.proto != 0 && !IPCP_REJECTED(ipcp, TY_COMPPROTO))
-	cp = FsmConfValue(cp, TY_COMPPROTO, 4, &ipcp->want_comp);
+  /* Put in my requested compression protocol */
+  if (ipcp->want_comp.proto != 0 && !IPCP_REJECTED(ipcp, TY_COMPPROTO))
+    cp = FsmConfValue(cp, TY_COMPPROTO, 4, &ipcp->want_comp);
 
   /* Request peer's DNS and NBNS servers */
   {
@@ -454,37 +393,37 @@ IpcpLayerFinish(Fsm fp)
 static void
 IpcpLayerUp(Fsm fp)
 {
-    Bund 			b = (Bund)fp->arg;
-    IpcpState			const ipcp = &b->ipcp;
-    char			ipbuf[20];
-    char			path[NG_PATHSIZ];
-    struct ngm_vjc_config	vjc;
-    struct u_addr		tmp;
+    Bund 	b = (Bund)fp->arg;
+  IpcpState		const ipcp = &b->ipcp;
+  char			ipbuf[20];
+  char			path[NG_PATHLEN + 1];
+  struct ngm_vjc_config	vjc;
+  struct u_addr		tmp;
 
-    /* Determine actual address we'll use for ourselves */
-    in_addrtou_addr(&ipcp->want_addr, &tmp);
-    if (!IpAddrInRange(&ipcp->self_allow, &tmp)) {
-	Log(LG_IPCP, ("  Note: ignoring negotiated %s IP %s,",
-    	    "self", inet_ntoa(ipcp->want_addr)));
-	u_addrtoin_addr(&ipcp->self_allow.addr, &ipcp->want_addr);
-	Log(LG_IPCP, ("        using %s instead.",
-    	    inet_ntoa(ipcp->want_addr)));
-    }
+  /* Determine actual address we'll use for ourselves */
+  in_addrtou_addr(&ipcp->want_addr, &tmp);
+  if (!IpAddrInRange(&ipcp->self_allow, &tmp)) {
+    Log(fp->log, ("  Note: ignoring negotiated %s IP %s,",
+      "self", inet_ntoa(ipcp->want_addr)));
+    u_addrtoin_addr(&ipcp->self_allow.addr, &ipcp->want_addr);
+    Log(fp->log, ("        using %s instead.",
+      inet_ntoa(ipcp->want_addr)));
+  }
 
-    /* Determine actual address we'll use for peer */
-    in_addrtou_addr(&ipcp->peer_addr, &tmp);
-    if (!IpAddrInRange(&ipcp->peer_allow, &tmp)
-    	    && !u_addrempty(&ipcp->peer_allow.addr)) {
-	Log(LG_IPCP, ("  Note: ignoring negotiated %s IP %s,",
-    	    "peer", inet_ntoa(ipcp->peer_addr)));
-	u_addrtoin_addr(&ipcp->peer_allow.addr, &ipcp->peer_addr);
-	Log(LG_IPCP, ("        using %s instead.",
-    	    inet_ntoa(ipcp->peer_addr)));
-    }
+  /* Determine actual address we'll use for peer */
+  in_addrtou_addr(&ipcp->peer_addr, &tmp);
+  if (!IpAddrInRange(&ipcp->peer_allow, &tmp)
+      && !u_addrempty(&ipcp->peer_allow.addr)) {
+    Log(fp->log, ("  Note: ignoring negotiated %s IP %s,",
+      "peer", inet_ntoa(ipcp->peer_addr)));
+    u_addrtoin_addr(&ipcp->peer_allow.addr, &ipcp->peer_addr);
+    Log(fp->log, ("        using %s instead.",
+      inet_ntoa(ipcp->peer_addr)));
+  }
 
-    /* Report */
-    strlcpy(ipbuf, inet_ntoa(ipcp->peer_addr), sizeof(ipbuf));
-    Log(LG_IPCP, ("  %s -> %s", inet_ntoa(ipcp->want_addr), ipbuf));
+  /* Report */
+  snprintf(ipbuf, sizeof(ipbuf), "%s", inet_ntoa(ipcp->peer_addr));
+  Log(fp->log, ("  %s -> %s", inet_ntoa(ipcp->want_addr), ipbuf));
 
     memset(&vjc, 0, sizeof(vjc));
     if (ntohs(ipcp->peer_comp.proto) == PROTO_VJCOMP || 
@@ -497,21 +436,21 @@ IpcpLayerUp(Fsm fp)
 	vjc.enableDecomp = ntohs(ipcp->want_comp.proto) == PROTO_VJCOMP;
 	vjc.maxChannel = ipcp->peer_comp.maxchan;
 	vjc.compressCID = ipcp->peer_comp.compcid;
-        snprintf(path, sizeof(path), "[%x]:%s", b->nodeID, NG_PPP_HOOK_VJC_IP);
-	if (NgSendMsg(gLinksCsock, path,
+        snprintf(path, sizeof(path), "%s.%s", MPD_HOOK_PPP, NG_PPP_HOOK_VJC_IP);
+	if (NgSendMsg(b->csock, path,
     		NGM_VJC_COOKIE, NGM_VJC_SET_CONFIG, &vjc, sizeof(vjc)) < 0) {
 	    Log(LG_ERR, ("[%s] can't config %s node: %s",
     		b->name, NG_VJC_NODE_TYPE, strerror(errno)));
 	}
     }
 
-    BundNcpsJoin(b, NCP_IPCP);
+  BundNcpsJoin(b, NCP_IPCP);
 
-    /* Enable IP packets in the PPP node */
-    b->pppConfig.bund.enableIP = 1;
-    b->pppConfig.bund.enableVJCompression = vjc.enableComp;
-    b->pppConfig.bund.enableVJDecompression = vjc.enableDecomp;
-    NgFuncSetConfig(b);
+  /* Enable IP packets in the PPP node */
+  b->pppConfig.bund.enableIP = 1;
+  b->pppConfig.bund.enableVJCompression = vjc.enableComp;
+  b->pppConfig.bund.enableVJDecompression = vjc.enableDecomp;
+  NgFuncSetConfig(b);
 }
 
 /*
@@ -524,20 +463,20 @@ static void
 IpcpLayerDown(Fsm fp)
 {
     Bund 	b = (Bund)fp->arg;
-    IpcpState	const ipcp = &b->ipcp;
+  IpcpState		const ipcp = &b->ipcp;
 
-    /* Turn off IP packets */
-    b->pppConfig.bund.enableIP = 0;
-    b->pppConfig.bund.enableVJCompression = 0;
-    b->pppConfig.bund.enableVJDecompression = 0;
-    NgFuncSetConfig(b);
+  /* Turn off IP packets */
+  b->pppConfig.bund.enableIP = 0;
+  b->pppConfig.bund.enableVJCompression = 0;
+  b->pppConfig.bund.enableVJDecompression = 0;
+  NgFuncSetConfig(b);
 
-    if (ntohs(ipcp->peer_comp.proto) == PROTO_VJCOMP || 
-	    ntohs(ipcp->want_comp.proto) == PROTO_VJCOMP) {
+  if (ntohs(ipcp->peer_comp.proto) == PROTO_VJCOMP || 
+	    ntohs(ipcp->want_comp.proto) == PROTO_VJCOMP)
 	IpcpNgShutdownVJ(b);
-    }
 
-    BundNcpsLeave(b, NCP_IPCP);
+  BundNcpsLeave(b, NCP_IPCP);
+  
 }
 
 /*
@@ -547,7 +486,7 @@ IpcpLayerDown(Fsm fp)
 void
 IpcpUp(Bund b)
 {
-    FsmUp(&b->ipcp.fsm);
+  FsmUp(&b->ipcp.fsm);
 }
 
 /*
@@ -557,7 +496,7 @@ IpcpUp(Bund b)
 void
 IpcpDown(Bund b)
 {
-    FsmDown(&b->ipcp.fsm);
+  FsmDown(&b->ipcp.fsm);
 }
 
 /*
@@ -567,7 +506,7 @@ IpcpDown(Bund b)
 void
 IpcpOpen(Bund b)
 {
-    FsmOpen(&b->ipcp.fsm);
+  FsmOpen(&b->ipcp.fsm);
 }
 
 /*
@@ -577,33 +516,27 @@ IpcpOpen(Bund b)
 void
 IpcpClose(Bund b)
 {
-    FsmClose(&b->ipcp.fsm);
+  FsmClose(&b->ipcp.fsm);
 }
 
 /*
  * IpcpOpenCmd()
  */
 
-int
+void
 IpcpOpenCmd(Context ctx)
 {
-    if (ctx->bund->tmpl)
-	Error("impossible to open template");
-    FsmOpen(&ctx->bund->ipcp.fsm);
-    return (0);
+  FsmOpen(&ctx->bund->ipcp.fsm);
 }
 
 /*
  * IpcpCloseCmd()
  */
 
-int
+void
 IpcpCloseCmd(Context ctx)
 {
-    if (ctx->bund->tmpl)
-	Error("impossible to close template");
-    FsmClose(&ctx->bund->ipcp.fsm);
-    return (0);
+  FsmClose(&ctx->bund->ipcp.fsm);
 }
 
 /*
@@ -718,8 +651,7 @@ IpcpDecodeConfig(Fsm fp, FsmOption list, int num, int mode)
 	    vj.maxchan + 1, vj.compcid ? "allow" : "no"));
 	  switch (mode) {
 	    case MODE_REQ:
-	      if (!Acceptable(&ipcp->conf.options, IPCP_CONF_VJCOMP) && 
-	    	  !b->params.vjc_enable) {
+	      if (!Acceptable(&ipcp->conf.options, IPCP_CONF_VJCOMP)) {
 		FsmRej(fp, opt);
 		break;
 	      }
@@ -824,7 +756,7 @@ doDnsNbns:
 void
 IpcpInput(Bund b, Mbuf bp)
 {
-    FsmInput(&b->ipcp.fsm, bp);
+  FsmInput(&b->ipcp.fsm, bp);
 }
 
 static int
@@ -832,56 +764,58 @@ IpcpNgInitVJ(Bund b)
 {
   struct ngm_mkpeer	mp;
   struct ngm_connect	cn;
-  char path[NG_PATHSIZ];
+#if NG_NODESIZ>=32
+  char path[NG_PATHLEN + 1];
   struct ngm_name	nm;
+#endif
 
   /* Add a VJ compression node */
-  snprintf(path, sizeof(path), "[%x]:", b->nodeID);
-  strcpy(mp.type, NG_VJC_NODE_TYPE);
-  strcpy(mp.ourhook, NG_PPP_HOOK_VJC_IP);
-  strcpy(mp.peerhook, NG_VJC_HOOK_IP);
-  if (NgSendMsg(gLinksCsock, path,
+  snprintf(mp.type, sizeof(mp.type), "%s", NG_VJC_NODE_TYPE);
+  snprintf(mp.ourhook, sizeof(mp.ourhook), "%s", NG_PPP_HOOK_VJC_IP);
+  snprintf(mp.peerhook, sizeof(mp.peerhook), "%s", NG_VJC_HOOK_IP);
+  if (NgSendMsg(b->csock, MPD_HOOK_PPP,
       NGM_GENERIC_COOKIE, NGM_MKPEER, &mp, sizeof(mp)) < 0) {
     Log(LG_ERR, ("[%s] can't create %s node at \"%s\"->\"%s\": %s",
-      b->name, NG_VJC_NODE_TYPE, path, mp.ourhook, strerror(errno)));
+      b->name, NG_VJC_NODE_TYPE, MPD_HOOK_PPP, mp.ourhook, strerror(errno)));
     goto fail;
   }
 
+#if NG_NODESIZ>=32
   /* Give it a name */
-  strlcat(path, NG_PPP_HOOK_VJC_IP, sizeof(path));
+  snprintf(path, sizeof(path), "%s.%s", MPD_HOOK_PPP, NG_PPP_HOOK_VJC_IP);
   snprintf(nm.name, sizeof(nm.name), "mpd%d-%s-vjc", gPid, b->name);
-  if (NgSendMsg(gLinksCsock, path,
+  if (NgSendMsg(b->csock, path,
       NGM_GENERIC_COOKIE, NGM_NAME, &nm, sizeof(nm)) < 0) {
     Log(LG_ERR, ("[%s] can't name %s node: %s",
       b->name, NG_VJC_NODE_TYPE, strerror(errno)));
     goto fail;
   }
+#endif
 
   /* Connect the other three hooks between the ppp and vjc nodes */
-  snprintf(path, sizeof(path), "[%x]:", b->nodeID);
-  strcpy(cn.path, NG_PPP_HOOK_VJC_IP);
-  strcpy(cn.ourhook, NG_PPP_HOOK_VJC_COMP);
-  strcpy(cn.peerhook, NG_VJC_HOOK_VJCOMP);
-  if (NgSendMsg(gLinksCsock, path,
+  snprintf(cn.path, sizeof(cn.path), "%s", NG_PPP_HOOK_VJC_IP);
+  snprintf(cn.ourhook, sizeof(cn.ourhook), "%s", NG_PPP_HOOK_VJC_COMP);
+  snprintf(cn.peerhook, sizeof(cn.peerhook), "%s", NG_VJC_HOOK_VJCOMP);
+  if (NgSendMsg(b->csock, MPD_HOOK_PPP,
       NGM_GENERIC_COOKIE, NGM_CONNECT, &cn, sizeof(cn)) < 0) {
     Log(LG_ERR, ("[%s] can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
-      b->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
+      b->name, MPD_HOOK_PPP, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
     goto fail;
   }
-  strcpy(cn.ourhook, NG_PPP_HOOK_VJC_UNCOMP);
-  strcpy(cn.peerhook, NG_VJC_HOOK_VJUNCOMP);
-  if (NgSendMsg(gLinksCsock, path,
+  snprintf(cn.ourhook, sizeof(cn.ourhook), "%s", NG_PPP_HOOK_VJC_UNCOMP);
+  snprintf(cn.peerhook, sizeof(cn.peerhook), "%s", NG_VJC_HOOK_VJUNCOMP);
+  if (NgSendMsg(b->csock, MPD_HOOK_PPP,
       NGM_GENERIC_COOKIE, NGM_CONNECT, &cn, sizeof(cn)) < 0) {
     Log(LG_ERR, ("[%s] can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s", 
-      b->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
+      b->name, MPD_HOOK_PPP, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
     goto fail;
   }
-  strcpy(cn.ourhook, NG_PPP_HOOK_VJC_VJIP);
-  strcpy(cn.peerhook, NG_VJC_HOOK_VJIP);
-  if (NgSendMsg(gLinksCsock, path,
+  snprintf(cn.ourhook, sizeof(cn.ourhook), "%s", NG_PPP_HOOK_VJC_VJIP);
+  snprintf(cn.peerhook, sizeof(cn.peerhook), "%s", NG_VJC_HOOK_VJIP);
+  if (NgSendMsg(b->csock, MPD_HOOK_PPP,
       NGM_GENERIC_COOKIE, NGM_CONNECT, &cn, sizeof(cn)) < 0) {
     Log(LG_ERR, ("[%s] can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
-      b->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
+      b->name, MPD_HOOK_PPP, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
     goto fail;
   }
 
@@ -893,10 +827,10 @@ fail:
 static void
 IpcpNgShutdownVJ(Bund b)
 {
-    char	path[NG_PATHSIZ];
+    char	path[NG_PATHLEN+1];
 
-    snprintf(path, sizeof(path), "[%x]:%s", b->nodeID, NG_PPP_HOOK_VJC_IP);
-    NgFuncShutdownNode(gLinksCsock, b->name, path);
+    snprintf(path, sizeof(path), ".:%s.%s", MPD_HOOK_PPP, NG_PPP_HOOK_VJC_IP);
+    NgFuncShutdownNode(b->csock, b->name, path);
 }
 
 /*
@@ -918,17 +852,10 @@ IpcpSetCommand(Context ctx, int ac, char *av[], void *arg)
 	struct u_range	peer_new_allow;
 
 	/* Parse args */
-	if (ac == 2) {
-	    if (!ParseRange(av[0], &self_new_allow, ALLOW_IPV4)
-	      || !ParseRange(av[1], &peer_new_allow, ALLOW_IPV4))
-	    return(-1);
-	    ipcp->conf.ippool[0] = 0;
-	} else if (ac == 3 && strcmp(av[1], "ippool") == 0) {
-	    if (!ParseRange(av[0], &self_new_allow, ALLOW_IPV4))
-		return(-1);
-	    strlcpy(ipcp->conf.ippool, av[2], sizeof(ipcp->conf.ippool));
-	} else
-	    return(-1);
+	if (ac != 2
+	    || !ParseRange(*av++, &self_new_allow, ALLOW_IPV4)
+	    || !ParseRange(*av++, &peer_new_allow, ALLOW_IPV4))
+	  return(-1);
 	ipcp->conf.self_allow = self_new_allow;
 	ipcp->conf.peer_allow = peer_new_allow;
 
@@ -942,11 +869,15 @@ IpcpSetCommand(Context ctx, int ac, char *av[], void *arg)
     case SET_NBNS:
       ips = ipcp->conf.peer_nbns;
 getPrimSec:
-      if (!inet_aton(av[0], &ips[0]))
-	Error("invalid IP address: \'%s\'", av[0]);
+      if (!inet_aton(av[0], &ips[0])) {
+	Log(LG_ERR, ("[%s] %s: invalid IP address", ctx->bund->name, av[0]));
+	return(0);
+      }
       ips[1].s_addr = 0;
-      if (ac > 1 && !inet_aton(av[1], &ips[1]))
-	Error("invalid IP address: \'%s\'", av[1]);
+      if (ac > 1 && !inet_aton(av[1], &ips[1])) {
+	Log(LG_ERR, ("[%s] %s: invalid IP address", ctx->bund->name, av[1]));
+	return(0);
+      }
       break;
 
     case SET_ACCEPT:

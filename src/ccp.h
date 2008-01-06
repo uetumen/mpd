@@ -62,11 +62,9 @@
     struct deflateinfo	deflate;	/* Deflate state */
 #endif
     struct mppcinfo	mppc;		/* MPPC/MPPE state */
-    ng_ID_t		comp_node_id;	/* compressor node id */
-    ng_ID_t		decomp_node_id;	/* decompressor node id */
+    u_char		crypt_check:1;	/* We checked for required encryption */
     uint32_t		recv_resets;	/* Number of ResetReq we have got from other side */
     uint32_t		xmit_resets;	/* Number of ResetReq we have sent to other side */
-    u_char		crypt_check;	/* We checked for required encryption */
   };
   typedef struct ccpstate	*CcpState;
 
@@ -82,24 +80,24 @@
 
   extern const struct cmdtab	CcpSetCmds[];
 
-  extern int		gCcpCsock;		/* Socket node control socket */
-  extern int		gCcpDsock;		/* Socket node data socket */
+  extern int			gMppcCompress;
+  extern int			gMppe40;
+  extern int			gMppe56;
+  extern int			gMppe128;
+  extern int			gMppcStateless;
+  extern int			gMppePolicy;
 
 /*
  * FUNCTIONS
  */
 
-  extern int	CcpsInit(void);
-  extern void	CcpsShutdown(void);
-
   extern void	CcpInit(Bund b);
-  extern void	CcpInst(Bund b, Bund bt);
   extern void	CcpUp(Bund b);
   extern void	CcpDown(Bund b);
   extern void	CcpOpen(Bund b);
   extern void	CcpClose(Bund b);
-  extern int	CcpOpenCmd(Context ctx);
-  extern int	CcpCloseCmd(Context ctx);
+  extern void	CcpOpenCmd(Context ctx);
+  extern void	CcpCloseCmd(Context ctx);
   extern void	CcpInput(Bund b, Mbuf bp);
   extern Mbuf	CcpDataInput(Bund b, Mbuf bp);
   extern Mbuf	CcpDataOutput(Bund b, Mbuf bp);

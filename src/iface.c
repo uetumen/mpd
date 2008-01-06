@@ -15,6 +15,7 @@
 #include "iface.h"
 #include "ipcp.h"
 #include "auth.h"
+#include "custom.h"
 #include "ngfunc.h"
 #include "netgraph.h"
 #include "util.h"
@@ -81,7 +82,7 @@
     SET_UP_SCRIPT,
     SET_DOWN_SCRIPT,
     SET_ENABLE,
-    SET_DISABLE
+    SET_DISABLE,
   };
 
 /*
@@ -110,8 +111,8 @@
   static void	IfaceShutdownNAT(Bund b);
 #endif
 
-  static int	IfaceInitTee(Bund b, char *path, char *hook, int v6);
-  static void	IfaceShutdownTee(Bund b, int v6);
+  static int	IfaceInitTee(Bund b, char *path, char *hook);
+  static void	IfaceShutdownTee(Bund b);
 
   static int    IfaceInitMSS(Bund b, char *path, char *hook);
   static void	IfaceSetupMSS(Bund b, uint16_t maxMSS);
@@ -138,24 +139,24 @@
  */
 
   const struct cmdtab IfaceSetCmds[] = {
-    { "addrs {self} {peer}",		"Set interface addresses",
-	IfaceSetCommand, NULL, 2, (void *) SET_ADDRS },
-    { "route {dest}[/{width}]",		"Add IP route",
-	IfaceSetCommand, NULL, 2, (void *) SET_ROUTE },
-    { "mtu {size}",			"Set max allowed interface MTU",
-	IfaceSetCommand, NULL, 2, (void *) SET_MTU },
-    { "up-script [{progname}]",		"Interface up script",
-	IfaceSetCommand, NULL, 2, (void *) SET_UP_SCRIPT },
-    { "down-script [{progname}]",	"Interface down script",
-	IfaceSetCommand, NULL, 2, (void *) SET_DOWN_SCRIPT },
-    { "idle {seconds}",			"Idle timeout",
-	IfaceSetCommand, NULL, 2, (void *) SET_IDLE },
-    { "session {seconds}",		"Session timeout",
-	IfaceSetCommand, NULL, 2, (void *) SET_SESSION },
+    { "addrs self peer",		"Set interface addresses",
+	IfaceSetCommand, NULL, (void *) SET_ADDRS },
+    { "route dest[/width]",		"Add IP route",
+	IfaceSetCommand, NULL, (void *) SET_ROUTE },
+    { "mtu size",			"Set max allowed interface MTU",
+	IfaceSetCommand, NULL, (void *) SET_MTU },
+    { "up-script [progname]",		"Interface up script",
+	IfaceSetCommand, NULL, (void *) SET_UP_SCRIPT },
+    { "down-script [progname]",		"Interface down script",
+	IfaceSetCommand, NULL, (void *) SET_DOWN_SCRIPT },
+    { "idle seconds",			"Idle timeout",
+	IfaceSetCommand, NULL, (void *) SET_IDLE },
+    { "session seconds",		"Session timeout",
+	IfaceSetCommand, NULL, (void *) SET_SESSION },
     { "enable [opt ...]",		"Enable option",
-	IfaceSetCommand, NULL, 2, (void *) SET_ENABLE },
+	IfaceSetCommand, NULL, (void *) SET_ENABLE },
     { "disable [opt ...]",		"Disable option",
-	IfaceSetCommand, NULL, 2, (void *) SET_DISABLE },
+	IfaceSetCommand, NULL, (void *) SET_DISABLE },
     { NULL },
   };
 
@@ -234,20 +235,8 @@ IfaceInit(Bund b)
   Disable(&iface->options, IFACE_CONF_PROXY);
   Disable(&iface->options, IFACE_CONF_TCPMSSFIX);
   NatInit(b);
-  SLIST_INIT(&iface->ss[0]);
-  SLIST_INIT(&iface->ss[1]);
-}
-
-/*
- * IfaceInst()
- */
-
-void
-IfaceInst(Bund b, Bund bt)
-{
-    IfaceState	const iface = &b->iface;
-
-    memcpy(iface, &bt->iface, sizeof(*iface));
+  Log(LG_BUND|LG_IFACE, ("[%s] using interface %s",
+    b->name, b->iface.ifname));
 }
 
 /*
@@ -308,13 +297,10 @@ IfaceClose(Bund b)
  * Open the interface layer
  */
 
-int
+void
 IfaceOpenCmd(Context ctx)
 {
-    if (ctx->bund->tmpl)
-	Error("impossible to open template");
     IfaceOpen(ctx->bund);
-    return (0);
 }
 
 /*
@@ -323,13 +309,10 @@ IfaceOpenCmd(Context ctx)
  * Close the interface layer
  */
 
-int
+void
 IfaceCloseCmd(Context ctx)
 {
-    if (ctx->bund->tmpl)
-	Error("impossible to close template");
     IfaceClose(ctx->bund);
-    return (0);
 }
 
 /*
@@ -352,7 +335,6 @@ IfaceUp(Bund b, int ready)
   int		prev_real_number;
 
   Log(LG_IFACE, ("[%s] IFACE: Up event", b->name));
-  iface->last_up = time(NULL);
 
   if (ready) {
 
@@ -450,19 +432,20 @@ IfaceUp(Bund b, int ready)
   while (acls != NULL) {
     buf = IFaceParseACL(acls->rule, iface->ifname);
     ExecCmd(LG_IFACE2, b->name, "%s pipe %d config %s", PATH_IPFW, acls->real_number, acls->rule);
-    Freee(buf);
+    Freee(MB_IFACE, buf);
     acls = acls->next;
   }
   acls = b->params.acl_queue;
   while (acls != NULL) {
     buf = IFaceParseACL(acls->rule,iface->ifname);
     ExecCmd(LG_IFACE2, b->name, "%s queue %d config %s", PATH_IPFW, acls->real_number, buf);
-    Freee(buf);
+    Freee(MB_IFACE, buf);
     acls = acls->next;
   }
   acls = b->params.acl_table;
   while (acls != NULL) {
-    acl = Mdup(MB_IFACE, acls, sizeof(struct acl));
+    acl = Malloc(MB_IFACE, sizeof(struct acl));
+    memcpy(acl, acls, sizeof(struct acl));
     acl->next = iface->tables;
     iface->tables = acl;
     ExecCmd(LG_IFACE2, b->name, "%s table %d add %s", PATH_IPFW, acls->real_number, acls->rule);
@@ -472,7 +455,7 @@ IfaceUp(Bund b, int ready)
   while (acls != NULL) {
     buf = IFaceParseACL(acls->rule, iface->ifname);
     ExecCmd(LG_IFACE2, b->name, "%s add %d %s via %s", PATH_IPFW, acls->real_number, buf, iface->ifname);
-    Freee(buf);
+    Freee(MB_IFACE, buf);
     acls = acls->next;
   };
 
@@ -516,7 +499,7 @@ IfaceDown(Bund b)
       sprintf(cb+strlen(cb), " %d", (*rp)->real_number);
       rp1 = *rp;
       *rp = (*rp)->next;
-      Freee(rp1);
+      Freee(MB_IFACE, rp1);
     } else {
       rp = &((*rp)->next);
     };
@@ -531,7 +514,7 @@ IfaceDown(Bund b)
     if (strncmp((*rp)->ifname, iface->ifname, IFNAMSIZ) == 0) {
       rp1 = *rp;
       *rp = (*rp)->next;
-      Freee(rp1);
+      Freee(MB_IFACE, rp1);
     } else {
       rp = &((*rp)->next);
     };
@@ -541,7 +524,7 @@ IfaceDown(Bund b)
     ExecCmd(LG_IFACE2, b->name, "%s table %d delete %s",
 	PATH_IPFW, acl->real_number, acl->rule);
     aclnext = acl->next;
-    Freee(acl);
+    Freee(MB_IFACE, acl);
     acl = aclnext;
   };
   iface->tables = NULL;
@@ -554,7 +537,7 @@ IfaceDown(Bund b)
       sprintf(cb+strlen(cb), " %d", (*rp)->real_number);
       rp1 = *rp;
       *rp = (*rp)->next;
-      Freee(rp1);
+      Freee(MB_IFACE, rp1);
     } else {
       rp = &((*rp)->next);
     };
@@ -571,7 +554,7 @@ IfaceDown(Bund b)
       sprintf(cb+strlen(cb), " %d", (*rp)->real_number);
       rp1 = *rp;
       *rp = (*rp)->next;
-      Freee(rp1);
+      Freee(MB_IFACE, rp1);
     } else {
       rp = &((*rp)->next);
     };
@@ -591,20 +574,41 @@ IfaceDown(Bund b)
 void
 IfaceListenInput(Bund b, int proto, Mbuf pkt)
 {
-    IfaceState	const iface = &b->iface;
-    int		const isDemand = IfaceIsDemand(proto, pkt);
+  IfaceState	const iface = &b->iface;
+  int		const isDemand = IfaceIsDemand(proto, pkt);
+  Fsm		fsm;
 
-    /* Does this count as demand traffic? */
-    if (iface->open && isDemand) {
-	iface->traffic[0] = TRUE;
-        Log(LG_IFACE, ("[%s] IFACE: Outgoing %s packet demands connection", b->name,
-	    (proto==PROTO_IP)?"IP":"IPv6"));
-	RecordLinkUpDownReason(b, NULL, 1, STR_DEMAND, NULL);
-        BundOpen(b);
-        IfaceCachePkt(b, proto, pkt);
+  /* Does this count as demand traffic? */
+  if (isDemand)
+    iface->traffic[0] = TRUE;
+
+  /* Get FSM for protocol (for now, we know it's IP) */
+  assert(proto == PROTO_IP);
+  fsm = &b->ipcp.fsm;
+
+  if (OPEN_STATE(fsm->state)) {
+    if (b->bm.n_up > 0) {
+#ifndef USE_NG_TCPMSS
+      if (Enabled(&iface->options, IFACE_CONF_TCPMSSFIX)) {
+	if (proto == PROTO_IP)
+	  IfaceCorrectMSS(pkt, MAXMSS(iface->mtu));
+      } else
+	Log(LG_IFACE, ("[%s] unexpected outgoing packet, len=%d",
+	  b->name, MBLEN(pkt)));
+#endif
+      NgFuncWriteFrame(b, MPD_HOOK_DEMAND_TAP, pkt);
     } else {
-	mbfree(pkt);
+      IfaceCachePkt(b, proto, pkt);
     }
+  /* Maybe do dial-on-demand here */
+  } else if (iface->open && isDemand) {
+    Log(LG_IFACE, ("[%s] outgoing packet is demand", b->name));
+    RecordLinkUpDownReason(b, NULL, 1, STR_DEMAND, NULL);
+    BundOpenLinks(b);
+    IfaceCachePkt(b, proto, pkt);
+  } else {
+    PFREE(pkt);
+  }
 }
 
 /*
@@ -620,7 +624,7 @@ IfaceAllocACL(struct acl_pool ***ap, int start, char *ifname, int number)
     struct acl_pool **rp,*rp1;
 
     rp1 = Malloc(MB_IFACE, sizeof(struct acl_pool));
-    strlcpy(rp1->ifname, ifname, sizeof(rp1->ifname));
+    strncpy(rp1->ifname, ifname, IFNAMSIZ);
     rp1->acl_number = number;
 
     rp = *ap;
@@ -638,7 +642,7 @@ IfaceAllocACL(struct acl_pool ***ap, int start, char *ifname, int number)
     *rp = rp1;
     *ap = rp;
     return(i);
-}
+};
 
 /*
  * IfaceFindACL ()
@@ -662,7 +666,7 @@ IfaceFindACL (struct acl_pool *ap, char * ifname, int number)
         rp = rp->next;
     };
     return(i);
-}
+};
 
 /*
  * IFaceParseACL ()
@@ -680,10 +684,10 @@ IFaceParseACL (char * src, char * ifname)
     int num,real_number;
     struct acl_pool *ap;
     
-    buf = Malloc(MB_IFACE, ACL_LEN);
-    buf1 = Malloc(MB_IFACE, ACL_LEN);
+    buf = Malloc(MB_IFACE, ACL_LEN+1);
+    buf1 = Malloc(MB_IFACE, ACL_LEN+1);
 
-    strlcpy(buf, src, ACL_LEN);
+    strncpy(buf,src,ACL_LEN);
     do {
         end = buf;
 	begin = strsep(&end, "%");
@@ -712,13 +716,13 @@ IFaceParseACL (char * src, char * ifname)
 		} else {
 		    snprintf(buf1, ACL_LEN, "%s%d", begin, real_number);
 		};
-		strlcpy(buf, buf1, ACL_LEN);
+		strncpy(buf, buf1, ACL_LEN);
 	    };
 	};
     } while (end != NULL);
-    Freee(buf1);
+    Freee(MB_IFACE, buf1);
     return(buf);
-}
+};
 
 /*
  * IfaceIpIfaceUp()
@@ -727,50 +731,50 @@ IFaceParseACL (char * src, char * ifname)
  * IPCP is also up and we can deliver packets immediately.
  */
 
-int
+void
 IfaceIpIfaceUp(Bund b, int ready)
 {
-    IfaceState		const iface = &b->iface;
-    struct sockaddr_dl	hwa;
-    char		hisaddr[20];
-    IfaceRoute		r;
-    u_char		*ether;
+  IfaceState		const iface = &b->iface;
+  struct sockaddr_dl	hwa;
+  char			hisaddr[20];
+  IfaceRoute		r;
+  u_char		*ether;
 
-    if (ready) {
-	in_addrtou_range(&b->ipcp.want_addr, 32, &iface->self_addr);
-	in_addrtou_addr(&b->ipcp.peer_addr, &iface->peer_addr);
+  if (ready) {
+    in_addrtou_range(&b->ipcp.want_addr, 32, &iface->self_addr);
+    in_addrtou_addr(&b->ipcp.peer_addr, &iface->peer_addr);
+  }
+
+  if (IfaceNgIpInit(b, ready)) {
+    Log(LG_ERR, ("[%s] IfaceNgIpInit() error, closing IPCP", b->name));
+    FsmFailure(&b->ipcp.fsm, FAIL_NEGOT_FAILURE);
+    return;
+  };
+
+  /* Set addresses */
+  IfaceChangeAddr(b, 1, &iface->self_addr, &iface->peer_addr);
+
+  /* Proxy ARP for peer if desired and peer's address is known */
+  u_addrclear(&iface->proxy_addr);
+  if (Enabled(&iface->options, IFACE_CONF_PROXY)) {
+    if (u_addrempty(&iface->peer_addr)) {
+      Log(LG_IFACE,
+	("[%s] can't proxy arp for %s",
+	b->name, u_addrtoa(&iface->peer_addr,hisaddr,sizeof(hisaddr))));
+    } else if (GetEther(&iface->peer_addr, &hwa) < 0) {
+      Log(LG_IFACE,
+	("[%s] no interface to proxy arp on for %s",
+	b->name, u_addrtoa(&iface->peer_addr,hisaddr,sizeof(hisaddr))));
+    } else {
+      ether = (u_char *) LLADDR(&hwa);
+      if (ExecCmdNosh(LG_IFACE2, b->name, 
+	  "%s -S %s %x:%x:%x:%x:%x:%x pub",
+	  PATH_ARP, u_addrtoa(&iface->peer_addr,hisaddr,sizeof(hisaddr)),
+	  ether[0], ether[1], ether[2],
+	  ether[3], ether[4], ether[5]) == 0)
+	iface->proxy_addr = iface->peer_addr;
     }
-
-    if (IfaceNgIpInit(b, ready)) {
-	Log(LG_ERR, ("[%s] IFACE: IfaceNgIpInit() error, closing IPCP", b->name));
-	FsmFailure(&b->ipcp.fsm, FAIL_NEGOT_FAILURE);
-	return (-1);
-    };
-
-    /* Set addresses */
-    IfaceChangeAddr(b, 1, &iface->self_addr, &iface->peer_addr);
-
-    /* Proxy ARP for peer if desired and peer's address is known */
-    u_addrclear(&iface->proxy_addr);
-    if (Enabled(&iface->options, IFACE_CONF_PROXY)) {
-	if (u_addrempty(&iface->peer_addr)) {
-    	    Log(LG_IFACE,
-		("[%s] IFACE: Can't proxy arp for %s",
-		b->name, u_addrtoa(&iface->peer_addr,hisaddr,sizeof(hisaddr))));
-	} else if (GetEther(&iface->peer_addr, &hwa) < 0) {
-    	    Log(LG_IFACE,
-		("[%s] IFACE: No interface to proxy arp on for %s",
-		b->name, u_addrtoa(&iface->peer_addr,hisaddr,sizeof(hisaddr))));
-	} else {
-    	    ether = (u_char *) LLADDR(&hwa);
-    	    if (ExecCmdNosh(LG_IFACE2, b->name, 
-		"%s -S %s %x:%x:%x:%x:%x:%x pub",
-		PATH_ARP, u_addrtoa(&iface->peer_addr,hisaddr,sizeof(hisaddr)),
-		ether[0], ether[1], ether[2],
-		ether[3], ether[4], ether[5]) == 0)
-	    iface->proxy_addr = iface->peer_addr;
-	}
-    }
+  }
   
     /* Add static routes */
     SLIST_FOREACH(r, &iface->routes, next) {
@@ -786,32 +790,33 @@ IfaceIpIfaceUp(Bund b, int ready)
     }
 
 #ifdef USE_NG_NAT
-    /* Set NAT IP */
-    if (iface->nat_up)
-	IfaceSetupNAT(b);
+  /* Set NAT IP */
+  if (iface->nat_up) {
+    IfaceSetupNAT(b);
+  }
 #endif
 
-    /* Call "up" script */
-    if (*iface->up_script) {
-	char	selfbuf[40],peerbuf[40];
-	char	ns1buf[21], ns2buf[21];
+  /* Call "up" script */
+  if (*iface->up_script) {
+    char	selfbuf[40],peerbuf[40];
+    char	ns1buf[21], ns2buf[21];
 
-	if(b->ipcp.want_dns[0].s_addr != 0)
-    	    snprintf(ns1buf, sizeof(ns1buf), "dns1 %s", inet_ntoa(b->ipcp.want_dns[0]));
-	else
-    	    ns1buf[0] = '\0';
-	if(b->ipcp.want_dns[1].s_addr != 0)
-    	    snprintf(ns2buf, sizeof(ns2buf), "dns2 %s", inet_ntoa(b->ipcp.want_dns[1]));
-	else
-    	    ns2buf[0] = '\0';
+    if(b->ipcp.want_dns[0].s_addr != 0)
+      snprintf(ns1buf, sizeof(ns1buf), "dns1 %s", inet_ntoa(b->ipcp.want_dns[0]));
+    else
+      ns1buf[0] = '\0';
+    if(b->ipcp.want_dns[1].s_addr != 0)
+      snprintf(ns2buf, sizeof(ns2buf), "dns2 %s", inet_ntoa(b->ipcp.want_dns[1]));
+    else
+      ns2buf[0] = '\0';
 
-	ExecCmd(LG_IFACE2, b->name, "%s %s inet %s %s '%s' %s %s",
-	    iface->up_script, iface->ifname, u_rangetoa(&iface->self_addr,selfbuf, sizeof(selfbuf)),
-    	    u_addrtoa(&iface->peer_addr, peerbuf, sizeof(peerbuf)), 
-    	    *b->params.authname ? b->params.authname : "-", 
-    	    ns1buf, ns2buf);
-    }
-    return (0);
+    ExecCmd(LG_IFACE2, b->name, "%s %s inet %s %s '%s' %s %s",
+      iface->up_script, iface->ifname, u_rangetoa(&iface->self_addr,selfbuf, sizeof(selfbuf)),
+      u_addrtoa(&iface->peer_addr, peerbuf, sizeof(peerbuf)), 
+      *b->params.authname ? b->params.authname : "-", 
+      ns1buf, ns2buf);
+  }
+
 }
 
 /*
@@ -823,19 +828,19 @@ IfaceIpIfaceUp(Bund b, int ready)
 void
 IfaceIpIfaceDown(Bund b)
 {
-    IfaceState	const iface = &b->iface;
-    IfaceRoute	r;
-    char	buf[64];
+  IfaceState	const iface = &b->iface;
+  IfaceRoute	r;
+  char          buf[64];
 
-    /* Call "down" script */
-    if (*iface->down_script) {
-	char	selfbuf[40],peerbuf[40];
+  /* Call "down" script */
+  if (*iface->down_script) {
+    char	selfbuf[40],peerbuf[40];
 
-	ExecCmd(LG_IFACE2, b->name, "%s %s inet %s %s '%s'",
-    	    iface->down_script, iface->ifname, u_rangetoa(&iface->self_addr,selfbuf, sizeof(selfbuf)),
-    	    u_addrtoa(&iface->peer_addr, peerbuf, sizeof(peerbuf)), 
-    	    *b->params.authname ? b->params.authname : "-");
-    }
+    ExecCmd(LG_IFACE2, b->name, "%s %s inet %s %s '%s'",
+      iface->down_script, iface->ifname, u_rangetoa(&iface->self_addr,selfbuf, sizeof(selfbuf)),
+      u_addrtoa(&iface->peer_addr, peerbuf, sizeof(peerbuf)), 
+      *b->params.authname ? b->params.authname : "-");
+  }
 
     /* Delete dynamic routes */
     SLIST_FOREACH(r, &b->params.routes, next) {
@@ -856,15 +861,15 @@ IfaceIpIfaceDown(Bund b)
 	}
     }
 
-    /* Delete any proxy arp entry */
-    if (!u_addrempty(&iface->proxy_addr))
-	ExecCmdNosh(LG_IFACE2, b->name, "%s -d %s", PATH_ARP, u_addrtoa(&iface->proxy_addr, buf, sizeof(buf)));
-    u_addrclear(&iface->proxy_addr);
+  /* Delete any proxy arp entry */
+  if (!u_addrempty(&iface->proxy_addr))
+    ExecCmdNosh(LG_IFACE2, b->name, "%s -d %s", PATH_ARP, u_addrtoa(&iface->proxy_addr, buf, sizeof(buf)));
+  u_addrclear(&iface->proxy_addr);
 
-    /* Remove address from interface */
-    IfaceChangeAddr(b, 0, &iface->self_addr, &iface->peer_addr);
+  /* Remove address from interface */
+  IfaceChangeAddr(b, 0, &iface->self_addr, &iface->peer_addr);
     
-    IfaceNgIpShutdown(b);
+  IfaceNgIpShutdown(b);
 }
 
 /*
@@ -874,40 +879,41 @@ IfaceIpIfaceDown(Bund b)
  * IPv6CP is also up and we can deliver packets immediately.
  */
 
-int
+void
 IfaceIpv6IfaceUp(Bund b, int ready)
 {
-    IfaceState		const iface = &b->iface;
-    IfaceRoute		r;
-    struct u_range	rng;
+  IfaceState		const iface = &b->iface;
+  IfaceRoute		r;
+  struct u_range	rng;
 
-    if (ready) {
-        iface->self_ipv6_addr.family = AF_INET6;
-        iface->self_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[0] = 0x80fe;  /* Network byte order */
-        iface->self_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[1] = 0x0000;
-        iface->self_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[2] = 0x0000;
-        iface->self_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[3] = 0x0000;
-        iface->self_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[4] = ((u_short*)b->ipv6cp.myintid)[0];
-        iface->self_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[5] = ((u_short*)b->ipv6cp.myintid)[1];
-        iface->self_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[6] = ((u_short*)b->ipv6cp.myintid)[2];
-	iface->self_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[7] = ((u_short*)b->ipv6cp.myintid)[3];
+  if (ready) {
 
-        iface->peer_ipv6_addr.family = AF_INET6;
-        iface->peer_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[0] = 0x80fe;  /* Network byte order */
-        iface->peer_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[1] = 0x0000;
-        iface->peer_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[2] = 0x0000;
-        iface->peer_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[3] = 0x0000;
-        iface->peer_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[4] = ((u_short*)b->ipv6cp.hisintid)[0];
-        iface->peer_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[5] = ((u_short*)b->ipv6cp.hisintid)[1];
-        iface->peer_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[6] = ((u_short*)b->ipv6cp.hisintid)[2];
-        iface->peer_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[7] = ((u_short*)b->ipv6cp.hisintid)[3];
-    }
+    iface->self_ipv6_addr.family = AF_INET6;
+    iface->self_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[0] = 0x80fe;  /* Network byte order */
+    iface->self_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[1] = 0x0000;
+    iface->self_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[2] = 0x0000;
+    iface->self_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[3] = 0x0000;
+    iface->self_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[4] = ((u_short*)b->ipv6cp.myintid)[0];
+    iface->self_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[5] = ((u_short*)b->ipv6cp.myintid)[1];
+    iface->self_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[6] = ((u_short*)b->ipv6cp.myintid)[2];
+    iface->self_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[7] = ((u_short*)b->ipv6cp.myintid)[3];
 
-    if (IfaceNgIpv6Init(b, ready)) {
-        Log(LG_ERR, ("[%s] IFACE: IfaceNgIpv6Init() failed, closing IPv6CP", b->name));
-        FsmFailure(&b->ipv6cp.fsm, FAIL_NEGOT_FAILURE);
-        return (-1);
-    };
+    iface->peer_ipv6_addr.family = AF_INET6;
+    iface->peer_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[0] = 0x80fe;  /* Network byte order */
+    iface->peer_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[1] = 0x0000;
+    iface->peer_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[2] = 0x0000;
+    iface->peer_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[3] = 0x0000;
+    iface->peer_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[4] = ((u_short*)b->ipv6cp.hisintid)[0];
+    iface->peer_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[5] = ((u_short*)b->ipv6cp.hisintid)[1];
+    iface->peer_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[6] = ((u_short*)b->ipv6cp.hisintid)[2];
+    iface->peer_ipv6_addr.u.ip6.__u6_addr.__u6_addr16[7] = ((u_short*)b->ipv6cp.hisintid)[3];
+  }
+
+  if (IfaceNgIpv6Init(b, ready)) {
+    Log(LG_ERR, ("[%s] IfaceNgIpv6Init() failed, closing IPv6CP", b->name));
+    FsmFailure(&b->ipv6cp.fsm, FAIL_NEGOT_FAILURE);
+    return;
+  };
   
     /* Set addresses */
     rng.addr = iface->self_ipv6_addr;
@@ -927,17 +933,16 @@ IfaceIpv6IfaceUp(Bund b, int ready)
 	}
     }
 
-    /* Call "up" script */
-    if (*iface->up_script) {
-	char	selfbuf[64],peerbuf[64];
+  /* Call "up" script */
+  if (*iface->up_script) {
+    char	selfbuf[64],peerbuf[64];
 
-	ExecCmd(LG_IFACE2, b->name, "%s %s inet6 %s%%%s %s%%%s '%s'",
-    	    iface->up_script, iface->ifname, 
-    	    u_addrtoa(&iface->self_ipv6_addr, selfbuf, sizeof(selfbuf)), iface->ifname,
-    	    u_addrtoa(&iface->peer_ipv6_addr, peerbuf, sizeof(peerbuf)), iface->ifname, 
-    	    *b->params.authname ? b->params.authname : "-");
-    }
-    return (0);
+    ExecCmd(LG_IFACE2, b->name, "%s %s inet6 %s%%%s %s%%%s '%s'",
+      iface->up_script, iface->ifname, 
+      u_addrtoa(&iface->self_ipv6_addr, selfbuf, sizeof(selfbuf)), iface->ifname,
+      u_addrtoa(&iface->peer_ipv6_addr, peerbuf, sizeof(peerbuf)), iface->ifname, 
+      *b->params.authname ? b->params.authname : "-");
+  }
 
 }
 
@@ -950,20 +955,20 @@ IfaceIpv6IfaceUp(Bund b, int ready)
 void
 IfaceIpv6IfaceDown(Bund b)
 {
-    IfaceState		const iface = &b->iface;
-    IfaceRoute		r;
-    struct u_range	rng;
+  IfaceState		const iface = &b->iface;
+  IfaceRoute		r;
+  struct u_range        rng;
 
-    /* Call "down" script */
-    if (*iface->down_script) {
-	char	selfbuf[64],peerbuf[64];
+  /* Call "down" script */
+  if (*iface->down_script) {
+    char	selfbuf[64],peerbuf[64];
 
-	ExecCmd(LG_IFACE2, b->name, "%s %s inet6 %s%%%s %s%%%s '%s'",
-    	    iface->down_script, iface->ifname, 
-    	    u_addrtoa(&iface->self_ipv6_addr, selfbuf, sizeof(selfbuf)), iface->ifname,
-    	    u_addrtoa(&iface->peer_ipv6_addr, peerbuf, sizeof(peerbuf)), iface->ifname, 
-    	    *b->params.authname ? b->params.authname : "-");
-    }
+    ExecCmd(LG_IFACE2, b->name, "%s %s inet6 %s%%%s %s%%%s '%s'",
+      iface->down_script, iface->ifname, 
+      u_addrtoa(&iface->self_ipv6_addr, selfbuf, sizeof(selfbuf)), iface->ifname,
+      u_addrtoa(&iface->peer_ipv6_addr, peerbuf, sizeof(peerbuf)), iface->ifname, 
+      *b->params.authname ? b->params.authname : "-");
+  }
 
     /* Delete dynamic routes */
     SLIST_FOREACH(r, &b->params.routes, next) {
@@ -984,14 +989,14 @@ IfaceIpv6IfaceDown(Bund b)
 	}
     }
 
-    if (!u_addrempty(&iface->self_ipv6_addr)) {
-	/* Remove address from interface */
-	rng.addr = iface->self_ipv6_addr;
-	rng.width = 64;
-	IfaceChangeAddr(b, 0, &rng, &iface->peer_ipv6_addr);
-    }
+  if (!u_addrempty(&iface->self_ipv6_addr)) {
+    /* Remove address from interface */
+    rng.addr = iface->self_ipv6_addr;
+    rng.width = 64;
+    IfaceChangeAddr(b, 0, &rng, &iface->peer_ipv6_addr);
+  }
 
-    IfaceNgIpv6Shutdown(b);
+  IfaceNgIpv6Shutdown(b);
 }
 
 /*
@@ -1016,7 +1021,8 @@ IfaceIdleTimeout(void *arg)
   } else {		/* no demand traffic for a whole idle timeout period? */
     for (k = 0; k < IFACE_IDLE_SPLIT && !iface->traffic[k]; k++);
     if (k == IFACE_IDLE_SPLIT) {
-      Log(LG_BUND, ("[%s] IFACE: Idle timeout", b->name));
+      Log(LG_BUND, ("[%s] idle timeout",
+	b->name));
       RecordLinkUpDownReason(b, NULL, 0, STR_IDLE_TIMEOUT, NULL);
       BundClose(b);
       return;
@@ -1043,7 +1049,7 @@ IfaceSessionTimeout(void *arg)
 {
     Bund b = (Bund)arg;
 
-  Log(LG_BUND, ("[%s] IFACE: Session timeout", b->name));
+  Log(LG_BUND, ("[%s] session timeout ", b->name));
 
   RecordLinkUpDownReason(b, NULL, 0, STR_SESSION_TIMEOUT, NULL);
 
@@ -1061,21 +1067,27 @@ IfaceSessionTimeout(void *arg)
 static void
 IfaceCachePkt(Bund b, int proto, Mbuf pkt)
 {
-    IfaceState	const iface = &b->iface;
+  IfaceState	const iface = &b->iface;
+  Mbuf		new;
+  int		len;
 
-    /* Only cache network layer data */
-    if (!PROT_NETWORK_DATA(proto)) {
-	mbfree(pkt);
-	return;
-    }
+  /* Only cache network layer data */
+  if (!PROT_NETWORK_DATA(proto)) {
+    PFREE(pkt);
+    return;
+  }
 
-    /* Release previously cached packet, if any, and save this one */
-    if (iface->dodCache.pkt)
-	mbfree(iface->dodCache.pkt);
+  /* Release previously cached packet, if any, and save this one */
+  if (iface->dodCache.pkt)
+    PFREE(iface->dodCache.pkt);
 
-    iface->dodCache.pkt = pkt;
-    iface->dodCache.proto = proto;
-    iface->dodCache.ts = time(NULL);
+  /* Make an own permanent pkt copy */
+  new = mballoc(pkt->type, len = plength(pkt));
+  assert(mbread(pkt, MBDATA(new), len, NULL) == NULL);
+
+  iface->dodCache.pkt = new;
+  iface->dodCache.proto = proto;
+  iface->dodCache.ts = time(NULL);
 }
 
 /*
@@ -1087,26 +1099,27 @@ IfaceCachePkt(Bund b, int proto, Mbuf pkt)
 static void
 IfaceCacheSend(Bund b)
 {
-    IfaceState	const iface = &b->iface;
+  IfaceState	const iface = &b->iface;
 
-    if (iface->dodCache.pkt) {
-	if (iface->dodCache.ts + MAX_DOD_CACHE_DELAY < time(NULL))
-    	    mbfree(iface->dodCache.pkt);
-	else {
-    	    if (NgFuncWritePppFrame(b, NG_PPP_BUNDLE_LINKNUM,
-		    iface->dodCache.proto, iface->dodCache.pkt) < 0) {
-		Log(LG_ERR, ("[%s] can't write cached pkt: %s",
-	    	    b->name, strerror(errno)));
-    	    }
-	}
-	iface->dodCache.pkt = NULL;
+  if (iface->dodCache.pkt) {
+    if (iface->dodCache.ts + MAX_DOD_CACHE_DELAY < time(NULL))
+      PFREE(iface->dodCache.pkt);
+    else {
+      if (NgFuncWritePppFrame(b, NG_PPP_BUNDLE_LINKNUM,
+	  iface->dodCache.proto, iface->dodCache.pkt) < 0) {
+	Log(LG_ERR, ("[%s] can't write cached pkt: %s",
+	  b->name, strerror(errno)));
+      }
     }
+    iface->dodCache.pkt = NULL;
+  }
 }
 
 /*
  * IfaceIsDemand()
  *
  * Determine if this outgoing packet qualifies for dial-on-demand
+ * Packet must be contiguous
  */
 
 static int
@@ -1115,24 +1128,17 @@ IfaceIsDemand(int proto, Mbuf pkt)
   switch (proto) {
     case PROTO_IP:
       {
-        struct ip	*ip;
+	u_char	buf[256];
+	struct ip       *const ip = (struct ip *)(&buf);
 
-        if (MBLEN(pkt) < sizeof(struct ip))
-	    return (0);
-
-	ip = (struct ip *)MBDATA(pkt);
+	mbcopy(pkt, buf, sizeof(buf));
 	switch (ip->ip_p) {
 	  case IPPROTO_IGMP:		/* No multicast stuff */
 	    return(0);
-#if (!defined(__FreeBSD__) || __FreeBSD_version >= 600025)
 	  case IPPROTO_ICMP:
 	    {
-	      struct icmphdr	*icmp;
-	      
-    	      if (MBLEN(pkt) < (ip->ip_hl * 4 + sizeof(struct icmphdr)))
-		return (0);
-
-	      icmp = (struct icmphdr *) ((u_int32_t *) ip + ip->ip_hl);
+	      struct icmp	*const icmp =
+		(struct icmp *) ((u_int32_t *) ip + ip->ip_hl);
 
 	      switch (icmp->icmp_type)	/* No ICMP replies */
 	      {
@@ -1145,15 +1151,10 @@ IfaceIsDemand(int proto, Mbuf pkt)
 	      }
 	    }
 	    break;
-#endif
 	  case IPPROTO_UDP:
 	    {
-	      struct udphdr	*udp;
-
-    	      if (MBLEN(pkt) < (ip->ip_hl * 4 + sizeof(struct udphdr)))
-		return (0);
-
-	      udp = (struct udphdr *) ((u_int32_t *) ip + ip->ip_hl);
+	      struct udphdr	*const udp =
+		(struct udphdr *) ((u_int32_t *) ip + ip->ip_hl);
 
 #define NTP_PORT	123
 	      if (ntohs(udp->uh_dport) == NTP_PORT)	/* No NTP packets */
@@ -1162,12 +1163,8 @@ IfaceIsDemand(int proto, Mbuf pkt)
 	    break;
 	  case IPPROTO_TCP:
 	    {
-	      struct tcphdr	*tcp;
-
-    	      if (MBLEN(pkt) < (ip->ip_hl * 4 + sizeof(struct tcphdr)))
-		return (0);
-
-	      tcp = (struct tcphdr *) ((u_int32_t *) ip + ip->ip_hl);
+	      struct tcphdr	*const tcp =
+		(struct tcphdr *) ((u_int32_t *) ip + ip->ip_hl);
 
 	      if (tcp->th_flags & TH_RST)	/* No TCP reset packets */
 		return(0);
@@ -1210,21 +1207,18 @@ IfaceSetCommand(Context ctx, int ac, char *av[], void *arg)
 	/* Parse */
 	if (ac != 2)
 	  return(-1);
-	if (!ParseRange(av[0], &self_addr, ALLOW_IPV4|ALLOW_IPV6))
-	  Error("Bad IP address \"%s\"", av[0]);
-	if (!ParseAddr(av[1], &peer_addr, ALLOW_IPV4|ALLOW_IPV6))
-	  Error("Bad IP address \"%s\"", av[1]);
-	if (self_addr.addr.family != peer_addr.family)
-	  Error("Addresses must be from the same protocol family");
+	if (!ParseRange(av[0], &self_addr, ALLOW_IPV4)) {
+	  Log(LG_ERR, ("[%s] IFACE: Bad IP address \"%s\"", ctx->bund->name, av[0]));
+	  return(-1);
+	}
+	if (!ParseAddr(av[1], &peer_addr, ALLOW_IPV4)) {
+	  Log(LG_ERR, ("[%s] IFACE: Bad IP address \"%s\"", ctx->bund->name, av[1]));
+	  return(-1);
+	}
 
 	/* OK */
-	if (peer_addr.family == AF_INET) {
-	    iface->self_addr = self_addr;
-	    iface->peer_addr = peer_addr;
-	} else {
-	    iface->self_ipv6_addr = self_addr.addr;
-	    iface->peer_ipv6_addr = peer_addr;
-	}
+	iface->self_addr = self_addr;
+	iface->peer_addr = peer_addr;
       }
       break;
 
@@ -1242,8 +1236,10 @@ IfaceSetCommand(Context ctx, int ac, char *av[], void *arg)
 	  u_rangeclear(&range);
 	  range.addr.family=AF_INET;
 	}
-	else if (!ParseRange(av[0], &range, ALLOW_IPV4|ALLOW_IPV6))
-	  Error("Bad route dest address \"%s\"", av[0]);
+	else if (!ParseRange(av[0], &range, ALLOW_IPV4|ALLOW_IPV6)) {
+	  Log(LG_ERR, ("[%s] IFACE: Bad route dest address \"%s\"", ctx->bund->name, av[0]));
+	  return(-1);
+	}
 	r = Malloc(MB_IFACE, sizeof(struct ifaceroute));
 	r->dest = range;
 	r->ok = 0;
@@ -1256,8 +1252,10 @@ IfaceSetCommand(Context ctx, int ac, char *av[], void *arg)
 	int	max_mtu;
 
 	max_mtu = atoi(av[0]);
-	if (max_mtu < IFACE_MIN_MTU || max_mtu > IFACE_MAX_MTU)
-	  Error("Invalid interface mtu %d", max_mtu);
+	if (max_mtu < IFACE_MIN_MTU || max_mtu > IFACE_MAX_MTU) {
+	  Log(LG_ERR, ("[%s] IFACE: Invalid interface mtu %d", ctx->bund->name, max_mtu));
+	  return(-1);
+	}
 	iface->max_mtu = max_mtu;
       }
       break;
@@ -1268,7 +1266,8 @@ IfaceSetCommand(Context ctx, int ac, char *av[], void *arg)
 	  *iface->up_script = 0;
 	  break;
 	case 1:
-	  strlcpy(iface->up_script, av[0], sizeof(iface->up_script));
+	  snprintf(iface->up_script,
+	    sizeof(iface->up_script), "%s", av[0]);
 	  break;
 	default:
 	  return(-1);
@@ -1281,7 +1280,8 @@ IfaceSetCommand(Context ctx, int ac, char *av[], void *arg)
 	  *iface->down_script = 0;
 	  break;
 	case 1:
-	  strlcpy(iface->down_script, av[0], sizeof(iface->down_script));
+	  snprintf(iface->down_script,
+	    sizeof(iface->down_script), "%s", av[0]);
 	  break;
 	default:
 	  return(-1);
@@ -1309,102 +1309,69 @@ IfaceSetCommand(Context ctx, int ac, char *av[], void *arg)
 int
 IfaceStat(Context ctx, int ac, char *av[], void *arg)
 {
-    Bund	const b = ctx->bund;
-    IfaceState	const iface = &b->iface;
-    IfaceRoute	r;
-    int		k;
-    char	buf[64];
-    struct acl	*a;
+  IfaceState	const iface = &ctx->bund->iface;
+  IfaceRoute	r;
+  int		k;
+  char          buf[64];
 
-    Printf("Interface configuration:\r\n");
-    Printf("\tName            : %s\r\n", iface->ifname);
-    Printf("\tMaximum MTU     : %d bytes\r\n", iface->max_mtu);
-    Printf("\tIdle timeout    : %d seconds\r\n", iface->idle_timeout);
-    Printf("\tSession timeout : %d seconds\r\n", iface->session_timeout);
-    Printf("\tEvent scripts\r\n");
-    Printf("\t  up-script     : \"%s\"\r\n",
-	*iface->up_script ? iface->up_script : "<none>");
-    Printf("\t  down-script   : \"%s\"\r\n",
-	*iface->down_script ? iface->down_script : "<none>");
-    Printf("Interface options:\r\n");
-    OptStat(ctx, &iface->options, gConfList);
-    if (!SLIST_EMPTY(&iface->routes)) {
-	Printf("Static routes via peer:\r\n");
-	SLIST_FOREACH(r, &iface->routes, next) {
-	    Printf("\t%s\r\n", u_rangetoa(&r->dest,buf,sizeof(buf)));
-	}
+  Printf("Interface configuration:\r\n");
+  Printf("\tName            : %s\r\n", iface->ifname);
+  Printf("\tMaximum MTU     : %d bytes\r\n", iface->max_mtu);
+  Printf("\tIdle timeout    : %d seconds\r\n", iface->idle_timeout);
+  Printf("\tSession timeout : %d seconds\r\n", iface->session_timeout);
+  Printf("\tEvent scripts\r\n");
+  Printf("\t  up-script     : \"%s\"\r\n",
+    *iface->up_script ? iface->up_script : "<none>");
+  Printf("\t  down-script   : \"%s\"\r\n",
+    *iface->down_script ? iface->down_script : "<none>");
+  Printf("Interface options:\r\n");
+  OptStat(ctx, &iface->options, gConfList);
+  if (!SLIST_EMPTY(&iface->routes)) {
+    Printf("Static routes via peer:\r\n");
+    SLIST_FOREACH(r, &iface->routes, next) {
+	Printf("\t%s\r\n", u_rangetoa(&r->dest,buf,sizeof(buf)));
     }
-    Printf("Interface status:\r\n");
-    Printf("\tAdmin status    : %s\r\n", iface->open ? "OPEN" : "CLOSED");
-    Printf("\tStatus          : %s\r\n", iface->up ? (iface->dod?"DoD":"UP") : "DOWN");
-    if (iface->up) {
-	Printf("\tSession time    : %ld seconds\r\n", (long int)(time(NULL) - iface->last_up));
-	if (b->params.idle_timeout || iface->idle_timeout)
-	    Printf("\tIdle timeout    : %d seconds\r\n", b->params.idle_timeout?b->params.idle_timeout:iface->idle_timeout);
-	if (b->params.session_timeout || iface->session_timeout)
-	    Printf("\tSession timeout : %d seconds\r\n", b->params.session_timeout?b->params.session_timeout:iface->session_timeout);
-	Printf("\tMTU             : %d bytes\r\n", iface->mtu);
+  }
+  Printf("Interface status:\r\n");
+  Printf("\tAdmin status    : %s\r\n", iface->open ? "OPEN" : "CLOSED");
+  Printf("\tStatus          : %s\r\n", iface->up ? "UP" : "DOWN");
+  if (iface->up)
+    Printf("\tMTU             : %d bytes\r\n", iface->mtu);
+  if (iface->ip_up && !u_rangeempty(&iface->self_addr)) {
+    Printf("\tIP Addresses    : %s -> ", u_rangetoa(&iface->self_addr,buf,sizeof(buf)));
+    Printf("%s\r\n", u_addrtoa(&iface->peer_addr,buf,sizeof(buf)));
+  }
+  if (iface->ipv6_up && !u_addrempty(&iface->self_ipv6_addr)) {
+    Printf("\tIPv6 Addresses  : %s%%%s -> ", 
+	u_addrtoa(&iface->self_ipv6_addr,buf,sizeof(buf)), iface->ifname);
+    Printf("%s%%%s\r\n", u_addrtoa(&iface->peer_ipv6_addr,buf,sizeof(buf)), iface->ifname);
+  }
+  if (iface->up && !SLIST_EMPTY(&ctx->bund->params.routes)) {
+    Printf("Dynamic routes via peer:\r\n");
+    SLIST_FOREACH(r, &ctx->bund->params.routes, next) {
+	Printf("\t%s\r\n", u_rangetoa(&r->dest,buf,sizeof(buf)));
     }
-    if (iface->ip_up && !u_rangeempty(&iface->self_addr)) {
-	Printf("\tIP Addresses    : %s -> ", u_rangetoa(&iface->self_addr,buf,sizeof(buf)));
-	Printf("%s\r\n", u_addrtoa(&iface->peer_addr,buf,sizeof(buf)));
-    }
-    if (iface->ipv6_up && !u_addrempty(&iface->self_ipv6_addr)) {
-	Printf("\tIPv6 Addresses  : %s%%%s -> ", 
-	    u_addrtoa(&iface->self_ipv6_addr,buf,sizeof(buf)), iface->ifname);
-	Printf("%s%%%s\r\n", u_addrtoa(&iface->peer_ipv6_addr,buf,sizeof(buf)), iface->ifname);
-    }
-    if (iface->up) {
-        Printf("Dynamic routes via peer:\r\n");
-	SLIST_FOREACH(r, &ctx->bund->params.routes, next) {
-	    Printf("\t%s\r\n", u_rangetoa(&r->dest,buf,sizeof(buf)));
-	}
-	Printf("IPFW pipes:\r\n");
-	a = ctx->bund->params.acl_pipe;
+  }
+  if (iface->up && (ctx->bund->params.acl_limits[0] || ctx->bund->params.acl_limits[1])) {
+    struct acl	*a;
+    Printf("Traffic filters:\r\n");
+    for (k = 0; k < ACL_FILTERS; k++) {
+	a = ctx->bund->params.acl_filters[k];
 	while (a) {
-	    Printf("\t%d (%d)\t: '%s'\r\n", a->number, a->real_number, a->rule);
+	    Printf("\t%d#%d\t: '%s'\r\n", (k + 1), a->number, a->rule);
 	    a = a->next;
 	}
-	Printf("IPFW queues:\r\n");
-	a = ctx->bund->params.acl_queue;
+    }
+    Printf("Traffic limits:\r\n");
+    for (k = 0; k < 2; k++) {
+	a = ctx->bund->params.acl_limits[k];
 	while (a) {
-	    Printf("\t%d (%d)\t: '%s'\r\n", a->number, a->real_number, a->rule);
+	    Printf("\t%s#%d\t: '%s'\r\n", (k?"out":"in"), a->number, a->rule);
 	    a = a->next;
-	}
-	Printf("IPFW tables:\r\n");
-	a = ctx->bund->params.acl_table;
-	while (a) {
-	    if (a->number != 0)
-		Printf("\t%d (%d)\t: '%s'\r\n", a->number, a->real_number, a->rule);
-	    else
-		Printf("\t(%d)\t: '%s'\r\n", a->real_number, a->rule);
-	    a = a->next;
-	}
-	Printf("IPFW rules:\r\n");
-	a = ctx->bund->params.acl_rule;
-	while (a) {
-	    Printf("\t%d (%d)\t: '%s'\r\n", a->number, a->real_number, a->rule);
-	    a = a->next;
-	}
-	Printf("Traffic filters:\r\n");
-	for (k = 0; k < ACL_FILTERS; k++) {
-	    a = ctx->bund->params.acl_filters[k];
-	    while (a) {
-		Printf("\t%d#%d\t: '%s'\r\n", (k + 1), a->number, a->rule);
-		a = a->next;
-	    }
-	}
-	Printf("Traffic limits:\r\n");
-	for (k = 0; k < 2; k++) {
-	    a = ctx->bund->params.acl_limits[k];
-	    while (a) {
-		Printf("\t%s#%d%s%s\t: '%s'\r\n", (k?"out":"in"), a->number,
-		    ((a->name[0])?"#":""), a->name, a->rule);
-		a = a->next;
-	    }
 	}
     }
-    return(0);
+  }
+  return(0);
 }
 
 /*
@@ -1429,7 +1396,7 @@ IfaceSetMTU(Bund b, int mtu)
     if ((b->params.mtu > 0) && (mtu > b->params.mtu)) {
 	mtu = b->params.mtu;
 	Log(LG_IFACE2, ("[%s] IFACE: forcing MTU of auth backend: %d bytes",
-	    b->name, mtu));
+    	    b->name, mtu));
     }
 
     /* Limit MTU to configured maximum */
@@ -1438,7 +1405,7 @@ IfaceSetMTU(Bund b, int mtu)
 
     /* Set MTU on interface */
     memset(&ifr, 0, sizeof(ifr));
-    strlcpy(ifr.ifr_name, b->iface.ifname, sizeof(ifr.ifr_name));
+    strncpy(ifr.ifr_name, b->iface.ifname, sizeof(ifr.ifr_name));
     ifr.ifr_mtu = mtu;
     Log(LG_IFACE2, ("[%s] IFACE: setting %s MTU to %d bytes",
 	b->name, b->iface.ifname, mtu));
@@ -1452,7 +1419,6 @@ IfaceSetMTU(Bund b, int mtu)
     /* Update tcpmssfix config */
     if (iface->mss_up)
         IfaceSetupMSS(b, MAXMSS(mtu));
-
 }
 
 void
@@ -1470,7 +1436,7 @@ IfaceChangeFlags(Bund b, int clear, int set)
     }
 
     memset(&ifrq, '\0', sizeof(ifrq));
-    strlcpy(ifrq.ifr_name, b->iface.ifname, sizeof(ifrq.ifr_name));
+    strncpy(ifrq.ifr_name, b->iface.ifname, sizeof(ifrq.ifr_name) - 1);
     ifrq.ifr_name[sizeof(ifrq.ifr_name) - 1] = '\0';
     if (ioctl(s, SIOCGIFFLAGS, &ifrq) < 0) {
 	Perror("[%s] IFACE: ioctl(%s, %s)", b->name, b->iface.ifname, "SIOCGIFFLAGS");
@@ -1539,7 +1505,7 @@ IfaceChangeAddr(Bund b, int add, struct u_range *self, struct u_addr *peer)
     switch (self->addr.family) {
       case AF_INET:
 	memset(&ifra, '\0', sizeof(ifra));
-	strlcpy(ifra.ifra_name, b->iface.ifname, sizeof(ifra.ifra_name));
+	strncpy(ifra.ifra_name, b->iface.ifname, sizeof(ifra.ifra_name) - 1);
 
 	me4 = (struct sockaddr_in *)&ifra.ifra_addr;
 	memcpy(me4, &ssself, sizeof(*me4));
@@ -1564,7 +1530,7 @@ IfaceChangeAddr(Bund b, int add, struct u_range *self, struct u_addr *peer)
 
       case AF_INET6:
 	memset(&ifra6, '\0', sizeof(ifra6));
-	strlcpy(ifra6.ifra_name, b->iface.ifname, sizeof(ifra6.ifra_name));
+	strncpy(ifra6.ifra_name, b->iface.ifname, sizeof(ifra6.ifra_name) - 1);
 
 	memcpy(&ifra6.ifra_addr, &ssself, sizeof(ifra6.ifra_addr));
 	memcpy(&ifra6.ifra_prefixmask, &ssmsk, sizeof(ifra6.ifra_prefixmask));
@@ -1689,7 +1655,7 @@ IfaceCorrectMSS(Mbuf pkt, uint16_t maxmss)
 
   iphdr = (struct ip *)MBDATAU(pkt);
   hlen = iphdr->ip_hl << 2;
-  pktlen = MBLEN(pkt) - hlen;
+  pktlen = plength(pkt) - hlen;
   tc = (struct tcphdr *)(MBDATAU(pkt) + hlen);
   hlen = tc->th_off << 2;
 
@@ -1731,18 +1697,18 @@ static int
 IfaceNgIpInit(Bund b, int ready)
 {
     struct ngm_connect	cn;
-    char		path[NG_PATHSIZ];
-    char		hook[NG_HOOKSIZ];
+    char		path[NG_PATHLEN + 1];
+    char		hook[NG_HOOKLEN + 1];
 
     if (!ready) {
 	/* Dial-on-Demand mode */
 	/* Use demand hook of the socket node */
 	snprintf(path, sizeof(path), ".:");
-	snprintf(hook, sizeof(hook), "4-%d", b->id);
+	strcpy(hook, MPD_HOOK_DEMAND_TAP);
 
     } else {
 
-	snprintf(path, sizeof(path), "[%x]:", b->nodeID);
+	snprintf(path, sizeof(path), "%s", MPD_HOOK_PPP);
 	strcpy(hook, NG_PPP_HOOK_INET);
 
 #ifdef USE_NG_NAT
@@ -1756,7 +1722,7 @@ IfaceNgIpInit(Bund b, int ready)
 
 	/* Add a tee node if configured */
 	if (Enabled(&b->iface.options, IFACE_CONF_TEE)) {
-	    if (IfaceInitTee(b, path, hook, 0))
+	    if (IfaceInitTee(b, path, hook))
 		goto fail;
 	    b->iface.tee_up = 1;
 	}
@@ -1799,8 +1765,8 @@ IfaceNgIpInit(Bund b, int ready)
     /* Connect graph to the iface node. */
     strcpy(cn.ourhook, hook);
     snprintf(cn.path, sizeof(cn.path), "%s:", b->iface.ifname);
-    strcpy(cn.peerhook, NG_IFACE_HOOK_INET);
-    if (NgSendMsg(gLinksCsock, path,
+    snprintf(cn.peerhook, sizeof(cn.peerhook), "%s", NG_IFACE_HOOK_INET);
+    if (NgSendMsg(b->csock, path,
     	    NGM_GENERIC_COOKIE, NGM_CONNECT, &cn, sizeof(cn)) < 0) {
 	Log(LG_ERR, ("[%s] can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
     	    b->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
@@ -1836,7 +1802,7 @@ fail:
 static void
 IfaceNgIpShutdown(Bund b)
 {
-    char		path[NG_PATHSIZ];
+    char		path[NG_PATHLEN + 1];
 
 #ifdef USE_NG_NAT
     if (b->iface.nat_up)
@@ -1844,7 +1810,7 @@ IfaceNgIpShutdown(Bund b)
     b->iface.nat_up = 0;
 #endif
     if (b->iface.tee_up)
-	IfaceShutdownTee(b, 0);
+	IfaceShutdownTee(b);
     b->iface.tee_up = 0;
 #ifdef USE_NG_NETFLOW
     if (b->iface.nfin_up)
@@ -1864,47 +1830,31 @@ IfaceNgIpShutdown(Bund b)
     b->iface.mss_up = 0;
 
     IfaceShutdownLimits(b);
-    snprintf(path, sizeof(path), "[%x]:", b->nodeID);
-    NgFuncDisconnect(gLinksCsock, b->name, path, NG_PPP_HOOK_INET);
+    NgFuncDisconnect(b->csock, b->name, MPD_HOOK_PPP, NG_PPP_HOOK_INET);
 
     snprintf(path, sizeof(path), "%s:", b->iface.ifname);
-    NgFuncDisconnect(gLinksCsock, b->name, path, NG_IFACE_HOOK_INET);
+    NgFuncDisconnect(b->csock, b->name, path, NG_IFACE_HOOK_INET);
 }
 
 static int
 IfaceNgIpv6Init(Bund b, int ready)
 {
     struct ngm_connect	cn;
-    char		path[NG_PATHSIZ];
-    char		hook[NG_HOOKSIZ];
+    char		path[NG_PATHLEN + 1];
 
     if (!ready) {
-	/* Dial-on-Demand mode */
-	/* Use demand hook of the socket node */
-	snprintf(path, sizeof(path), ".:");
-	snprintf(hook, sizeof(hook), "6-%d", b->id);
     } else {
-	snprintf(path, sizeof(path), "[%x]:", b->nodeID);
-	strcpy(hook, NG_PPP_HOOK_IPV6);
-
-	/* Add a tee node if configured */
-	if (Enabled(&b->iface.options, IFACE_CONF_TEE)) {
-	    if (IfaceInitTee(b, path, hook, 1))
-		goto fail;
-	    b->iface.tee6_up = 1;
+	/* Connect ipv6 hook of ng_ppp(4) node to the ng_iface(4) node. */
+	snprintf(path, sizeof(path), "%s", MPD_HOOK_PPP);
+	snprintf(cn.ourhook, sizeof(cn.ourhook), "%s", NG_PPP_HOOK_IPV6);
+	snprintf(cn.path, sizeof(cn.path), "%s:", b->iface.ifname);
+	snprintf(cn.peerhook, sizeof(cn.peerhook), "%s", NG_IFACE_HOOK_INET6);
+	if (NgSendMsg(b->csock, path, NGM_GENERIC_COOKIE, NGM_CONNECT, &cn,
+		sizeof(cn)) < 0) {
+    	    Log(LG_ERR, ("[%s] can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s", 
+    		b->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
+    	    goto fail;
 	}
-  
-    }
-
-    /* Connect graph to the iface node. */
-    strcpy(cn.ourhook, hook);
-    snprintf(cn.path, sizeof(cn.path), "%s:", b->iface.ifname);
-    strcpy(cn.peerhook, NG_IFACE_HOOK_INET6);
-    if (NgSendMsg(gLinksCsock, path,
-    	    NGM_GENERIC_COOKIE, NGM_CONNECT, &cn, sizeof(cn)) < 0) {
-	Log(LG_ERR, ("[%s] can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
-    	    b->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
-	goto fail;
     }
 
     /* OK */
@@ -1921,17 +1871,12 @@ fail:
 static void
 IfaceNgIpv6Shutdown(Bund b)
 {
-    char		path[NG_PATHSIZ];
+    char		path[NG_PATHLEN + 1];
 
-    if (b->iface.tee6_up)
-	IfaceShutdownTee(b, 1);
-    b->iface.tee6_up = 0;
-
-    snprintf(path, sizeof(path), "[%x]:", b->nodeID);
-    NgFuncDisconnect(gLinksCsock, b->name, path, NG_PPP_HOOK_IPV6);
+    NgFuncDisconnect(b->csock, b->name, MPD_HOOK_PPP, NG_PPP_HOOK_IPV6);
 
     snprintf(path, sizeof(path), "%s:", b->iface.ifname);
-    NgFuncDisconnect(gLinksCsock, b->name, path, NG_IFACE_HOOK_INET6);
+    NgFuncDisconnect(b->csock, b->name, path, NG_IFACE_HOOK_INET6);
 }
 
 #ifdef USE_NG_NAT
@@ -1947,19 +1892,19 @@ IfaceInitNAT(Bund b, char *path, char *hook)
 #endif  
     Log(LG_IFACE2, ("[%s] IFACE: Connecting NAT", b->name));
   
-    strcpy(mp.type, NG_NAT_NODE_TYPE);
+    snprintf(mp.type, sizeof(mp.type), "%s", NG_NAT_NODE_TYPE);
     strcpy(mp.ourhook, hook);
     strcpy(mp.peerhook, NG_NAT_HOOK_IN);
-    if (NgSendMsg(gLinksCsock, path,
+    if (NgSendMsg(b->csock, path,
 	NGM_GENERIC_COOKIE, NGM_MKPEER, &mp, sizeof(mp)) < 0) {
       Log(LG_ERR, ("[%s] can't create %s node at \"%s\"->\"%s\": %s",
 	b->name, NG_NAT_NODE_TYPE, path, mp.ourhook, strerror(errno)));
       return(-1);
     }
-    strlcat(path, ".", NG_PATHSIZ);
-    strlcat(path, hook, NG_PATHSIZ);
+    strlcat(path, ".", NG_PATHLEN);
+    strlcat(path, hook, NG_PATHLEN);
     snprintf(nm.name, sizeof(nm.name), "mpd%d-%s-nat", gPid, b->name);
-    if (NgSendMsg(gLinksCsock, path,
+    if (NgSendMsg(b->csock, path,
 	NGM_GENERIC_COOKIE, NGM_NAME, &nm, sizeof(nm)) < 0) {
       Log(LG_ERR, ("[%s] can't name %s node: %s",
 	b->name, NG_NAT_NODE_TYPE, strerror(errno)));
@@ -1973,7 +1918,7 @@ IfaceInitNAT(Bund b, char *path, char *hook)
     } else {
 	ip = nat->alias_addr.u.ip4;
     }
-    if (NgSendMsg(gLinksCsock, path,
+    if (NgSendMsg(b->csock, path,
 	    NGM_NAT_COOKIE, NGM_NAT_SET_IPADDR, &ip, sizeof(ip)) < 0) {
 	Log(LG_ERR, ("[%s] can't set NAT ip: %s",
     	    b->name, strerror(errno)));
@@ -1993,7 +1938,7 @@ IfaceInitNAT(Bund b, char *path, char *hook)
     
     mode.mask = NG_NAT_LOG | NG_NAT_DENY_INCOMING | 
 	NG_NAT_SAME_PORTS | NG_NAT_UNREGISTERED_ONLY;
-    if (NgSendMsg(gLinksCsock, path,
+    if (NgSendMsg(b->csock, path,
 	    NGM_NAT_COOKIE, NGM_NAT_SET_MODE, &mode, sizeof(mode)) < 0) {
 	Log(LG_ERR, ("[%s] can't set NAT mode: %s",
     	    b->name, strerror(errno)));
@@ -2002,7 +1947,7 @@ IfaceInitNAT(Bund b, char *path, char *hook)
     /* Set NAT target IP */
     if (!u_addrempty(&nat->target_addr)) {
 	ip = nat->target_addr.u.ip4;
-	if (NgSendMsg(gLinksCsock, path,
+	if (NgSendMsg(b->csock, path,
 		NGM_NAT_COOKIE, NGM_NAT_SET_IPADDR, &ip, sizeof(ip)) < 0) {
 	    Log(LG_ERR, ("[%s] can't set NAT target IP: %s",
     		b->name, strerror(errno)));
@@ -2017,11 +1962,11 @@ static int
 IfaceSetupNAT(Bund b)
 {
     NatState	const nat = &b->iface.nat;
-    char	path[NG_PATHSIZ];
+    char	path[NG_PATHLEN+1];
 
     if (u_addrempty(&nat->alias_addr)) {
 	snprintf(path, sizeof(path), "mpd%d-%s-nat:", gPid, b->name);
-	if (NgSendMsg(gLinksCsock, path,
+	if (NgSendMsg(b->csock, path,
     		NGM_NAT_COOKIE, NGM_NAT_SET_IPADDR,
 		&b->iface.self_addr.addr.u.ip4,
 		sizeof(b->iface.self_addr.addr.u.ip4)) < 0) {
@@ -2036,34 +1981,34 @@ IfaceSetupNAT(Bund b)
 static void
 IfaceShutdownNAT(Bund b)
 {
-    char	path[NG_PATHSIZ];
+    char	path[NG_PATHLEN+1];
 
     snprintf(path, sizeof(path), "mpd%d-%s-nat:", gPid, b->name);
-    NgFuncShutdownNode(gLinksCsock, b->name, path);
+    NgFuncShutdownNode(b->csock, b->name, path);
 }
 #endif
 
 static int
-IfaceInitTee(Bund b, char *path, char *hook, int v6)
+IfaceInitTee(Bund b, char *path, char *hook)
 {
     struct ngm_mkpeer	mp;
     struct ngm_name	nm;
 
-    Log(LG_IFACE2, ("[%s] IFACE: Connecting tee%s", b->name, v6?"6":""));
+    Log(LG_IFACE2, ("[%s] IFACE: Connecting tee", b->name));
   
-    strcpy(mp.type, NG_TEE_NODE_TYPE);
+    snprintf(mp.type, sizeof(mp.type), "%s", NG_TEE_NODE_TYPE);
     strcpy(mp.ourhook, hook);
     strcpy(mp.peerhook, NG_TEE_HOOK_RIGHT);
-    if (NgSendMsg(gLinksCsock, path,
+    if (NgSendMsg(b->csock, path,
 	NGM_GENERIC_COOKIE, NGM_MKPEER, &mp, sizeof(mp)) < 0) {
       Log(LG_ERR, ("[%s] can't create %s node at \"%s\"->\"%s\": %s",
 	b->name, NG_TEE_NODE_TYPE, path, mp.ourhook, strerror(errno)));
       return(-1);
     }
-    strlcat(path, ".", NG_PATHSIZ);
-    strlcat(path, hook, NG_PATHSIZ);
-    snprintf(nm.name, sizeof(nm.name), "%s-tee%s", b->iface.ifname, v6?"6":"");
-    if (NgSendMsg(gLinksCsock, path,
+    strlcat(path, ".", NG_PATHLEN);
+    strlcat(path, hook, NG_PATHLEN);
+    snprintf(nm.name, sizeof(nm.name), "%s-tee", b->iface.ifname);
+    if (NgSendMsg(b->csock, path,
 	NGM_GENERIC_COOKIE, NGM_NAME, &nm, sizeof(nm)) < 0) {
       Log(LG_ERR, ("[%s] can't name %s node: %s",
 	b->name, NG_TEE_NODE_TYPE, strerror(errno)));
@@ -2075,12 +2020,12 @@ IfaceInitTee(Bund b, char *path, char *hook, int v6)
 }
 
 static void
-IfaceShutdownTee(Bund b, int v6)
+IfaceShutdownTee(Bund b)
 {
-    char	path[NG_PATHSIZ];
+    char	path[NG_PATHLEN+1];
 
-    snprintf(path, sizeof(path), "%s-tee%s:", b->iface.ifname, v6?"6":"");
-    NgFuncShutdownNode(gLinksCsock, b->name, path);
+    snprintf(path, sizeof(path), "%s-tee:", b->iface.ifname);
+    NgFuncShutdownNode(b->csock, b->name, path);
 }
 
 #ifdef USE_NG_IPACCT
@@ -2090,7 +2035,7 @@ IfaceInitIpacct(Bund b, char *path, char *hook)
     struct ngm_mkpeer	mp;
     struct ngm_name	nm;
     struct ngm_connect  cn;
-    char		path1[NG_PATHSIZ];
+    char		path1[NG_PATHLEN+1];
     struct {
 	struct ng_ipacct_mesg m;
 	int		data;
@@ -2098,19 +2043,19 @@ IfaceInitIpacct(Bund b, char *path, char *hook)
 
     Log(LG_IFACE2, ("[%s] IFACE: Connecting ipacct", b->name));
   
-    strcpy(mp.type, NG_TEE_NODE_TYPE);
+    snprintf(mp.type, sizeof(mp.type), "%s", NG_TEE_NODE_TYPE);
     strcpy(mp.ourhook, hook);
     strcpy(mp.peerhook, NG_TEE_HOOK_RIGHT);
-    if (NgSendMsg(gLinksCsock, path,
+    if (NgSendMsg(b->csock, path,
 	NGM_GENERIC_COOKIE, NGM_MKPEER, &mp, sizeof(mp)) < 0) {
       Log(LG_ERR, ("[%s] can't create %s node at \"%s\"->\"%s\": %s",
 	b->name, NG_TEE_NODE_TYPE, path, mp.ourhook, strerror(errno)));
       return(-1);
     }
-    strlcat(path, ".", NG_PATHSIZ);
-    strlcat(path, hook, NG_PATHSIZ);
+    strlcat(path, ".", NG_PATHLEN);
+    strlcat(path, hook, NG_PATHLEN);
     snprintf(nm.name, sizeof(nm.name), "%s_acct_tee", b->iface.ifname);
-    if (NgSendMsg(gLinksCsock, path,
+    if (NgSendMsg(b->csock, path,
 	NGM_GENERIC_COOKIE, NGM_NAME, &nm, sizeof(nm)) < 0) {
       Log(LG_ERR, ("[%s] can't name %s node: %s",
 	b->name, NG_TEE_NODE_TYPE, strerror(errno)));
@@ -2118,10 +2063,10 @@ IfaceInitIpacct(Bund b, char *path, char *hook)
     }
     strcpy(hook, NG_TEE_HOOK_LEFT);
 
-    strcpy(mp.type, NG_IPACCT_NODE_TYPE);
+    snprintf(mp.type, sizeof(mp.type), "%s", NG_IPACCT_NODE_TYPE);
     strcpy(mp.ourhook, NG_TEE_HOOK_RIGHT2LEFT);
     snprintf(mp.peerhook, sizeof(mp.peerhook), "%s_in", b->iface.ifname);
-    if (NgSendMsg(gLinksCsock, path,
+    if (NgSendMsg(b->csock, path,
 	NGM_GENERIC_COOKIE, NGM_MKPEER, &mp, sizeof(mp)) < 0) {
       Log(LG_ERR, ("[%s] can't create %s node at \"%s\"->\"%s\": %s",
 	b->name, NG_IPACCT_NODE_TYPE, path, mp.ourhook, strerror(errno)));
@@ -2129,7 +2074,7 @@ IfaceInitIpacct(Bund b, char *path, char *hook)
     }
     snprintf(path1, sizeof(path1), "%s.%s", path, NG_TEE_HOOK_RIGHT2LEFT);
     snprintf(nm.name, sizeof(nm.name), "%s_ip_acct", b->iface.ifname);
-    if (NgSendMsg(gLinksCsock, path1,
+    if (NgSendMsg(b->csock, path1,
 	NGM_GENERIC_COOKIE, NGM_NAME, &nm, sizeof(nm)) < 0) {
       Log(LG_ERR, ("[%s] can't name %s node: %s",
 	b->name, NG_IPACCT_NODE_TYPE, strerror(errno)));
@@ -2138,7 +2083,7 @@ IfaceInitIpacct(Bund b, char *path, char *hook)
     strcpy(cn.ourhook, NG_TEE_HOOK_LEFT2RIGHT);
     strcpy(cn.path, NG_TEE_HOOK_RIGHT2LEFT);
     snprintf(cn.peerhook, sizeof(cn.peerhook), "%s_out", b->iface.ifname);
-    if (NgSendMsg(gLinksCsock, path, NGM_GENERIC_COOKIE, NGM_CONNECT, &cn,
+    if (NgSendMsg(b->csock, path, NGM_GENERIC_COOKIE, NGM_CONNECT, &cn,
 	sizeof(cn)) < 0) {
       Log(LG_ERR, ("[%s] can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s", 
         b->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
@@ -2147,14 +2092,14 @@ IfaceInitIpacct(Bund b, char *path, char *hook)
     
     snprintf(ipam.m.hname, sizeof(ipam.m.hname), "%s_in", b->iface.ifname);
     ipam.data = DLT_RAW;
-    if (NgSendMsg(gLinksCsock, path1, NGM_IPACCT_COOKIE, NGM_IPACCT_SETDLT, 
+    if (NgSendMsg(b->csock, path1, NGM_IPACCT_COOKIE, NGM_IPACCT_SETDLT, 
 	&ipam, sizeof(ipam)) < 0) {
       Log(LG_ERR, ("[%s] can't set DLT \"%s\"->\"%s\": %s", 
         b->name, path, ipam.m.hname, strerror(errno)));
       return (-1);
     }
     ipam.data = 10000;
-    if (NgSendMsg(gLinksCsock, path1, NGM_IPACCT_COOKIE, NGM_IPACCT_STHRS, 
+    if (NgSendMsg(b->csock, path1, NGM_IPACCT_COOKIE, NGM_IPACCT_STHRS, 
 	&ipam, sizeof(ipam)) < 0) {
       Log(LG_ERR, ("[%s] can't set DLT \"%s\"->\"%s\": %s", 
         b->name, path, ipam.m.hname, strerror(errno)));
@@ -2163,14 +2108,14 @@ IfaceInitIpacct(Bund b, char *path, char *hook)
     
     snprintf(ipam.m.hname, sizeof(ipam.m.hname), "%s_out", b->iface.ifname);
     ipam.data = DLT_RAW;
-    if (NgSendMsg(gLinksCsock, path1, NGM_IPACCT_COOKIE, NGM_IPACCT_SETDLT, 
+    if (NgSendMsg(b->csock, path1, NGM_IPACCT_COOKIE, NGM_IPACCT_SETDLT, 
 	&ipam, sizeof(ipam)) < 0) {
       Log(LG_ERR, ("[%s] can't set DLT \"%s\"->\"%s\": %s", 
         b->name, path, ipam.m.hname, strerror(errno)));
       return (-1);
     }
     ipam.data = 10000;
-    if (NgSendMsg(gLinksCsock, path1, NGM_IPACCT_COOKIE, NGM_IPACCT_STHRS, 
+    if (NgSendMsg(b->csock, path1, NGM_IPACCT_COOKIE, NGM_IPACCT_STHRS, 
 	&ipam, sizeof(ipam)) < 0) {
       Log(LG_ERR, ("[%s] can't set DLT \"%s\"->\"%s\": %s", 
         b->name, path, ipam.m.hname, strerror(errno)));
@@ -2183,10 +2128,10 @@ IfaceInitIpacct(Bund b, char *path, char *hook)
 static void
 IfaceShutdownIpacct(Bund b)
 {
-    char	path[NG_PATHSIZ];
+    char	path[NG_PATHLEN+1];
 
     snprintf(path, sizeof(path), "%s_acct_tee:", b->iface.ifname);
-    NgFuncShutdownNode(gLinksCsock, b->name, path);
+    NgFuncShutdownNode(b->csock, b->name, path);
 }
 #endif
 
@@ -2200,7 +2145,7 @@ IfaceInitNetflow(Bund b, char *path, char *hook, char out)
   
     /* Create global ng_netflow(4) node if not yet. */
     if (gNetflowNode == FALSE) {
-	if (NgFuncInitGlobalNetflow())
+	if (NgFuncInitGlobalNetflow(b))
 	    return(-1);
     }
 
@@ -2214,19 +2159,19 @@ IfaceInitNetflow(Bund b, char *path, char *hook, char out)
 	snprintf(cn.peerhook, sizeof(cn.peerhook), "%s%d", NG_NETFLOW_HOOK_DATA,
 	    gNetflowIface + b->id*2 + out);
     }
-    if (NgSendMsg(gLinksCsock, path, NGM_GENERIC_COOKIE, NGM_CONNECT, &cn,
+    if (NgSendMsg(b->csock, path, NGM_GENERIC_COOKIE, NGM_CONNECT, &cn,
 	sizeof(cn)) < 0) {
       Log(LG_ERR, ("[%s] can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s", 
         b->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
       return (-1);
     }
-    strlcat(path, ".", NG_PATHSIZ);
-    strlcat(path, hook, NG_PATHSIZ);
+    strlcat(path, ".", NG_PATHLEN);
+    strlcat(path, hook, NG_PATHLEN);
     if (out) {
-	snprintf(hook, NG_HOOKSIZ, "%s%d", NG_NETFLOW_HOOK_DATA,
+	snprintf(hook, NG_HOOKLEN, "%s%d", NG_NETFLOW_HOOK_DATA,
 	    gNetflowIface + b->id*2 + out);
     } else {
-	snprintf(hook, NG_HOOKSIZ, "%s%d", NG_NETFLOW_HOOK_OUT,
+	snprintf(hook, NG_HOOKLEN, "%s%d", NG_NETFLOW_HOOK_OUT,
 	    gNetflowIface + b->id*2 + out);
     }
     return (0);
@@ -2235,7 +2180,7 @@ IfaceInitNetflow(Bund b, char *path, char *hook, char out)
 static int
 IfaceSetupNetflow(Bund b, char out)
 {
-    char path[NG_PATHSIZ];
+    char path[NG_PATHLEN + 1];
     struct ng_netflow_setdlt	 nf_setdlt;
     struct ng_netflow_setifindex nf_setidx;
     
@@ -2243,7 +2188,7 @@ IfaceSetupNetflow(Bund b, char out)
     snprintf(path, sizeof(path), "%s:", gNetflowNodeName);
     nf_setdlt.iface = gNetflowIface + b->id*2 + out;
     nf_setdlt.dlt = DLT_RAW;
-    if (NgSendMsg(gLinksCsock, path, NGM_NETFLOW_COOKIE, NGM_NETFLOW_SETDLT,
+    if (NgSendMsg(b->csock, path, NGM_NETFLOW_COOKIE, NGM_NETFLOW_SETDLT,
 	&nf_setdlt, sizeof(nf_setdlt)) < 0) {
       Log(LG_ERR, ("[%s] can't configure data link type on %s: %s", b->name,
 	path, strerror(errno)));
@@ -2252,7 +2197,7 @@ IfaceSetupNetflow(Bund b, char out)
     if (!out) {
 	nf_setidx.iface = gNetflowIface + b->id*2 + out;
 	nf_setidx.index = if_nametoindex(b->iface.ifname);
-	if (NgSendMsg(gLinksCsock, path, NGM_NETFLOW_COOKIE, NGM_NETFLOW_SETIFINDEX,
+	if (NgSendMsg(b->csock, path, NGM_NETFLOW_COOKIE, NGM_NETFLOW_SETIFINDEX,
 	    &nf_setidx, sizeof(nf_setidx)) < 0) {
     	  Log(LG_ERR, ("[%s] can't configure interface index on %s: %s", b->name,
 	    path, strerror(errno)));
@@ -2268,16 +2213,16 @@ fail:
 static void
 IfaceShutdownNetflow(Bund b, char out)
 {
-    char	path[NG_PATHSIZ];
-    char	hook[NG_HOOKSIZ];
+    char	path[NG_PATHLEN+1];
+    char	hook[NG_HOOKLEN+1];
 
-    snprintf(path, NG_PATHSIZ, "%s:", gNetflowNodeName);
-    snprintf(hook, NG_HOOKSIZ, "%s%d", NG_NETFLOW_HOOK_DATA,
+    snprintf(path, NG_PATHLEN, "%s:", gNetflowNodeName);
+    snprintf(hook, NG_HOOKLEN, "%s%d", NG_NETFLOW_HOOK_DATA,
 	    gNetflowIface + b->id*2 + out);
-    NgFuncDisconnect(gLinksCsock, b->name, path, hook);
-    snprintf(hook, NG_HOOKSIZ, "%s%d", NG_NETFLOW_HOOK_OUT,
+    NgFuncDisconnect(b->csock, b->name, path, hook);
+    snprintf(hook, NG_HOOKLEN, "%s%d", NG_NETFLOW_HOOK_OUT,
 	    gNetflowIface + b->id*2 + out);
-    NgFuncDisconnect(gLinksCsock, b->name, path, hook);
+    NgFuncDisconnect(b->csock, b->name, path, hook);
 }
 #endif
 
@@ -2285,7 +2230,9 @@ static int
 IfaceInitMSS(Bund b, char *path, char *hook)
 {
 	struct ngm_mkpeer	mp;
+#if NG_NODESIZ>=32
 	struct ngm_name		nm;
+#endif
 #ifndef USE_NG_TCPMSS
 	struct ngm_connect	cn;
 #endif
@@ -2294,23 +2241,23 @@ IfaceInitMSS(Bund b, char *path, char *hook)
   
 #ifdef USE_NG_TCPMSS
 	/* Create ng_tcpmss(4) node. */
-	strcpy(mp.type, NG_TCPMSS_NODE_TYPE);
-	strlcpy(mp.ourhook, hook, sizeof(mp.ourhook));
-	strcpy(mp.peerhook, "in");
-	if (NgSendMsg(gLinksCsock, path,
+	snprintf(mp.type, sizeof(mp.type), "%s", NG_TCPMSS_NODE_TYPE);
+	snprintf(mp.ourhook, sizeof(mp.ourhook), "%s", hook);
+	snprintf(mp.peerhook, sizeof(mp.peerhook), "in");
+	if (NgSendMsg(b->csock, path,
     		NGM_GENERIC_COOKIE, NGM_MKPEER, &mp, sizeof(mp)) < 0) {
     	    Log(LG_ERR, ("can't create %s node at \"%s\"->\"%s\": %s", 
     		NG_TCPMSS_NODE_TYPE, path, mp.ourhook, strerror(errno)));
 	    goto fail;
 	}
 
-	strlcat(path, ".", NG_PATHSIZ);
-	strlcat(path, hook, NG_PATHSIZ);
-	snprintf(hook, NG_HOOKSIZ, "out");
+	strlcat(path, ".", NG_PATHLEN);
+	strlcat(path, hook, NG_PATHLEN);
+	snprintf(hook, NG_HOOKLEN, "out");
 
 	/* Set the new node's name. */
 	snprintf(nm.name, sizeof(nm.name), "mpd%d-%s-mss", gPid, b->name);
-	if (NgSendMsg(gLinksCsock, path,
+	if (NgSendMsg(b->csock, path,
     		NGM_GENERIC_COOKIE, NGM_NAME, &nm, sizeof(nm)) < 0) {
     	    Log(LG_ERR, ("can't name %s node: %s", NG_TCPMSS_NODE_TYPE,
     		strerror(errno)));
@@ -2319,44 +2266,46 @@ IfaceInitMSS(Bund b, char *path, char *hook)
 
 #else
     /* Create a bpf node for SYN detection. */
-    strcpy(mp.type, NG_BPF_NODE_TYPE);
-    strlcpy(mp.ourhook, hook, sizeof(mp.ourhook));
-    strcpy(mp.peerhook, "ppp");
-    if (NgSendMsg(gLinksCsock, path,
+    snprintf(mp.type, sizeof(mp.type), "%s", NG_BPF_NODE_TYPE);
+    snprintf(mp.ourhook, sizeof(mp.ourhook), "%s", hook);
+    snprintf(mp.peerhook, sizeof(mp.peerhook), "ppp");
+    if (NgSendMsg(b->csock, path,
 	    NGM_GENERIC_COOKIE, NGM_MKPEER, &mp, sizeof(mp)) < 0) {
     	Log(LG_ERR, ("can't create %s node at \"%s\"->\"%s\": %s", 
     	    NG_BPF_NODE_TYPE, path, mp.ourhook, strerror(errno)));
 	goto fail;
     }
 
-    strlcat(path, ".", NG_PATHSIZ);
-    strlcat(path, hook, NG_PATHSIZ);
+    strlcat(path, ".", NG_PATHLEN);
+    strlcat(path, hook, NG_PATHLEN);
     strcpy(hook, "iface");
 
+#if NG_NODESIZ>=32
     /* Set the new node's name. */
     snprintf(nm.name, sizeof(nm.name), "mpd%d-%s-mss", gPid, b->name);
-    if (NgSendMsg(gLinksCsock, path,
+    if (NgSendMsg(b->csock, path,
 	    NGM_GENERIC_COOKIE, NGM_NAME, &nm, sizeof(nm)) < 0) {
     	Log(LG_ERR, ("can't name tcpmssfix %s node: %s", NG_BPF_NODE_TYPE,
     	    strerror(errno)));
 	goto fail;
     }
+#endif
 
     /* Connect to the bundle socket node. */
-    strlcpy(cn.path, path, sizeof(cn.path));
-    snprintf(cn.ourhook, sizeof(cn.ourhook), "i-%d", b->id);
-    strcpy(cn.peerhook, MPD_HOOK_TCPMSS_IN);
-    if (NgSendMsg(gLinksCsock, ".:", NGM_GENERIC_COOKIE, NGM_CONNECT, &cn,
+    snprintf(cn.path, sizeof(cn.path), "%s", path);
+    snprintf(cn.ourhook, sizeof(cn.ourhook), "%s", MPD_HOOK_TCPMSS_IN);
+    snprintf(cn.peerhook, sizeof(cn.peerhook), "%s", MPD_HOOK_TCPMSS_IN);
+    if (NgSendMsg(b->csock, ".:", NGM_GENERIC_COOKIE, NGM_CONNECT, &cn,
     	    sizeof(cn)) < 0) {
     	Log(LG_ERR, ("[%s] can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s", 
     	    b->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
     	goto fail;
     }
 
-    strlcpy(cn.path, path, sizeof(cn.path));
-    snprintf(cn.ourhook, sizeof(cn.ourhook), "o-%d", b->id);
-    strcpy(cn.peerhook, MPD_HOOK_TCPMSS_OUT);
-    if (NgSendMsg(gLinksCsock, ".:", NGM_GENERIC_COOKIE, NGM_CONNECT, &cn,
+    snprintf(cn.path, sizeof(cn.path), "%s", path);
+    snprintf(cn.ourhook, sizeof(cn.ourhook), "%s", MPD_HOOK_TCPMSS_OUT);
+    snprintf(cn.peerhook, sizeof(cn.peerhook), "%s", MPD_HOOK_TCPMSS_OUT);
+    if (NgSendMsg(b->csock, ".:", NGM_GENERIC_COOKIE, NGM_CONNECT, &cn,
     	    sizeof(cn)) < 0) {
     	Log(LG_ERR, ("[%s] can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s", 
     	    b->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
@@ -2380,7 +2329,7 @@ IfaceSetupMSS(Bund b, uint16_t maxMSS)
 {
 #ifdef USE_NG_TCPMSS
   struct	ng_tcpmss_config tcpmsscfg;
-  char		path[NG_PATHSIZ];
+  char		path[NG_PATHLEN];
 
   snprintf(path, sizeof(path), "mpd%d-%s-mss:", gPid, b->name);
 
@@ -2390,14 +2339,14 @@ IfaceSetupMSS(Bund b, uint16_t maxMSS)
 
   snprintf(tcpmsscfg.inHook, sizeof(tcpmsscfg.inHook), "in");
   snprintf(tcpmsscfg.outHook, sizeof(tcpmsscfg.outHook), "out");
-  if (NgSendMsg(gLinksCsock, path, NGM_TCPMSS_COOKIE, NGM_TCPMSS_CONFIG,
+  if (NgSendMsg(b->csock, path, NGM_TCPMSS_COOKIE, NGM_TCPMSS_CONFIG,
       &tcpmsscfg, sizeof(tcpmsscfg)) < 0) {
     Log(LG_ERR, ("[%s] can't configure %s node program: %s", b->name,
       NG_TCPMSS_NODE_TYPE, strerror(errno)));
   }
   snprintf(tcpmsscfg.inHook, sizeof(tcpmsscfg.inHook), "out");
   snprintf(tcpmsscfg.outHook, sizeof(tcpmsscfg.outHook), "in");
-  if (NgSendMsg(gLinksCsock, path, NGM_TCPMSS_COOKIE, NGM_TCPMSS_CONFIG,
+  if (NgSendMsg(b->csock, path, NGM_TCPMSS_COOKIE, NGM_TCPMSS_CONFIG,
       &tcpmsscfg, sizeof(tcpmsscfg)) < 0) {
     Log(LG_ERR, ("[%s] can't configure %s node program: %s", b->name,
       NG_TCPMSS_NODE_TYPE, strerror(errno)));
@@ -2408,11 +2357,8 @@ IfaceSetupMSS(Bund b, uint16_t maxMSS)
 	struct ng_bpf_hookprog	hprog;
     }				u;
     struct ng_bpf_hookprog	*const hp = &u.hprog;
-    char			hook[NG_HOOKSIZ];
 
     /* Setup programs for ng_bpf hooks */
-    snprintf(hook, sizeof(hook), "i-%d", b->id);
-
     memset(&u, 0, sizeof(u));
     strcpy(hp->thisHook, "ppp");
     hp->bpf_prog_len = TCPSYN_PROG_LEN;
@@ -2421,7 +2367,21 @@ IfaceSetupMSS(Bund b, uint16_t maxMSS)
     strcpy(hp->ifMatch, MPD_HOOK_TCPMSS_IN);
     strcpy(hp->ifNotMatch, "iface");
 
-    if (NgSendMsg(gLinksCsock, hook, NGM_BPF_COOKIE,
+    if (NgSendMsg(b->csock, MPD_HOOK_TCPMSS_IN, NGM_BPF_COOKIE,
+	    NGM_BPF_SET_PROGRAM, hp, NG_BPF_HOOKPROG_SIZE(hp->bpf_prog_len)) < 0) {
+	Log(LG_ERR, ("[%s] can't set %s node program: %s",
+    	    b->name, NG_BPF_NODE_TYPE, strerror(errno)));
+    }
+
+    memset(&u, 0, sizeof(u));
+    strcpy(hp->thisHook, "iface");
+    hp->bpf_prog_len = TCPSYN_PROG_LEN;
+    memcpy(&hp->bpf_prog, &gTCPSYNProg,
+        TCPSYN_PROG_LEN * sizeof(*gTCPSYNProg));
+    strcpy(hp->ifMatch, MPD_HOOK_TCPMSS_OUT);
+    strcpy(hp->ifNotMatch, "ppp");
+
+    if (NgSendMsg(b->csock, MPD_HOOK_TCPMSS_OUT, NGM_BPF_COOKIE,
 	    NGM_BPF_SET_PROGRAM, hp, NG_BPF_HOOKPROG_SIZE(hp->bpf_prog_len)) < 0) {
 	Log(LG_ERR, ("[%s] can't set %s node program: %s",
     	    b->name, NG_BPF_NODE_TYPE, strerror(errno)));
@@ -2435,22 +2395,7 @@ IfaceSetupMSS(Bund b, uint16_t maxMSS)
     strcpy(hp->ifMatch, "ppp");
     strcpy(hp->ifNotMatch, "ppp");
 
-    if (NgSendMsg(gLinksCsock, hook, NGM_BPF_COOKIE,
-	    NGM_BPF_SET_PROGRAM, hp, NG_BPF_HOOKPROG_SIZE(hp->bpf_prog_len)) < 0) {
-	Log(LG_ERR, ("[%s] can't set %s node program: %s",
-    	    b->name, NG_BPF_NODE_TYPE, strerror(errno)));
-    }
-
-    snprintf(hook, sizeof(hook), "o-%d", b->id);
-    memset(&u, 0, sizeof(u));
-    strcpy(hp->thisHook, "iface");
-    hp->bpf_prog_len = TCPSYN_PROG_LEN;
-    memcpy(&hp->bpf_prog, &gTCPSYNProg,
-        TCPSYN_PROG_LEN * sizeof(*gTCPSYNProg));
-    strcpy(hp->ifMatch, MPD_HOOK_TCPMSS_OUT);
-    strcpy(hp->ifNotMatch, "ppp");
-
-    if (NgSendMsg(gLinksCsock, hook, NGM_BPF_COOKIE,
+    if (NgSendMsg(b->csock, MPD_HOOK_TCPMSS_IN, NGM_BPF_COOKIE,
 	    NGM_BPF_SET_PROGRAM, hp, NG_BPF_HOOKPROG_SIZE(hp->bpf_prog_len)) < 0) {
 	Log(LG_ERR, ("[%s] can't set %s node program: %s",
     	    b->name, NG_BPF_NODE_TYPE, strerror(errno)));
@@ -2464,7 +2409,7 @@ IfaceSetupMSS(Bund b, uint16_t maxMSS)
     strcpy(hp->ifMatch, "iface");
     strcpy(hp->ifNotMatch, "iface");
 
-    if (NgSendMsg(gLinksCsock, hook, NGM_BPF_COOKIE,
+    if (NgSendMsg(b->csock, MPD_HOOK_TCPMSS_OUT, NGM_BPF_COOKIE,
 	    NGM_BPF_SET_PROGRAM, hp, NG_BPF_HOOKPROG_SIZE(hp->bpf_prog_len)) < 0) {
 	Log(LG_ERR, ("[%s] can't set %s node program: %s",
     	    b->name, NG_BPF_NODE_TYPE, strerror(errno)));
@@ -2476,14 +2421,13 @@ IfaceSetupMSS(Bund b, uint16_t maxMSS)
 static void
 IfaceShutdownMSS(Bund b)
 {
-	char	path[NG_PATHSIZ];
-
 #ifdef USE_NG_TCPMSS
+	char	path[NG_PATHLEN+1];
+
 	snprintf(path, sizeof(path), "mpd%d-%s-mss:", gPid, b->name);
-	NgFuncShutdownNode(gLinksCsock, b->name, path);
+	NgFuncShutdownNode(b->csock, b->name, path);
 #else
-	snprintf(path, sizeof(path), "i-%d", b->id);
-	NgFuncShutdownNode(gLinksCsock, b->name, path);
+	NgFuncShutdownNode(b->csock, b->name, MPD_HOOK_TCPMSS_IN);
 #endif
 }
 
@@ -2491,41 +2435,39 @@ static int
 IfaceInitLimits(Bund b, char *path, char *hook)
 {
     struct ngm_mkpeer	mp;
+#if NG_NODESIZ>=32
     struct ngm_name	nm;
+#endif
 
     if (b->params.acl_limits[0] || b->params.acl_limits[1]) {
 
 	Log(LG_IFACE2, ("[%s] IFACE: Connecting limits", b->name));
   
 	/* Create a bpf node for traffic filtering. */
-	strcpy(mp.type, NG_BPF_NODE_TYPE);
-	strlcpy(mp.ourhook, hook, sizeof(mp.ourhook));
-	strcpy(mp.peerhook, "ppp");
-	if (NgSendMsg(gLinksCsock, path,
+	snprintf(mp.type, sizeof(mp.type), "%s", NG_BPF_NODE_TYPE);
+	snprintf(mp.ourhook, sizeof(mp.ourhook), "%s", hook);
+	snprintf(mp.peerhook, sizeof(mp.peerhook), "ppp");
+	if (NgSendMsg(b->csock, path,
 		NGM_GENERIC_COOKIE, NGM_MKPEER, &mp, sizeof(mp)) < 0) {
     	    Log(LG_ERR, ("can't create %s node at \"%s\"->\"%s\": %s", 
     		NG_BPF_NODE_TYPE, path, mp.ourhook, strerror(errno)));
 	    goto fail;
 	}
 
-	strlcat(path, ".", NG_PATHSIZ);
-	strlcat(path, hook, NG_PATHSIZ);
+	strlcat(path, ".", NG_PATHLEN);
+	strlcat(path, hook, NG_PATHLEN);
 	strcpy(hook, "iface");
 
-	b->iface.limitID = NgGetNodeID(gLinksCsock, path);
-	if (b->iface.limitID == 0) {
-    	    Log(LG_ERR, ("can't get limits %s node ID: %s", NG_BPF_NODE_TYPE,
-    		strerror(errno)));
-	}
-
+#if NG_NODESIZ>=32
 	/* Set the new node's name. */
 	snprintf(nm.name, sizeof(nm.name), "mpd%d-%s-lim", gPid, b->name);
-	if (NgSendMsg(gLinksCsock, path,
+	if (NgSendMsg(b->csock, path,
 		NGM_GENERIC_COOKIE, NGM_NAME, &nm, sizeof(nm)) < 0) {
     	    Log(LG_ERR, ("can't name limits %s node: %s", NG_BPF_NODE_TYPE,
     		strerror(errno)));
 	    goto fail;
 	}
+#endif
 
     }
 
@@ -2547,355 +2489,288 @@ IfaceSetupLimits(Bund b)
     union {
 	u_char			buf[NG_BPF_HOOKPROG_SIZE(ACL_MAX_PROGLEN)];
 	struct ng_bpf_hookprog	hprog;
-    }				hpu;
-    struct ng_bpf_hookprog	*const hp = &hpu.hprog;
+    }				u;
+    struct ng_bpf_hookprog	*const hp = &u.hprog;
+    
     struct ngm_connect  cn;
-    int			i;
+    
+    char		path[NG_PATHLEN + 1];
+    char		inhook[2][NG_HOOKLEN+1];
+    char		inhookn[2][NG_HOOKLEN+1];
+    char		outhook[NG_HOOKLEN+1];
+    struct acl		*l;
+    char		str[ACL_LEN];
+#define	ACL_MAX_PARAMS	5
+    int			ac;
+    char		*av[ACL_MAX_PARAMS];
+    int			num, dir;
+    int			i, p;
 
     if (b->params.acl_limits[0] || b->params.acl_limits[1]) {
-	char		path[NG_PATHSIZ];
-	int		num, dir;
 
 	snprintf(path, sizeof(path), "mpd%d-%s-lim:", gPid, b->name);
 	
 	for (dir = 0; dir < 2; dir++) {
-	    char	inhook[2][NG_HOOKSIZ];
-	    char	inhookn[2][NG_HOOKSIZ];
-	    char	outhook[NG_HOOKSIZ];
-	    struct acl	*l;
-
 	    if (dir == 0) {
 		strcpy(inhook[0], "ppp");
+		strcpy(inhook[1], "");
 		strcpy(outhook, "iface");
 	    } else {
 		strcpy(inhook[0], "iface");
+		strcpy(inhook[1], "");
 		strcpy(outhook, "ppp");
 	    }
-	    strcpy(inhook[1], "");
 	    num = 0;
-	    for (l = b->params.acl_limits[dir]; l; l = l->next) {
-	        char		str[ACL_LEN];
-#define	ACL_MAX_PARAMS	7	/* one more then max number of arguments */
-	        int		ac;
-	        char		*av[ACL_MAX_PARAMS];
-		int		p;
-		char		stathook[NG_HOOKSIZ];
-		struct svcs	*ss = NULL;
-		struct svcssrc	*sss = NULL;
-
-		Log(LG_IFACE2, ("[%s] IFACE: limit %s#%d%s%s: '%s'",
-        	    b->name, (dir?"out":"in"), l->number,
-		    ((l->name[0])?"#":""), l->name, l->rule));
-		strlcpy(str, l->rule, sizeof(str));
+	    l = b->params.acl_limits[dir];
+	
+	    while (l) {
+		Log(LG_IFACE2, ("[%s] IFACE: limit %s#%d: '%s'",
+        	    b->name, (dir?"out":"in"), l->number, l->rule));
+		strncpy(str, l->rule, sizeof(str));
     		ac = ParseLine(str, av, ACL_MAX_PARAMS, 0);
-	        if (ac < 1 || ac >= ACL_MAX_PARAMS) {
-		    Log(LG_ERR, ("[%s] IFACE: incorrect limit: '%s'",
-    			b->name, l->rule));
-		    continue;
-		}
+	        if (ac >= 2) {
+	    	    memset(&u, 0, sizeof(u));
+		    if (l->next) {
+			sprintf(hp->ifNotMatch, "%d-%d-n", dir, num);
+		        sprintf(inhookn[1], "%d-%d-ni", dir, num);
+
+		        /* Connect bpf to itself. */
+			strcpy(cn.ourhook, hp->ifNotMatch);
+		        strcpy(cn.path, path);
+		        strcpy(cn.peerhook, inhookn[1]);
+			if (NgSendMsg(b->csock, path,
+		    	        NGM_GENERIC_COOKIE, NGM_CONNECT, &cn, sizeof(cn)) < 0) {
+			    Log(LG_ERR, ("[%s] IFACE: can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
+		    		b->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
+			}
+		    } else {
+			strcpy(hp->ifNotMatch, outhook);
+			strcpy(inhookn[1], "");
+		    }
 		
-		stathook[0] = 0;
-	    	memset(&hpu, 0, sizeof(hpu));
-		/* Prepare filter */
-		if (strcasecmp(av[0], "all") == 0) {
-		    hp->bpf_prog_len = MATCH_PROG_LEN;
-		    memcpy(&hp->bpf_prog, &gMatchProg,
-    		        MATCH_PROG_LEN * sizeof(*gMatchProg));
-		} else if (strncasecmp(av[0], "flt", 3) == 0) {
-		    int		flt;
+		    if (strcasecmp(av[0], "all") == 0) {
+			hp->bpf_prog_len = MATCH_PROG_LEN;
+			memcpy(&hp->bpf_prog, &gMatchProg,
+    			    MATCH_PROG_LEN * sizeof(*gMatchProg));
+		    } else if (strncasecmp(av[0], "flt", 3) == 0) {
+			int	flt;
 		    
-		    flt = atoi(av[0] + 3);
-		    if (flt <= 0 || flt > ACL_FILTERS || b->params.acl_filters[flt - 1] == NULL) {
+			flt = atoi(av[0] + 3);
+		        if (flt <= 0 || flt > ACL_FILTERS || b->params.acl_filters[flt - 1] == NULL) {
+		    	    Log(LG_ERR, ("[%s] IFACE: incorrect filter: '%s'",
+    				b->name, av[0]));
+			} else {
+			    struct bpf_program pr;
+		    	    char	buf[16384], sbuf[256];
+		    	    int		bufbraces;
+		    	    struct acl	*f;
+			    
+			    buf[0] = 0;
+			    bufbraces = 0;
+			    f = b->params.acl_filters[flt - 1];
+			    while (f) {
+				char	*b1, *b2;
+				strlcpy(sbuf, f->rule, sizeof(sbuf));
+				b2 = sbuf;
+				b1 = strsep(&b2, " ");
+				if (b2 != NULL) {
+				    if (strcasecmp(b1, "match") == 0) {
+					strncat(buf, "( ", sizeof(buf));
+					strncat(buf, b2, sizeof(buf));
+				        strncat(buf, " ) ", sizeof(buf));
+				        if (f->next) {
+					    strncat(buf, "|| ( ", sizeof(buf));
+					    bufbraces++;
+					}
+				    } else if (strcasecmp(b1, "nomatch") == 0) {
+					strncat(buf, "( not ( ", sizeof(buf));
+					strncat(buf, b2, sizeof(buf));
+					strncat(buf, " ) ) ", sizeof(buf));
+					if (f->next) {
+					    strncat(buf, "&& ( ", sizeof(buf));
+					    bufbraces++;
+					}
+				    } else {
+					Log(LG_ERR, ("[%s] IFACE: filter action '%s' is unknown",
+        				    b->name, b1));
+				    }
+				};
+				f = f->next;
+			    }
+			    for (i = 0; i < bufbraces; i++)
+				strncat(buf, ") ", sizeof(buf));
+			    Log(LG_IFACE2, ("[%s] IFACE: flt%d: '%s'",
+        			b->name, flt, buf));
+				
+			    if (pcap_compile_nopcap((u_int)-1, DLT_RAW, &pr, buf, 1, 0xffffff00)) {
+				Log(LG_ERR, ("[%s] IFACE: filter '%s' compilation error",
+    				    b->name, av[0]));
+			    } else if (pr.bf_len > ACL_MAX_PROGLEN) {
+				Log(LG_ERR, ("[%s] IFACE: filter '%s' is too long",
+        			    b->name, av[0]));
+				pcap_freecode(&pr);
+			    } else {
+				hp->bpf_prog_len = pr.bf_len;
+				memcpy(&hp->bpf_prog, pr.bf_insns,
+    				    pr.bf_len * sizeof(struct bpf_insn));
+				pcap_freecode(&pr);
+			    }
+			}
+		    } else {
 			Log(LG_ERR, ("[%s] IFACE: incorrect filter: '%s'",
     			    b->name, av[0]));
-		    } else {
-			struct bpf_program pr;
-		    	char		buf[16384], sbuf[256];
-		    	int		bufbraces;
-		    	struct acl	*f;
-			    
-			buf[0] = 0;
-			bufbraces = 0;
-			f = b->params.acl_filters[flt - 1];
-			while (f) {
-			    char	*b1, *b2;
-			    strlcpy(sbuf, f->rule, sizeof(sbuf));
-			    b2 = sbuf;
-			    b1 = strsep(&b2, " ");
-			    if (b2 != NULL) {
-			        if (strcasecmp(b1, "match") == 0) {
-			    	    strlcat(buf, "( ", sizeof(buf));
-				    strlcat(buf, b2, sizeof(buf));
-				    strlcat(buf, " ) ", sizeof(buf));
-				    if (f->next) {
-				        strlcat(buf, "|| ( ", sizeof(buf));
-				        bufbraces++;
-				    }
-				} else if (strcasecmp(b1, "nomatch") == 0) {
-				    strlcat(buf, "( not ( ", sizeof(buf));
-				    strlcat(buf, b2, sizeof(buf));
-				    strlcat(buf, " ) ) ", sizeof(buf));
-				    if (f->next) {
-				        strlcat(buf, "&& ( ", sizeof(buf));
-				        bufbraces++;
-				    }
-				} else {
-			    	    Log(LG_ERR, ("[%s] IFACE: filter action '%s' is unknown",
-        		    		b->name, b1));
-				}
-			    };
-			    f = f->next;
-			}
-			for (i = 0; i < bufbraces; i++)
-			    strlcat(buf, ") ", sizeof(buf));
-			Log(LG_IFACE2, ("[%s] IFACE: flt%d: '%s'",
-        		    b->name, flt, buf));
-				
-			if (pcap_compile_nopcap((u_int)-1, DLT_RAW, &pr, buf, 1, 0xffffff00)) {
-			    Log(LG_ERR, ("[%s] IFACE: filter '%s' compilation error",
-    			        b->name, av[0]));
-			    /* Incorrect matches nothing. */
-			    hp->bpf_prog_len = NOMATCH_PROG_LEN;
-			    memcpy(&hp->bpf_prog, &gNoMatchProg,
-    		    		NOMATCH_PROG_LEN * sizeof(*gNoMatchProg));
-			} else if (pr.bf_len > ACL_MAX_PROGLEN) {
-			    Log(LG_ERR, ("[%s] IFACE: filter '%s' is too long",
-        		        b->name, av[0]));
-			    pcap_freecode(&pr);
-			    /* Incorrect matches nothing. */
-			    hp->bpf_prog_len = NOMATCH_PROG_LEN;
-			    memcpy(&hp->bpf_prog, &gNoMatchProg,
-    		    		NOMATCH_PROG_LEN * sizeof(*gNoMatchProg));
-			} else {
-			    hp->bpf_prog_len = pr.bf_len;
-			    memcpy(&hp->bpf_prog, pr.bf_insns,
-    			        pr.bf_len * sizeof(struct bpf_insn));
-			    pcap_freecode(&pr);
-			}
+			hp->bpf_prog_len = NOMATCH_PROG_LEN;
+			memcpy(&hp->bpf_prog, &gNoMatchProg,
+    			    NOMATCH_PROG_LEN * sizeof(*gNoMatchProg));
 		    }
-		} else {
-		    Log(LG_ERR, ("[%s] IFACE: incorrect filter: '%s'",
-    		        b->name, av[0]));
-		    /* Incorrect matches nothing. */
-		    hp->bpf_prog_len = NOMATCH_PROG_LEN;
-		    memcpy(&hp->bpf_prog, &gNoMatchProg,
-    		        NOMATCH_PROG_LEN * sizeof(*gNoMatchProg));
-		}
 		
-		/* Prepare action */
-		p = 1;
-		if (ac == 1) {
-		    if (!l->next) {
+		    p = 1;
+		    if (strcasecmp(av[p], "pass") == 0) {
 			strcpy(hp->ifMatch, outhook);
 			strcpy(inhookn[0], "");
-		    } else {
-			sprintf(hp->ifMatch, "%d-%d-m", dir, num);
-			sprintf(inhookn[0], "%d-%d-mi", dir, num);
-
-			/* Connect nomatch hook to bpf itself. */
-			strcpy(cn.ourhook, hp->ifMatch);
-			strcpy(cn.path, path);
-			strcpy(cn.peerhook, inhookn[0]);
-			if (NgSendMsg(gLinksCsock, path,
-		        	NGM_GENERIC_COOKIE, NGM_CONNECT, &cn, sizeof(cn)) < 0) {
-		    	    Log(LG_ERR, ("[%s] IFACE: can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
-			        b->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
-			}
-			strcpy(stathook, inhookn[0]);
-		    }
-		} else if (strcasecmp(av[p], "pass") == 0) {
-		    strcpy(hp->ifMatch, outhook);
-		    strcpy(inhookn[0], "");
-		} else if (strcasecmp(av[p], "deny") == 0) {
-		    strcpy(hp->ifMatch, "deny");
-		    strcpy(inhookn[0], "");
+		    } else if (strcasecmp(av[p], "deny") == 0) {
+			strcpy(hp->ifMatch, "deny");
+			strcpy(inhookn[0], "");
 #ifdef USE_NG_CAR
-		} else if ((strcasecmp(av[p], "shape") == 0) ||
-			   (strcasecmp(av[p], "rate-limit") == 0)) {
-		    struct ngm_mkpeer 	mp;
-		    struct ng_car_bulkconf car;
-		    char		tmppath[NG_PATHSIZ];
+		    } else if ((strcasecmp(av[p], "shape") == 0) ||
+			       (strcasecmp(av[p], "rate-limit") == 0)) {
+			struct ngm_mkpeer mp;
+			struct ng_car_bulkconf car;
+			char		tmppath[NG_PATHLEN + 1];
 
-		    sprintf(hp->ifMatch, "%d-%d-m", dir, num);
+			union {
+			    u_char	buf[NG_BPF_HOOKPROG_SIZE(ACL_MAX_PROGLEN)];
+			    struct ng_bpf_hookprog	hprog;
+			} u1;
+			struct ng_bpf_hookprog	*const hp1 = &u1.hprog;
 
-		    /* Create a car node for traffic shaping. */
-		    strcpy(mp.type, NG_CAR_NODE_TYPE);
-		    snprintf(mp.ourhook, sizeof(mp.ourhook), "%d-%d-m", dir, num);
-		    strcpy(mp.peerhook, ((dir == 0)?NG_CAR_HOOK_LOWER:NG_CAR_HOOK_UPPER));
-		    if (NgSendMsg(gLinksCsock, path,
-		    	    NGM_GENERIC_COOKIE, NGM_MKPEER, &mp, sizeof(mp)) < 0) {
-		    	Log(LG_ERR, ("[%s] IFACE: can't create %s node at \"%s\"->\"%s\": %s", 
-		    	    b->name, NG_CAR_NODE_TYPE, path, mp.ourhook, strerror(errno)));
-		    }
+		        sprintf(hp->ifMatch, "%d-%d-m", dir, num);
 
-		    snprintf(tmppath, sizeof(tmppath), "%s%d-%d-m", path, dir, num);
+			snprintf(tmppath, sizeof(tmppath), "%s%d-%d-m", path, dir, num);
 
-		    /* Connect car to bpf. */
-		    snprintf(cn.ourhook, sizeof(cn.ourhook), "%d-%d-mi", dir, num);
-		    strlcpy(cn.path, tmppath, sizeof(cn.path));
-		    strcpy(cn.peerhook, ((dir == 0)?NG_CAR_HOOK_UPPER:NG_CAR_HOOK_LOWER));
-		    if (NgSendMsg(gLinksCsock, path,
-		            NGM_GENERIC_COOKIE, NGM_CONNECT, &cn, sizeof(cn)) < 0) {
-		        Log(LG_ERR, ("[%s] IFACE: can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
-			    b->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
-		    }
+			/* Create a car node for traffic shaping. */
+			snprintf(mp.type, sizeof(mp.type), "%s", NG_CAR_NODE_TYPE);
+			snprintf(mp.ourhook, sizeof(mp.ourhook), "%d-%d-m", dir, num);
+			strcpy(mp.peerhook, ((dir == 0)?NG_CAR_HOOK_LOWER:NG_CAR_HOOK_UPPER));
+			if (NgSendMsg(b->csock, path,
+				NGM_GENERIC_COOKIE, NGM_MKPEER, &mp, sizeof(mp)) < 0) {
+		    	    Log(LG_ERR, ("[%s] IFACE: can't create %s node at \"%s\"->\"%s\": %s", 
+		    		b->name, NG_CAR_NODE_TYPE, path, mp.ourhook, strerror(errno)));
+			}
+
+		        /* Connect car to bpf. */
+			snprintf(cn.ourhook, sizeof(cn.ourhook), "%d-%d-mi", dir, num);
+			snprintf(cn.path, sizeof(cn.path), "%s", tmppath);
+		        strcpy(cn.peerhook, ((dir == 0)?NG_CAR_HOOK_UPPER:NG_CAR_HOOK_LOWER));
+			if (NgSendMsg(b->csock, path,
+		    	        NGM_GENERIC_COOKIE, NGM_CONNECT, &cn, sizeof(cn)) < 0) {
+			    Log(LG_ERR, ("[%s] IFACE: can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
+		    		b->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
+			}
 			
-		    bzero(&car, sizeof(car));
+			bzero(&car, sizeof(car));
 			
-		    if (strcasecmp(av[p], "shape") == 0) {
-		        car.upstream.mode = NG_CAR_SHAPE;
-		    } else {
-		        car.upstream.mode = NG_CAR_RED;
-		    }
-		    p++;
+			if (strcasecmp(av[p], "shape") == 0) {
+			    car.upstream.mode = NG_CAR_SHAPE;
+			} else {
+			    car.upstream.mode = NG_CAR_RED;
+			}
+			p++;
 
-		    if ((ac > p) && (av[p][0] >= '0') && (av[p][0] <= '9')) {
-		        car.upstream.cir = atol(av[p]);
-		        p++;
-		        if ((ac > p) && (av[p][0] >= '0') && (av[p][0] <= '9')) {
-		    	    car.upstream.cbs = atol(av[p]);
+			if ((ac > p) && (av[p][0] >= '0') && (av[p][0] <= '9')) {
+			    car.upstream.cir = atol(av[p]);
 			    p++;
 			    if ((ac > p) && (av[p][0] >= '0') && (av[p][0] <= '9')) {
-			        car.upstream.ebs = atol(av[p]);
-			        p++;
+				car.upstream.cbs = atol(av[p]);
+				p++;
+				if ((ac > p) && (av[p][0] >= '0') && (av[p][0] <= '9')) {
+				    car.upstream.ebs = atol(av[p]);
+				    p++;
+				} else {
+				    car.upstream.ebs = car.upstream.cbs * 2;
+				}
 			    } else {
-			        car.upstream.ebs = car.upstream.cbs * 2;
+				car.upstream.cbs = car.upstream.cir / 8;
+				car.upstream.ebs = car.upstream.cbs * 2;
 			    }
 			} else {
+			    car.upstream.cir = 8000;
 			    car.upstream.cbs = car.upstream.cir / 8;
 			    car.upstream.ebs = car.upstream.cbs * 2;
 			}
-		    } else {
-		        car.upstream.cir = 8000;
-		        car.upstream.cbs = car.upstream.cir / 8;
-		        car.upstream.ebs = car.upstream.cbs * 2;
-		    }
-		    car.upstream.green_action = NG_CAR_ACTION_FORWARD;
-		    car.upstream.yellow_action = NG_CAR_ACTION_FORWARD;
-		    car.upstream.red_action = NG_CAR_ACTION_DROP;
+			car.upstream.green_action = NG_CAR_ACTION_FORWARD;
+			car.upstream.yellow_action = NG_CAR_ACTION_FORWARD;
+			car.upstream.red_action = NG_CAR_ACTION_DROP;
 			
-		    car.downstream = car.upstream;
+			car.downstream = car.upstream;
 						
-		    if (NgSendMsg(gLinksCsock, tmppath,
-		            NGM_CAR_COOKIE, NGM_CAR_SET_CONF, &car, sizeof(car)) < 0) {
-		        Log(LG_ERR, ("[%s] IFACE: can't set %s configuration: %s",
-			    b->name, NG_CAR_NODE_TYPE, strerror(errno)));
-		    }
+			if (NgSendMsg(b->csock, tmppath,
+		    	        NGM_CAR_COOKIE, NGM_CAR_SET_CONF, &car, sizeof(car)) < 0) {
+			    Log(LG_ERR, ("[%s] IFACE: can't set %s configuration: %s",
+		    		b->name, NG_CAR_NODE_TYPE, strerror(errno)));
+			}
 			
-		    if (ac > p) {
-			if (strcasecmp(av[p], "pass") == 0) {
-			    union {
-		    		u_char	buf[NG_BPF_HOOKPROG_SIZE(ACL_MAX_PROGLEN)];
-		    		struct ng_bpf_hookprog	hprog;
-			    } hpu1;
-			    struct ng_bpf_hookprog	*const hp1 = &hpu1.hprog;
+			if (ac > p) {
+			    if (strcasecmp(av[p], "pass") == 0) {
+				memset(&u1, 0, sizeof(u1));
+				strcpy(hp1->ifMatch, outhook);
+			        strcpy(hp1->ifNotMatch, outhook);
+			        hp1->bpf_prog_len = MATCH_PROG_LEN;
+			        memcpy(&hp1->bpf_prog, &gMatchProg,
+    				    MATCH_PROG_LEN * sizeof(*gMatchProg));
+		    		sprintf(hp1->thisHook, "%d-%d-mi", dir, num);
+			        if (NgSendMsg(b->csock, path, NGM_BPF_COOKIE, NGM_BPF_SET_PROGRAM,
+					hp1, NG_BPF_HOOKPROG_SIZE(hp1->bpf_prog_len)) < 0) {
+				    Log(LG_ERR, ("[%s] IFACE: can't set %s node program: %s",
+	    				b->name, NG_BPF_NODE_TYPE, strerror(errno)));
+				}
+			    			    
+				strcpy(inhookn[0], "");
+			    } else {
+				Log(LG_ERR, ("[%s] IFACE: unknown action: '%s'",
+    				    b->name, av[p]));
+				strcpy(inhookn[0], "");
+			    }
+			} else {
+		    	    sprintf(inhookn[0], "%d-%d-mi", dir, num);
+			}
+#endif /* USE_NG_CAR */
+		    } else {
+			Log(LG_ERR, ("[%s] IFACE: unknown action: '%s'",
+    			    b->name, av[1]));
+			strcpy(inhookn[0], "");
+		    }
 
-			    memset(&hpu1, 0, sizeof(hpu1));
-			    strcpy(hp1->ifMatch, outhook);
-			    strcpy(hp1->ifNotMatch, outhook);
-			    hp1->bpf_prog_len = MATCH_PROG_LEN;
-			    memcpy(&hp1->bpf_prog, &gMatchProg,
-    			        MATCH_PROG_LEN * sizeof(*gMatchProg));
-		    	    sprintf(hp1->thisHook, "%d-%d-mi", dir, num);
-			    if (NgSendMsg(gLinksCsock, path, NGM_BPF_COOKIE, NGM_BPF_SET_PROGRAM,
-			    	    hp1, NG_BPF_HOOKPROG_SIZE(hp1->bpf_prog_len)) < 0) {
+		    for (i = 0; i < 2; i++) {
+			if (inhook[i][0] != 0) {
+			    strcpy(hp->thisHook, inhook[i]);
+			    if (NgSendMsg(b->csock, path, NGM_BPF_COOKIE, NGM_BPF_SET_PROGRAM,
+				    hp, NG_BPF_HOOKPROG_SIZE(hp->bpf_prog_len)) < 0) {
 				Log(LG_ERR, ("[%s] IFACE: can't set %s node program: %s",
 	    			    b->name, NG_BPF_NODE_TYPE, strerror(errno)));
 			    }
-			    			    
-			    strcpy(stathook, hp1->thisHook);
-			    strcpy(inhookn[0], "");
-			} else {
-			    Log(LG_ERR, ("[%s] IFACE: unknown action: '%s'",
-    			        b->name, av[p]));
-			    strcpy(inhookn[0], "");
 			}
-		    } else {
-			sprintf(inhookn[0], "%d-%d-mi", dir, num);
-			strcpy(stathook, inhookn[0]);
+			strcpy(inhook[i], inhookn[i]);
 		    }
-#endif /* USE_NG_CAR */
-	        } else {
-		    Log(LG_ERR, ("[%s] IFACE: unknown action: '%s'",
-    		        b->name, av[1]));
-		    strcpy(inhookn[0], "");
-		}
-		
-		/* Prepare nomatch */
-		if (l->next && strcasecmp(av[0], "all")) {
-		    /* If there is next limit and there is possible nomatch,
-		     * then pass nomatch there. */
-		    sprintf(hp->ifNotMatch, "%d-%d-n", dir, num);
-		    sprintf(inhookn[1], "%d-%d-ni", dir, num);
 
-		    /* Connect nomatch hook to bpf itself. */
-		    strcpy(cn.ourhook, hp->ifNotMatch);
-		    strcpy(cn.path, path);
-		    strcpy(cn.peerhook, inhookn[1]);
-		    if (NgSendMsg(gLinksCsock, path,
-		            NGM_GENERIC_COOKIE, NGM_CONNECT, &cn, sizeof(cn)) < 0) {
-		        Log(LG_ERR, ("[%s] IFACE: can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
-			    b->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
-		    }
+		    num++;
 		} else {
-		    /* There is no next limit, pass nomatch. */
-		    strcpy(hp->ifNotMatch, outhook);
-		    strcpy(inhookn[1], "");
+		    Log(LG_ERR, ("[%s] IFACE: incorrect limit: '%s'",
+    			b->name, l->rule));
 		}
-		
-		/* Remember how to collect stats for this limit */
-		if (l->name[0]) {
-		    SLIST_FOREACH(ss, &b->iface.ss[dir], next) {
-			if (strcmp(ss->name, l->name) == 0)
-			    break;
-		    }
-		    if (ss == NULL) {
-			ss = Malloc(MB_IFACE, sizeof(*ss));
-			strlcpy(ss->name, l->name, sizeof(ss->name));
-			SLIST_INIT(&ss->src);
-			SLIST_INSERT_HEAD(&b->iface.ss[dir], ss, next);
-		    }
-		    if (stathook[0]) {
-			sss = Malloc(MB_IFACE, sizeof(*sss));
-			strlcpy(sss->hook, stathook, sizeof(sss->hook));
-			sss->type = SSSS_IN;
-			SLIST_INSERT_HEAD(&ss->src, sss, next);
-		    }
-		}
-		
-		for (i = 0; i < 2; i++) {
-		    if (inhook[i][0] != 0) {
-			if (l->name[0] && !stathook[0]) {
-			    sss = Malloc(MB_IFACE, sizeof(*sss));
-			    strlcpy(sss->hook, inhook[i], sizeof(sss->hook));
-			    sss->type = SSSS_MATCH;
-			    SLIST_INSERT_HEAD(&ss->src, sss, next);
-			}
-		
-		        strcpy(hp->thisHook, inhook[i]);
-		        if (NgSendMsg(gLinksCsock, path, NGM_BPF_COOKIE, NGM_BPF_SET_PROGRAM,
-		    		hp, NG_BPF_HOOKPROG_SIZE(hp->bpf_prog_len)) < 0) {
-			    Log(LG_ERR, ("[%s] IFACE: can't set %s node program: %s",
-	    		        b->name, NG_BPF_NODE_TYPE, strerror(errno)));
-			}
-		    }
-		    strcpy(inhook[i], inhookn[i]);
-		}
-
-		num++;
+		l = l->next;
 	    }
 	
-	    /* Connect left hooks to output */
 	    for (i = 0; i < 2; i++) {
 		if (inhook[i][0] != 0) {
-		    memset(&hpu, 0, sizeof(hpu));
+		    memset(&u, 0, sizeof(u));
 		    strcpy(hp->thisHook, inhook[i]);
 		    hp->bpf_prog_len = MATCH_PROG_LEN;
 		    memcpy(&hp->bpf_prog, &gMatchProg,
     			MATCH_PROG_LEN * sizeof(*gMatchProg));
 		    strcpy(hp->ifMatch, outhook);
 		    strcpy(hp->ifNotMatch, outhook);
-		    if (NgSendMsg(gLinksCsock, path, NGM_BPF_COOKIE, NGM_BPF_SET_PROGRAM, 
+		    if (NgSendMsg(b->csock, path, NGM_BPF_COOKIE, NGM_BPF_SET_PROGRAM, 
 			    hp, NG_BPF_HOOKPROG_SIZE(hp->bpf_prog_len)) < 0) {
 			Log(LG_ERR, ("[%s] IFACE: can't set %s node %s %s program (2): %s",
 	    		    b->name, NG_BPF_NODE_TYPE, path, hp->thisHook, strerror(errno)));
@@ -2909,123 +2784,10 @@ IfaceSetupLimits(Bund b)
 static void
 IfaceShutdownLimits(Bund b)
 {
-    char path[NG_PATHSIZ];
-    struct svcs *ss;
-    struct svcssrc *sss;
-    int		i;
-
-    if (b->n_up > 0)
-	IfaceGetStats(b, &b->iface.prevstats);
+    char path[NG_PATHLEN + 1];
 
     if (b->params.acl_limits[0] || b->params.acl_limits[1]) {
-	snprintf(path, sizeof(path), "[%x]:", b->iface.limitID);
-	NgFuncShutdownNode(gLinksCsock, b->name, path);
-    }
-
-    for (i = 0; i < ACL_DIRS; i++) {
-	while ((ss = SLIST_FIRST(&b->iface.ss[i])) != NULL) {
-	    while ((sss = SLIST_FIRST(&ss->src)) != NULL) {
-    		SLIST_REMOVE_HEAD(&ss->src, next);
-		Freee(sss);
-	    }
-	    SLIST_REMOVE_HEAD(&b->iface.ss[i], next);
-	    Freee(ss);
-	}
-    }
-}
-
-void
-IfaceGetStats(Bund b, struct svcstat *stat)
-{
-    char path[NG_PATHSIZ];
-    struct svcs 	*ss;
-    struct svcssrc	*sss;
-    int	dir;
-
-    union {
-        u_char          buf[sizeof(struct ng_mesg) + sizeof(struct ng_bpf_hookstat)];
-	struct ng_mesg  reply;
-    }                   u;
-    struct ng_bpf_hookstat     *const hs = (struct ng_bpf_hookstat *)(void *)u.reply.data;
-
-    snprintf(path, sizeof(path), "[%x]:", b->iface.limitID);
-    for (dir = 0; dir < ACL_DIRS; dir++) {
-	SLIST_FOREACH(ss, &b->iface.ss[dir], next) {
-	    struct svcstatrec *ssr;
-	
-	    SLIST_FOREACH(ssr, &stat->stat[dir], next) {
-		if (strcmp(ssr->name, ss->name) == 0)
-		    break;
-	    }
-	    if (!ssr) {
-		ssr = Malloc(MB_IFACE, sizeof(*ssr));
-		strlcpy(ssr->name, ss->name, sizeof(ssr->name));
-		SLIST_INSERT_HEAD(&stat->stat[dir], ssr, next);
-	    }
-    
-	    SLIST_FOREACH(sss, &ss->src, next) {
-		if (NgSendMsg(gLinksCsock, path,
-    		    NGM_BPF_COOKIE, NGM_BPF_GET_STATS, sss->hook, strlen(sss->hook)+1) < 0)
-    		    continue;
-		if (NgRecvMsg(gLinksCsock, &u.reply, sizeof(u), NULL) < 0)
-    		    continue;
-		
-		switch(sss->type) {
-		case SSSS_IN:
-		    ssr->Packets += hs->recvFrames;
-		    ssr->Octets += hs->recvOctets;
-		    break;
-		case SSSS_MATCH:
-		    ssr->Packets += hs->recvMatchFrames;
-		    ssr->Octets += hs->recvMatchOctets;
-		    break;
-		case SSSS_NOMATCH:
-		    ssr->Packets += hs->recvFrames - hs->recvMatchFrames;
-		    ssr->Octets += hs->recvOctets - hs->recvMatchOctets;
-		    break;
-		case SSSS_OUT:
-		    ssr->Packets += hs->xmitFrames;
-		    ssr->Octets += hs->xmitOctets;
-		    break;
-		}
-	    }
-	}
-    }
-}
-
-void
-IfaceAddStats(struct svcstat *stat1, struct svcstat *stat2)
-{
-    struct svcstatrec   *ssr1, *ssr2;
-    int                 dir;
-
-    for (dir = 0; dir < ACL_DIRS; dir++) {
-	SLIST_FOREACH(ssr2, &stat2->stat[dir], next) {
-	    SLIST_FOREACH(ssr1, &stat1->stat[dir], next)
-		if (strcmp(ssr1->name, ssr2->name) == 0) {
-		    break;
-	    }
-	    if (!ssr1) {
-		ssr1 = Malloc(MB_IFACE, sizeof(*ssr1));
-		strlcpy(ssr1->name, ssr2->name, sizeof(ssr1->name));
-		SLIST_INSERT_HEAD(&stat1->stat[dir], ssr1, next);
-	    }
-	    ssr1->Packets += ssr2->Packets;
-	    ssr1->Octets += ssr2->Octets;
-	}
-    }
-}
-
-void
-IfaceFreeStats(struct svcstat *stat)
-{
-    struct svcstatrec   *ssr;
-    int                 i;
-
-    for (i = 0; i < ACL_DIRS; i++) {
-	while ((ssr = SLIST_FIRST(&stat->stat[i])) != NULL) {
-    	    SLIST_REMOVE_HEAD(&stat->stat[i], next);
-	    Freee(ssr);
-	}
+	snprintf(path, sizeof(path), "mpd%d-%s-lim:", gPid, b->name);
+	NgFuncShutdownNode(b->csock, b->name, path);
     }
 }

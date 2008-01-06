@@ -48,25 +48,25 @@
 
   struct chapinfo
   {
-    int			proto;				/* CHAP, EAP */
     short		next_id;			/* Packet id */
     short		retry;				/* Resend count */
     struct pppTimer	chalTimer;			/* Challenge timer */
     struct pppTimer	respTimer;			/* Reponse timer */
+    u_char		xmit_alg;			/* Peer auth us with */
+    u_char		resp_id;			/* Response ID */
     u_char		*resp;				/* Response packet */
     short		resp_len;			/* Response length */
-    u_char		resp_id;			/* Response ID */
-    u_char		xmit_alg;			/* Peer auth us with */
+    int			proto;				/* CHAP, EAP */
   };
   typedef struct chapinfo	*ChapInfo;
 
   struct chapparams
   {
-    u_char		chal_data[CHAP_MAX_VAL];	/* Challenge sent */
-    u_char		value[CHAP_MAX_VAL];		/* Chap packet */
-    int			chal_len;			/* Challenge length */
-    int			value_len;			/* Packet length */
     u_char		recv_alg;			/* We auth peer with */
+    u_char		chal_data[CHAP_MAX_VAL];	/* Challenge sent */
+    short		chal_len;			/* Challenge length */
+    u_char		value[CHAP_MAX_VAL];		/* Chap packet */
+    int			value_len;			/* Packet length */
   };
   typedef struct chapparams	*ChapParams;
 

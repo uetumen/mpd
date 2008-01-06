@@ -25,9 +25,16 @@
  */
 
   /*
-   * The "mssfix-in"/"mssfix-out" hooks are used for TCP SYN segments,
+   * The "bypass" hook is used to read PPP control frames.
+   * The "demand" hook is a bit hacky - in closed state it is
+   * used to snoop outgoing frames, that can initiate UP event
+   * on interface. In opened state "demand" hook is used to
+   * snoop incoming TCP SYN segments, if userland tcpmssfix is on.
+   * The "mssfix-out" hook is used for outgoing TCP SYN segments,
    * if userland tcpmssfix is on.
    */
+  #define MPD_HOOK_PPP		"bypass"
+  #define MPD_HOOK_DEMAND_TAP	"demand"
 
   #ifndef USE_NG_TCPMSS
   #define MPD_HOOK_TCPMSS_IN	"tcpmss-in"
@@ -69,11 +76,10 @@
  * FUNCTIONS
  */
 
-  extern void	NgFuncShutdownGlobal(void);
+  extern void	NgFuncShutdownGlobal(Bund b);
   extern void	NgFuncSetConfig(Bund b);
   extern int	NgFuncWritePppFrame(Bund b, int linkNum, int proto, Mbuf bp);
-  extern int	NgFuncWritePppFrameLink(Link l, int proto, Mbuf bp);
-  extern int	NgFuncWriteFrame(int dsock, const char *hookname, const char *label, Mbuf bp);
+  extern int	NgFuncWriteFrame(Bund b, const char *hook, Mbuf bp);
   extern int	NgFuncClrStats(Bund b, u_int16_t linkNum);
   extern int	NgFuncGetStats(Bund b, u_int16_t linkNum,
 			struct ng_ppp_link_stat *s);
@@ -92,11 +98,14 @@
   extern void	NgFuncErr(const char *fmt, ...);
 
   #ifdef USE_NG_NETFLOW
-  extern int	NgFuncInitGlobalNetflow(void);
+  extern int	NgFuncInitGlobalNetflow(Bund b);
   #endif
   
-  extern int	NgFuncCreateIface(Bund b, char *buf, int max);
-  extern ng_ID_t	NgGetNodeID(int csock, const char *path);
+  extern int	NgFuncCreateIface(Bund b,
+			const char *ifname, char *buf, int max);
+  extern int	NgFuncIfaceExists(Bund b,
+			const char *ifname, char *buf, int max);
+  extern ng_ID_t NgGetNodeID(int csock, const char *path);
 
 #endif
 

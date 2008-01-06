@@ -96,7 +96,7 @@ ChapStop(ChapInfo chap)
   TimerStop(&chap->chalTimer);
   TimerStop(&chap->respTimer);
   if (chap->resp) {
-    Freee(chap->resp);
+    Freee(MB_AUTH, chap->resp);
     chap->resp = NULL;
   }
 }
@@ -157,7 +157,7 @@ send_pkt:
     chap->next_id++, pkt,
     1 + cp->chal_len + strlen(l->lcp.auth.conf.authname), 0,
     EAP_TYPE_MD5CHAL);
-  Freee(pkt);
+  Freee(MB_AUTH, pkt);
 }
 
 /*
@@ -234,6 +234,7 @@ ChapChalTimeout(void *ptr)
   Link		const l = (Link) ptr;
   ChapInfo	const chap = &l->lcp.auth.chap;
 
+  TimerStop(&chap->chalTimer);
   if (--chap->retry > 0) {
     TimerStart(&chap->chalTimer);
     ChapSendChallenge(l);
@@ -253,7 +254,12 @@ ChapInput(Link l, AuthData auth, const u_char *pkt, u_short len)
   char		password[AUTH_MAX_PASSWORD];
   u_char	hash_value[CHAP_MAX_VAL];
   int		hash_value_size;
+  char		buf[32];
   
+  /* Deal with packet */
+  Log(LG_AUTH, ("[%s] CHAP: rec'd %s #%d",
+    l->name, ChapCode(auth->code, buf, sizeof(buf)), auth->id));
+    
   chap->proto = auth->proto;
   
   switch (auth->code) {
@@ -346,7 +352,7 @@ ChapInput(Link l, AuthData auth, const u_char *pkt, u_short len)
 	/* Get the corresponding secret */
 	if ((strcmp(auth->conf.authname, auth->params.authname) == 0) && 
 	    auth->conf.password[0] != 0) {
-		strlcpy(password, auth->conf.password, sizeof(password));
+		strncpy(password, auth->conf.password, sizeof(password));
 	} else if (AuthGetData(auth->params.authname, password, 
 	    sizeof(password), NULL, NULL) < 0) {
 		Log(LG_AUTH, (" Warning: no secret for \"%s\" found", 
@@ -381,7 +387,7 @@ ChapInput(Link l, AuthData auth, const u_char *pkt, u_short len)
 
 	/* Build response packet */
 	if (chap->resp)
-	  Freee(chap->resp);
+	  Freee(MB_AUTH, chap->resp);
 	chap->resp = Malloc(MB_AUTH, 1 + hash_value_size + name_len);
 	chap->resp[0] = hash_value_size;
 	memcpy(&chap->resp[1], hash_value, hash_value_size);
@@ -435,7 +441,7 @@ ChapInput(Link l, AuthData auth, const u_char *pkt, u_short len)
       /* Stop response timer */
       TimerStop(&chap->respTimer);
       if (chap->resp) {
-	Freee(chap->resp);
+	Freee(MB_AUTH, chap->resp);
 	chap->resp = NULL;
       }
 
@@ -500,7 +506,7 @@ ChapInputFinish(Link l, AuthData auth)
     int		hash_value_size;
     char	ackMesg[128], *secret;
    
-    Log(LG_AUTH, ("[%s] CHAP: Auth return status: %s", 
+    Log(LG_AUTH, ("[%s] CHAP: ChapInputFinish: status %s", 
 	l->name, AuthStatusText(auth->status)));
     
     if (a->params.chap.recv_alg == CHAP_ALG_MSOFTv2 && 

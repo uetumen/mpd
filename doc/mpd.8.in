@@ -4,15 +4,16 @@
 .\" See ``COPYRIGHT.whistle''
 .\"
 .Dd @DATE@
-.Dt MPD5 8
+.Dt MPD 8
 .Os
 .Sh NAME
-.Nm mpd5
+.Nm mpd
 .Nd netgraph multi-link PPP daemon
 .Sh SYNOPSIS
 .Nm
-.Op Fl bkov
+.Op Fl kbv
 .Op Fl d Ar directory
+.Op Fl c Ar tcp-port
 .Op Fl f Ar file
 .Op Fl p Ar pid-file
 .Op Fl s Ar ident
@@ -50,23 +51,29 @@ bandwidth.  Packets routed through the netgraph interface travel in
 multi-link fragments over all of the links.
 Each link is a normal PPP link and can deliver complete packets
 as well, so redundancy is another benefit.
-Attempts to connect two links in the same bundle to different peers,
-or to a peer that is not configured for multi-link PPP, will fail.
+.Nm
+implements a fairly simple form of multi-link PPP, in that a bundle
+consists of a fixed set of links. Attempts to connect two links in the
+same bundle to different peers, or to a peer that is not configured
+for multi-link PPP, will fail.
 .Pp
 In general, everything is controlled by executing commands which are either
 entered via the console command line or read from a configuration file. If
 .Nm
 is running as a background daemon, the console can be made accessible via
 .Xr telnet 1
+with the
+.Fl c
+flag. Only one console connection is allowed at a time.
 Since commands may apply to a single link, the console prompt always shows the
 .Ar current bundle
-or the
+and the
 .Ar current link
 in that bundle. 
 .Sh ON-LINE MANUAL
 Mpd is fully documented in the mpd manual, which is available in HTML.
 The manual can be found in the directory
-.Pa @PREFIX@/share/doc/mpd5 .
+.Pa @PREFIX@/share/doc/mpd4 .
 .Sh OPTIONS
 Mpd supports the following command options:
 .Pp
@@ -81,18 +88,13 @@ Detach from the terminal and run as a background deamon.
 .It Fl -directory Ar dirname
 .Pp
 Specify a configuration directory other than the default,
-.Pa @PREFIX@/etc/mpd5 .
+.Pa @PREFIX@/etc/mpd4 .
 .Pp
 .It Fl f Ar file
 .It Fl -file Ar file
 .Pp
 Specify an initial configuration file other than the default,
 .Pa mpd.conf .
-.Pp
-.It Fl o
-.It Fl -one-shot
-.Pp
-Terminate daemon after the last link shutdown.
 .Pp
 .It Fl p Ar file
 .It Fl -pidfile Ar file
@@ -125,12 +127,14 @@ Display invocation usage and exit.
 .El
 .Sh FILES
 .Bl -tag -width /usr/local/share/doc/mpdXX -compact
-.It Pa @PREFIX@/share/doc/mpd5
+.It Pa @PREFIX@/share/doc/mpd4
 Directory containing the mpd manual
-.It Pa @PREFIX@/etc/mpd5
+.It Pa @PREFIX@/etc/mpd4
 Default configuration file directory
 .It Pa mpd.conf
 Configuration file
+.It Pa mpd.links
+Definitions of individual links
 .It Pa mpd.script
 Modem chat scripts
 .It Pa mpd.secret

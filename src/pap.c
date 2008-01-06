@@ -82,7 +82,7 @@ PapSendRequest(Link l)
     Log(LG_AUTH, ("[%s] PAP: using authname \"%s\"", 
 	l->name, l->lcp.auth.conf.authname));
     if (l->lcp.auth.conf.password[0] != 0) {
-	strlcpy(password, l->lcp.auth.conf.password, sizeof(password));
+	strncpy(password, l->lcp.auth.conf.password, sizeof(password));
     } else if (AuthGetData(l->lcp.auth.conf.authname, password, 
 	    sizeof(password), NULL, NULL) < 0) {
 	Log(LG_AUTH, (" Warning: no secret for \"%s\" found", 
@@ -102,7 +102,7 @@ PapSendRequest(Link l)
     /* Send it off */
     AuthOutput(l, PROTO_PAP, PAP_REQUEST, pap->next_id++, pkt,
 	1 + name_len + 1 + pass_len, 0, 0);
-    Freee(pkt);
+    Freee(MB_AUTH, pkt);
 }
 
 /*
@@ -117,7 +117,11 @@ PapInput(Link l, AuthData auth, const u_char *pkt, u_short len)
   Auth			const a = &l->lcp.auth;
   PapInfo		const pap = &a->pap;
   PapParams		const pp = &auth->params.pap;
+  char			buf[32];
 
+  /* Deal with packet */
+  Log(LG_AUTH, ("[%s] PAP: rec'd %s #%d",
+    l->name, PapCode(auth->code, buf, sizeof(buf)), auth->id));
   switch (auth->code) {
     case PAP_REQUEST:
       {
@@ -128,19 +132,11 @@ PapInput(Link l, AuthData auth, const u_char *pkt, u_short len)
 
 	/* Is this appropriate? */
 	if (a->peer_to_self != PROTO_PAP) {
-	    if (l->lcp.want_auth == PROTO_PAP && a->peer_to_self == 0) {
-		Log(LG_AUTH, ("[%s] PAP: retransmitting ACK",
-		    l->name));
-		AuthOutput(l, PROTO_PAP, PAP_ACK, auth->id,
-		    (u_char *) AUTH_MSG_WELCOME, strlen(AUTH_MSG_WELCOME), 1, 0);
-		AuthDataDestroy(auth);
-		break;
-	    }
-	    Log(LG_AUTH, ("[%s] PAP: %s not expected",
-		l->name, PapCode(auth->code, buf, sizeof(buf))));
-	    auth->why_fail = AUTH_FAIL_NOT_EXPECTED;
-	    PapInputFinish(l, auth);
-	    break;
+	  Log(LG_AUTH, ("[%s] PAP: %s not expected",
+	    l->name, PapCode(auth->code, buf, sizeof(buf))));
+	  auth->why_fail = AUTH_FAIL_NOT_EXPECTED;
+	  PapInputFinish(l, auth);
+	  break;
 	}
 
 	name_len = pkt[0];
@@ -223,7 +219,7 @@ void PapInputFinish(Link l, AuthData auth)
   PapParams	pap = &a->params.pap;
   const char	*Mesg;
   
-  Log(LG_AUTH, ("[%s] PAP: Auth return status: %s", 
+  Log(LG_AUTH, ("[%s] PAP: PapInputFinish: status %s", 
     l->name, AuthStatusText(auth->status)));
 
   if (auth->status == AUTH_STATUS_FAIL)
@@ -279,6 +275,7 @@ PapTimeout(void *ptr)
   Link		const l = (Link) ptr;
   PapInfo	const pap = &l->lcp.auth.pap;
 
+  TimerStop(&pap->timer);
   if (--pap->retry > 0) {
     TimerStart(&pap->timer);
     PapSendRequest(l);

@@ -25,7 +25,7 @@
     SET_ADDR,
     SET_TARGET,
     SET_ENABLE,
-    SET_DISABLE
+    SET_DISABLE,
   };
 
 static int	NatSetCommand(Context ctx, int ac, char *av[], void *arg);
@@ -35,14 +35,14 @@ static int	NatSetCommand(Context ctx, int ac, char *av[], void *arg);
  */
 
   const struct cmdtab NatSetCmds[] = {
-    { "address {addr}",		"Set alias address",
-	NatSetCommand, NULL, 2, (void *) SET_ADDR },
-    { "target {addr}",		"Set target address",
-	NatSetCommand, NULL, 2, (void *) SET_TARGET },
+    { "address addr",		"Set alias address",
+	NatSetCommand, NULL, (void *) SET_ADDR },
+    { "target addr",		"Set target address",
+	NatSetCommand, NULL, (void *) SET_TARGET },
     { "enable [opt ...]",		"Enable option",
-	NatSetCommand, NULL, 2, (void *) SET_ENABLE },
+	NatSetCommand, NULL, (void *) SET_ENABLE },
     { "disable [opt ...]",		"Disable option",
-	NatSetCommand, NULL, 2, (void *) SET_DISABLE },
+	NatSetCommand, NULL, (void *) SET_DISABLE },
     { NULL },
   };
 
@@ -91,7 +91,8 @@ NatSetCommand(Context ctx, int ac, char *av[], void *arg)
   switch ((intptr_t)arg) {
     case SET_TARGET:
 #ifndef NG_NAT_LOG
-	Error("Target address setting is unsupported by current kernel");
+	Log(LG_ERR, ("Target address setting is unsupported by current kernel"));
+	return (-1);
 #endif
     /* FALL */
     case SET_ADDR:
@@ -101,8 +102,10 @@ NatSetCommand(Context ctx, int ac, char *av[], void *arg)
 	/* Parse */
 	if (ac != 1)
 	  return(-1);
-	if (!ParseAddr(av[0], &addr, ALLOW_IPV4))
-	  Error("bad IP address \"%s\"", av[0]);
+	if (!ParseAddr(av[0], &addr, ALLOW_IPV4)) {
+	  Log(LG_ERR, ("bad IP address \"%s\"", av[0]));
+	  break;
+	}
 
 	/* OK */
 	if ((intptr_t)arg == SET_ADDR) {

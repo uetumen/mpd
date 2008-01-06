@@ -44,7 +44,7 @@
     SET_ENABLE,
     SET_DISABLE,
     SET_YES,
-    SET_NO
+    SET_NO,
   };
 
 /*
@@ -66,32 +66,53 @@
   static CompType	CcpFindComp(int type, int *indexp);
   static const char	*CcpTypeName(int type, char *buf, size_t len);
 
-  static void		CcpNgCtrlEvent(int type, void *cookie);
-  static void		CcpNgDataEvent(int type, void *cookie);
-
 /*
  * GLOBAL VARIABLES
  */
 
   const struct cmdtab CcpSetCmds[] = {
     { "accept [opt ...]",		"Accept option",
-	CcpSetCommand, NULL, 2, (void *) SET_ACCEPT },
+	CcpSetCommand, NULL, (void *) SET_ACCEPT },
     { "deny [opt ...]",			"Deny option",
-	CcpSetCommand, NULL, 2, (void *) SET_DENY },
+	CcpSetCommand, NULL, (void *) SET_DENY },
     { "enable [opt ...]",		"Enable option",
-	CcpSetCommand, NULL, 2, (void *) SET_ENABLE },
+	CcpSetCommand, NULL, (void *) SET_ENABLE },
     { "disable [opt ...]",		"Disable option",
-	CcpSetCommand, NULL, 2, (void *) SET_DISABLE },
+	CcpSetCommand, NULL, (void *) SET_DISABLE },
     { "yes [opt ...]",			"Enable and accept option",
-	CcpSetCommand, NULL, 2, (void *) SET_YES },
+	CcpSetCommand, NULL, (void *) SET_YES },
     { "no [opt ...]",			"Disable and deny option",
-	CcpSetCommand, NULL, 2, (void *) SET_NO },
+	CcpSetCommand, NULL, (void *) SET_NO },
     { NULL },
   };
+
+  /* MPPE option indicies */
+  int		gMppcCompress;
+  int		gMppe40;
+  int		gMppe56;
+  int		gMppe128;
+  int		gMppcStateless;
+  int		gMppePolicy;
+  
 
 /*
  * INTERNAL VARIABLES
  */
+
+  /* MPPE options */
+  static const struct {
+    const char	*name;
+    int		*indexp;
+    u_char	peered;
+  } gMppcOptions[] = {
+    { "mpp-compress",	&gMppcCompress,	1 },
+    { "mpp-e40",	&gMppe40,	1 },
+    { "mpp-e56",	&gMppe56,	1 },
+    { "mpp-e128",	&gMppe128,	1 },
+    { "mpp-stateless",	&gMppcStateless,1 },
+    { "mppe-policy",	&gMppePolicy,	0 },
+  };
+  #define CCP_NUM_MPPC_OPT	(sizeof(gMppcOptions) / sizeof(*gMppcOptions))
 
   /* These should be listed in order of preference */
   static const CompType		gCompTypes[] = {
@@ -111,8 +132,8 @@
     "CCP",
     PROTO_CCP,
     CCP_KNOWN_CODES,
-    FALSE,
     LG_CCP, LG_CCP2,
+    FALSE,
     NULL,
     CcpLayerUp,
     CcpLayerDown,
@@ -155,46 +176,6 @@
     { 0,			NULL },
   };
 
-    int		gCcpCsock = -1;		/* Socket node control socket */
-    int		gCcpDsock = -1;		/* Socket node data socket */
-    EventRef	gCcpCtrlEvent;
-    EventRef	gCcpDataEvent;
-
-int
-CcpsInit(void)
-{
-    char	name[NG_NODESIZ];
-
-    /* Create a netgraph socket node */
-    snprintf(name, sizeof(name), "mpd%d-cso", gPid);
-    if (NgMkSockNode(name, &gCcpCsock, &gCcpDsock) < 0) {
-	Log(LG_ERR, ("CcpsInit(): can't create %s node: %s",
-    	    NG_SOCKET_NODE_TYPE, strerror(errno)));
-	return(-1);
-    }
-    (void) fcntl(gCcpCsock, F_SETFD, 1);
-    (void) fcntl(gCcpDsock, F_SETFD, 1);
-
-    /* Listen for happenings on our node */
-    EventRegister(&gCcpCtrlEvent, EVENT_READ,
-	gCcpCsock, EVENT_RECURRING, CcpNgCtrlEvent, NULL);
-    EventRegister(&gCcpDataEvent, EVENT_READ,
-	gCcpDsock, EVENT_RECURRING, CcpNgDataEvent, NULL);
-	
-    return (0);
-}
-
-void
-CcpsShutdown(void)
-{
-    EventUnRegister(&gCcpCtrlEvent);
-    close(gCcpCsock);
-    gCcpCsock = -1;
-    EventUnRegister(&gCcpDataEvent);
-    close(gCcpDsock);
-    gCcpDsock = -1;
-}
-
 /*
  * CcpInit()
  */
@@ -212,33 +193,27 @@ CcpInit(Bund b)
   /* Construct options list if we haven't done so already */
   if (gConfList == NULL) {
     struct confinfo	*ci;
-    int			k;
+    int			j, k;
 
-    ci = Malloc(MB_COMP, (CCP_NUM_PROTOS + 1) * sizeof(*ci));
+    ci = Malloc(MB_COMP, (CCP_NUM_PROTOS + CCP_NUM_MPPC_OPT + 1) * sizeof(*ci));
     for (k = 0; k < CCP_NUM_PROTOS; k++) {
       ci[k].option = k;
       ci[k].peered = TRUE;
       ci[k].name = gCompTypes[k]->name;
     }
 
+    /* Add MPPE options (YAMCH: yet another microsoft compatibility hack) */
+    for (j = 0; j < CCP_NUM_MPPC_OPT; j++, k++) {
+      ci[k].option = k;
+      ci[k].peered = gMppcOptions[j].peered;
+      ci[k].name = gMppcOptions[j].name;
+      *gMppcOptions[j].indexp = k;
+    }
+
     /* Terminate list */
     ci[k].name = NULL;
     gConfList = (const struct confinfo *) ci;
   }
-}
-
-/*
- * CcpInst()
- */
-
-void
-CcpInst(Bund b, Bund bt)
-{
-  CcpState	ccp = &b->ccp;
-
-  /* Init CCP state for this bundle */
-  memcpy(ccp, &bt->ccp, sizeof(*ccp));
-  FsmInst(&ccp->fsm, &bt->ccp.fsm, b);
 }
 
 /*
@@ -249,29 +224,21 @@ static void
 CcpConfigure(Fsm fp)
 {
     Bund 	b = (Bund)fp->arg;
-    CcpState	const ccp = &b->ccp;
-    int		k;
+  CcpState	const ccp = &b->ccp;
+  int		k;
 
-    /* Reset state */
-    ccp->self_reject = 0;
-    ccp->peer_reject = 0;
-    ccp->crypt_check = 0;
-    ccp->xmit = NULL;
-    ccp->recv = NULL;
-    for (k = 0; k < CCP_NUM_PROTOS; k++) {
-	CompType	const ct = gCompTypes[k];
+  /* Reset state */
+  ccp->self_reject = 0;
+  ccp->peer_reject = 0;
+  ccp->crypt_check = 0;
+  ccp->xmit = NULL;
+  ccp->recv = NULL;
+  for (k = 0; k < CCP_NUM_PROTOS; k++) {
+    CompType	const ct = gCompTypes[k];
 
-	if (ct->Configure) {
-    	    if ((*ct->Configure)(b)) {
-		if (Enabled(&ccp->options, k)) {
-		    Log(LG_CCP, ("[%s] CCP: Protocol %s disabled "
-			"as useless for this setup",
-			b->name, ct->name));
-		}
-		CCP_SELF_REJ(ccp, k);
-	    };
-	}
-    }
+    if (ct->Configure)
+      (*ct->Configure)(b);
+  }
 }
 
 /*
@@ -297,136 +264,6 @@ CcpUnConfigure(Fsm fp)
     if (ct->UnConfigure)
       (*ct->UnConfigure)(b);
   }
-}
-
-/*
- * CcpNgCtrlEvent()
- *
- */
-
-void
-CcpNgCtrlEvent(int type, void *cookie)
-{
-    Bund		b = NULL;
-    union {
-        u_char		buf[2048];
-        struct ng_mesg	msg;
-    }			u;
-    char		raddr[NG_PATHSIZ];
-    int			i, len;
-    ng_ID_t		id;
-
-    /* Read message */
-    if ((len = NgRecvMsg(gCcpCsock, &u.msg, sizeof(u), raddr)) < 0) {
-	Log(LG_ERR, ("CcpNgCtrlEvent: can't read message: %s",
-    	    strerror(errno)));
-	return;
-    }
-    
-    if (sscanf(raddr, "[%x]:", &id) != 1) {
-	Log(LG_ERR, ("CcpNgCtrlEvent: can't decode sender id: '%s'",
-    	    raddr));
-	return;
-    }
-    
-    for (i = 0; i < gNumBundles; i++) {
-	if (gBundles[i] && !gBundles[i]->dead &&
-		gBundles[i]->ccp.decomp_node_id == id) {
-	    b = gBundles[i];
-	    break;
-	}
-    }
-    if (!b)
-	return;
-
-    /* Examine message */
-    switch (u.msg.header.typecookie) {
-
-	case NGM_MPPC_COOKIE:
-#ifdef USE_NG_DEFLATE
-	case NGM_DEFLATE_COOKIE:
-#endif
-#ifdef USE_NG_PRED1
-	case NGM_PRED1_COOKIE:
-#endif
-    	    CcpRecvMsg(b, &u.msg, len);
-        return;
-
-	default:
-	    /* Unknown message */
-	    Log(LG_ERR, ("CcpNgCtrlEvent: rec'd unknown ctrl message, cookie=%d cmd=%d",
-		u.msg.header.typecookie, u.msg.header.cmd));
-    	    break;
-    }
-
-}
-
-/*
- * CcpNgDataEvent()
- */
-
-static void
-CcpNgDataEvent(int type, void *cookie)
-{
-    Bund		b;
-    struct sockaddr_ng	naddr;
-    socklen_t		nsize;
-    Mbuf		bp;
-    int			num = 0;
-    char                *bundname, *rest;
-    int                 id;
-		
-    while (1) {
-	/* Protect from bundle shutdown and DoS */
-	if (num > 100)
-	    return;
-    
-	bp = mballoc(2048);
-
-	/* Read data */
-	nsize = sizeof(naddr);
-	if ((bp->cnt = recvfrom(gCcpDsock, MBDATA(bp), MBSPACE(bp),
-    		MSG_DONTWAIT, (struct sockaddr *)&naddr, &nsize)) < 0) {
-	    mbfree(bp);
-	    if (errno == EAGAIN)
-    		return;
-	    Log(LG_BUND|LG_ERR, ("CcpNgDataEvent: socket read: %s", strerror(errno)));
-	    return;
-	}
-	num++;
-    
-	/* Debugging */
-	LogDumpBp(LG_FRAME, bp,
-	    "CcpNgDataEvent: rec'd %d bytes frame on %s hook", MBLEN(bp), naddr.sg_data);
-
-	bundname = ((struct sockaddr_ng *)&naddr)->sg_data;
-	if (strncmp(bundname, "c-", 2) && strncmp(bundname, "d-", 2)) {
-    	    Log(LG_ERR, ("CCP: Packet from unknown hook \"%s\"",
-    	        bundname));
-	    mbfree(bp);
-    	    continue;
-	}
-	bundname += 2;
-	id = strtol(bundname, &rest, 10);
-	if (rest[0] != 0 || !gBundles[id] || gBundles[id]->dead) {
-    	    Log(LG_ERR, ("CCP: Packet from unexisting bundle \"%s\"",
-    		bundname));
-	    mbfree(bp);
-	    continue;
-	}
-		
-	b = gBundles[id];
-
-	/* Packet requiring compression */
-	if (strncmp(naddr.sg_data, "c-", 2) == 0) {
-	    bp = CcpDataOutput(b, bp);
-	} else {
-	    /* Packet requiring decompression */
-	    bp = CcpDataInput(b, bp);
-	}
-	if (bp)
-	    NgFuncWriteFrame(gCcpDsock, naddr.sg_data, b->name, bp);
-    }
 }
 
 /*
@@ -527,26 +364,20 @@ CcpClose(Bund b)
  * CcpOpenCmd()
  */
 
-int
+void
 CcpOpenCmd(Context ctx)
 {
-    if (ctx->bund->tmpl)
-	Error("impossible to open template");
-    FsmOpen(&ctx->bund->ccp.fsm);
-    return (0);
+  FsmOpen(&ctx->bund->ccp.fsm);
 }
 
 /*
  * CcpCloseCmd()
  */
 
-int
+void
 CcpCloseCmd(Context ctx)
 {
-    if (ctx->bund->tmpl)
-	Error("impossible to close template");
-    FsmClose(&ctx->bund->ccp.fsm);
-    return (0);
+  FsmClose(&ctx->bund->ccp.fsm);
 }
 
 /*
@@ -578,7 +409,6 @@ CcpStat(Context ctx, int ac, char *av[], void *arg)
   Printf("Enabled protocols:\r\n");
   OptStat(ctx, &ccp->options, gConfList);
 
-  MppcStat(ctx, ac, av, arg);
   Printf("Outgoing compression:\r\n");
   Printf("\tProto\t: %s (%s)\r\n", !ccp->xmit ? "none" : ccp->xmit->name,
     (ccp->xmit && ccp->xmit->Describe) ? (*ccp->xmit->Describe)(ctx->bund, COMP_DIR_XMIT, buf, sizeof(buf)) : "");
@@ -680,18 +510,18 @@ CcpDataOutput(Bund b, Mbuf plain)
   CcpState	const ccp = &b->ccp;
   Mbuf		comp;
 
-  LogDumpBp(LG_FRAME, plain, "[%s] %s: xmit plain", Pref(&ccp->fsm), Fsm(&ccp->fsm));
+  LogDumpBp(LG_CCP3, plain, "[%s] %s: xmit plain", Pref(&ccp->fsm), Fsm(&ccp->fsm));
 
 /* Compress packet */
 
   if ((!ccp->xmit) || (!ccp->xmit->Compress))
   {
     Log(LG_ERR, ("[%s] %s: no encryption for xmit", Pref(&ccp->fsm), Fsm(&ccp->fsm)));
-    mbfree(plain);
+    PFREE(plain);
     return(NULL);
   }
   comp = (*ccp->xmit->Compress)(b, plain);
-  LogDumpBp(LG_FRAME, comp, "[%s] %s: xmit comp", Pref(&ccp->fsm), Fsm(&ccp->fsm));
+  LogDumpBp(LG_CCP3, comp, "[%s] %s: xmit comp", Pref(&ccp->fsm), Fsm(&ccp->fsm));
 
   return(comp);
 }
@@ -709,14 +539,14 @@ CcpDataInput(Bund b, Mbuf comp)
   CcpState	const ccp = &b->ccp;
   Mbuf		plain;
 
-  LogDumpBp(LG_FRAME, comp, "[%s] %s: recv comp", Pref(&ccp->fsm), Fsm(&ccp->fsm));
+  LogDumpBp(LG_CCP3, comp, "[%s] %s: recv comp", Pref(&ccp->fsm), Fsm(&ccp->fsm));
 
 /* Decompress packet */
 
   if ((!ccp->recv) || (!ccp->recv->Decompress))
   {
     Log(LG_ERR, ("[%s] %s: no compression for recv", Pref(&ccp->fsm), Fsm(&ccp->fsm)));
-    mbfree(comp);
+    PFREE(comp);
     return(NULL);
   }
 
@@ -729,7 +559,7 @@ CcpDataInput(Bund b, Mbuf comp)
     Log(LG_CCP, ("[%s] %s: decompression failed", Pref(&ccp->fsm), Fsm(&ccp->fsm)));
     return(NULL);
   }
-  LogDumpBp(LG_FRAME, plain, "[%s] %s: recv plain", Pref(&ccp->fsm), Fsm(&ccp->fsm));
+  LogDumpBp(LG_CCP3, plain, "[%s] %s: recv plain", Pref(&ccp->fsm), Fsm(&ccp->fsm));
 
   return(plain);
 }
@@ -742,22 +572,21 @@ static u_char *
 CcpBuildConfigReq(Fsm fp, u_char *cp)
 {
     Bund 	b = (Bund)fp->arg;
-    CcpState	const ccp = &b->ccp;
-    int		type;
-    int		ok;
+  CcpState	const ccp = &b->ccp;
+  int		type;
+  int		ok;
 
-    /* Put in all options that peer hasn't rejected in preferred order */
-    ccp->xmit = NULL;
-    for (type = 0; type < CCP_NUM_PROTOS; type++) {
-	CompType	const ct = gCompTypes[type];
+  /* Put in all options that peer hasn't rejected in preferred order */
+  for (ccp->xmit = NULL, type = 0; type < CCP_NUM_PROTOS; type++) {
+    CompType	const ct = gCompTypes[type];
 
-	if (Enabled(&ccp->options, type) && !CCP_PEER_REJECTED(ccp, type)) {
-    	    cp = (*ct->BuildConfigReq)(b, cp, &ok);
-    	    if (ok && (!ccp->xmit))
-		ccp->xmit = ct;
-	}
+    if (Enabled(&ccp->options, type) && !CCP_PEER_REJECTED(ccp, type)) {
+      cp = (*ct->BuildConfigReq)(b, cp, &ok);
+      if (ok && (!ccp->xmit))
+	ccp->xmit = ct;
     }
-    return(cp);
+  }
+  return(cp);
 }
 
 /*
@@ -785,6 +614,10 @@ CcpLayerUp(Fsm fp)
     return;
   }
 
+  /* Register control messages event as it used only by CCP */
+  EventRegister(&b->ctrlEvent, EVENT_READ,
+    b->csock, EVENT_RECURRING, BundNgCtrlEvent, b);
+
   /* Initialize each direction */
   if (ccp->xmit != NULL && ccp->xmit->Init != NULL
       && (*ccp->xmit->Init)(b, COMP_DIR_XMIT) < 0) {
@@ -800,26 +633,26 @@ CcpLayerUp(Fsm fp)
   }
 
   if (ccp->xmit != NULL && ccp->xmit->Compress != NULL) {
-    /* Connect a hook from the ppp node to our socket node */
-    snprintf(cn.path, sizeof(cn.path), "[%x]:", b->nodeID);
-    snprintf(cn.ourhook, sizeof(cn.ourhook), "c-%d", b->id);
-    strcpy(cn.peerhook, NG_PPP_HOOK_COMPRESS);
-    if (NgSendMsg(gCcpCsock, ".:",
+    /* Connect a hook from the bpf node to our socket node */
+    snprintf(cn.path, sizeof(cn.path), "%s", MPD_HOOK_PPP);
+    snprintf(cn.ourhook, sizeof(cn.ourhook), "%s", NG_PPP_HOOK_COMPRESS);
+    snprintf(cn.peerhook, sizeof(cn.peerhook), "%s", NG_PPP_HOOK_COMPRESS);
+    if (NgSendMsg(b->csock, ".",
 	    NGM_GENERIC_COOKIE, NGM_CONNECT, &cn, sizeof(cn)) < 0) {
 	Log(LG_ERR, ("[%s] can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
-    	    b->name, ".:", cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
+        b->name, ".", cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
     }
   }
 
   if (ccp->recv != NULL && ccp->recv->Decompress != NULL) {
-    /* Connect a hook from the ppp node to our socket node */
-    snprintf(cn.path, sizeof(cn.path), "[%x]:", b->nodeID);
-    snprintf(cn.ourhook, sizeof(cn.ourhook), "d-%d", b->id);
-    strcpy(cn.peerhook, NG_PPP_HOOK_DECOMPRESS);
-    if (NgSendMsg(gCcpCsock, ".:",
+    /* Connect a hook from the bpf node to our socket node */
+    snprintf(cn.path, sizeof(cn.path), "%s", MPD_HOOK_PPP);
+    snprintf(cn.ourhook, sizeof(cn.ourhook), "%s", NG_PPP_HOOK_DECOMPRESS);
+    snprintf(cn.peerhook, sizeof(cn.peerhook), "%s", NG_PPP_HOOK_DECOMPRESS);
+    if (NgSendMsg(b->csock, ".",
 	    NGM_GENERIC_COOKIE, NGM_CONNECT, &cn, sizeof(cn)) < 0) {
 	Log(LG_ERR, ("[%s] can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
-    	    b->name, ".:", cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
+        b->name, ".", cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
     }
   }
 
@@ -857,20 +690,16 @@ CcpLayerDown(Fsm fp)
   BundUpdateParams(b);
   
   if (ccp->xmit != NULL && ccp->xmit->Compress != NULL) {
-    char	hook[NG_HOOKSIZ];
     /* Disconnect hook. */
-    snprintf(hook, sizeof(hook), "c-%d", b->id);
-    if (NgFuncDisconnect(gCcpCsock, b->name, ".:", hook) < 0) {
-	Log(LG_ERR, ("can't remove hook %s: %s", hook, strerror(errno)));
+    if (NgFuncDisconnect(b->csock, b->name, ".:", NG_PPP_HOOK_COMPRESS) < 0) {
+	Log(LG_ERR, ("can't remove hook %s: %s", NG_PPP_HOOK_COMPRESS, strerror(errno)));
     }
   }
   
   if (ccp->recv != NULL && ccp->recv->Decompress != NULL) {
-    char	hook[NG_HOOKSIZ];
     /* Disconnect hook. */
-    snprintf(hook, sizeof(hook), "d-%d", b->id);
-    if (NgFuncDisconnect(gCcpCsock, b->name, ".:", hook) < 0) {
-	Log(LG_ERR, ("can't remove hook %s: %s", hook, strerror(errno)));
+    if (NgFuncDisconnect(b->csock, b->name, ".:", NG_PPP_HOOK_DECOMPRESS) < 0) {
+	Log(LG_ERR, ("can't remove hook %s: %s", NG_PPP_HOOK_DECOMPRESS, strerror(errno)));
     }
   }
   if (ccp->recv && ccp->recv->Cleanup)
@@ -880,6 +709,9 @@ CcpLayerDown(Fsm fp)
 
   ccp->xmit_resets = 0;
   ccp->recv_resets = 0;
+
+  /* Unregister control messages event as it used only by CCP */
+  EventUnRegister(&b->ctrlEvent);
 }
 
 /*
@@ -981,7 +813,6 @@ CcpSubtractBloat(Bund b, int size)
 static int
 CcpCheckEncryption(Bund b)
 {
-#if 0
   CcpState	const ccp = &b->ccp;
 
   /* Already checked? */
@@ -1023,8 +854,6 @@ fail:
   FsmFailure(&b->ipcp.fsm, FAIL_CANT_ENCRYPT);
   FsmFailure(&b->ipv6cp.fsm, FAIL_CANT_ENCRYPT);
   return(-1);
-#endif
-    return (0);
 }
 
 /*

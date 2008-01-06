@@ -36,6 +36,8 @@
   #define UDP_MTU		2048
   #define UDP_MRU		2048
 
+  #define UDP_REOPEN_PAUSE	5
+
   #define UDP_MAXPARENTIFS	256
 
   struct udpinfo {
@@ -48,7 +50,7 @@
     } conf;
 
     /* State */
-    u_char		incoming;		/* incoming vs. outgoing */
+    u_char		incoming:1;		/* incoming vs. outgoing */
     struct UdpIf 	*If;
     struct u_addr	peer_addr;
     in_port_t		peer_port;
@@ -60,31 +62,33 @@
 
   enum {
     SET_PEERADDR,
-    SET_SELFADDR
+    SET_SELFADDR,
+    SET_ENABLE,
+    SET_DISABLE,
   };
+
+enum {
+	UDP_CONF_ORIGINATE,	/* allow originating connections to peer */
+	UDP_CONF_INCOMING,	/* allow accepting connections from peer */
+};
 
 /*
  * INTERNAL FUNCTIONS
  */
 
-  static int	UdpInit(Link l);
-  static int	UdpInst(Link l, Link lt);
-  static void	UdpOpen(Link l);
-  static void	UdpClose(Link l);
+  static int	UdpInit(PhysInfo p);
+  static void	UdpOpen(PhysInfo p);
+  static void	UdpClose(PhysInfo p);
   static void	UdpStat(Context ctx);
-  static int	UdpOrigination(Link l);
-  static int	UdpIsSync(Link l);
-  static int	UdpPeerAddr(Link l, void *buf, size_t buf_len);
-  static int	UdpPeerPort(Link l, void *buf, size_t buf_len);
-  static int	UdpCallingNum(Link l, void *buf, size_t buf_len);
-  static int	UdpCalledNum(Link l, void *buf, size_t buf_len);
+  static int	UdpOrigination(PhysInfo p);
+  static int	UdpIsSync(PhysInfo p);
+  static int	UdpPeerAddr(PhysInfo p, void *buf, int buf_len);
+  static int	UdpPeerPort(PhysInfo p, void *buf, int buf_len);
+  static int	UdpCallingNum(PhysInfo p, void *buf, int buf_len);
+  static int	UdpCalledNum(PhysInfo p, void *buf, int buf_len);
 
-  static void	UdpDoClose(Link l);
-  static void	UdpShutdown(Link l);
+  static void	UdpDoClose(PhysInfo p);
   static int	UdpSetCommand(Context ctx, int ac, char *av[], void *arg);
-  static void	UdpNodeUpdate(Link l);
-  static int	UdpListen(Link l);
-  static int	UdpUnListen(Link l);
 
 /*
  * GLOBAL VARIABLES
@@ -92,16 +96,12 @@
 
   const struct phystype gUdpPhysType = {
     .name		= "udp",
-    .descr		= "PPP over UDP",
+    .minReopenDelay	= UDP_REOPEN_PAUSE,
     .mtu		= UDP_MTU,
     .mru		= UDP_MRU,
-    .tmpl		= 1,
     .init		= UdpInit,
-    .inst		= UdpInst,
     .open		= UdpOpen,
     .close		= UdpClose,
-    .update		= UdpNodeUpdate,
-    .shutdown		= UdpShutdown,
     .showstat		= UdpStat,
     .originate		= UdpOrigination,
     .issync		= UdpIsSync,
@@ -112,20 +112,30 @@
   };
 
   const struct cmdtab UdpSetCmds[] = {
-    { "self {ip} [{port}]",		"Set local IP address",
-	UdpSetCommand, NULL, 2, (void *) SET_SELFADDR },
-    { "peer {ip} [{port}]",		"Set remote IP address",
-	UdpSetCommand, NULL, 2, (void *) SET_PEERADDR },
+    { "self ip [port]",			"Set local IP address",
+	UdpSetCommand, NULL, (void *) SET_SELFADDR },
+    { "peer ip [port]",			"Set remote IP address",
+	UdpSetCommand, NULL, (void *) SET_PEERADDR },
+    { "enable [opt ...]",		"Enable option",
+	UdpSetCommand, NULL, (void *) SET_ENABLE },
+    { "disable [opt ...]",		"Disable option",
+	UdpSetCommand, NULL, (void *) SET_DISABLE },
     { NULL },
   };
+
+static struct confinfo	gConfList[] = {
+    { 0,	UDP_CONF_ORIGINATE,	"originate"	},
+    { 0,	UDP_CONF_INCOMING,	"incoming"	},
+    { 0,	0,			NULL		},
+};
 
 struct UdpIf {
     struct u_addr	self_addr;
     in_port_t	self_port;
-    int		refs;
     int		csock;                  /* netgraph Control socket */
     EventRef	ctrlEvent;		/* listen for ctrl messages */
 };
+int UdpIfCount=0;
 struct UdpIf UdpIfs[UDP_MAXPARENTIFS];
 
 int UdpListenUpdateSheduled=0;
@@ -136,11 +146,11 @@ struct pppTimer UdpListenUpdateTimer;
  */
 
 static int
-UdpInit(Link l)
+UdpInit(PhysInfo p)
 {
     UdpInfo	pi;
 
-    pi = (UdpInfo) (l->info = Malloc(MB_PHYS, sizeof(*pi)));
+    pi = (UdpInfo) (p->info = Malloc(MB_PHYS, sizeof(*pi)));
 
     u_addrclear(&pi->conf.self_addr);
     u_rangeclear(&pi->conf.peer_addr);
@@ -157,32 +167,15 @@ UdpInit(Link l)
 }
 
 /*
- * UdpInst()
- */
-
-static int
-UdpInst(Link l, Link lt)
-{
-    UdpInfo	pi;
-    l->info = Mdup(MB_PHYS, lt->info, sizeof(struct udpinfo));
-    pi = (UdpInfo) l->info;
-    
-    if (pi->If)
-	pi->If->refs++;
-
-    return(0);
-}
-
-/*
  * UdpOpen()
  */
 
 static void
-UdpOpen(Link l)
+UdpOpen(PhysInfo p)
 {
-	UdpInfo			const pi = (UdpInfo) l->info;
-	char        		path[NG_PATHSIZ];
-	char        		hook[NG_HOOKSIZ];
+	UdpInfo			const pi = (UdpInfo) p->info;
+	char        		path[NG_PATHLEN+1];
+	char        		hook[NG_HOOKLEN+1];
 	struct ngm_mkpeer	mkp;
 	struct ngm_name         nm;
 	struct sockaddr_storage	addr;
@@ -196,19 +189,19 @@ UdpOpen(Link l)
 	/* Create a new netgraph node to control TCP ksocket node. */
 	if (NgMkSockNode(NULL, &csock, NULL) < 0) {
 		Log(LG_ERR, ("[%s] TCP can't create control socket: %s",
-		    l->name, strerror(errno)));
+		    p->name, strerror(errno)));
 		goto fail;
 	}
 	(void)fcntl(csock, F_SETFD, 1);
 
-        if (!PhysGetUpperHook(l, path, hook)) {
-		Log(LG_PHYS, ("[%s] UDP: can't get upper hook", l->name));
+        if (!PhysGetUpperHook(p, path, hook)) {
+		Log(LG_PHYS, ("[%s] UDP: can't get upper hook", p->name));
     		goto fail;
         }
 
 	/* Attach ksocket node to PPP node */
-	strcpy(mkp.type, NG_KSOCKET_NODE_TYPE);
-	strlcpy(mkp.ourhook, hook, sizeof(mkp.ourhook));
+	snprintf(mkp.type, sizeof(mkp.type), "%s", NG_KSOCKET_NODE_TYPE);
+	snprintf(mkp.ourhook, sizeof(mkp.ourhook), hook);
 	if ((pi->conf.self_addr.family==AF_INET6) || 
 	    (pi->conf.self_addr.family==AF_UNSPEC && pi->conf.peer_addr.addr.family==AF_INET6)) {
 	        snprintf(mkp.peerhook, sizeof(mkp.peerhook), "%d/%d/%d", PF_INET6, SOCK_DGRAM, IPPROTO_UDP);
@@ -218,7 +211,7 @@ UdpOpen(Link l)
 	if (NgSendMsg(csock, path, NGM_GENERIC_COOKIE,
 	    NGM_MKPEER, &mkp, sizeof(mkp)) < 0) {
 	        Log(LG_ERR, ("[%s] can't attach %s node: %s",
-	    	    l->name, NG_KSOCKET_NODE_TYPE, strerror(errno)));
+	    	    p->name, NG_KSOCKET_NODE_TYPE, strerror(errno)));
 		goto fail;
 	}
 
@@ -226,77 +219,78 @@ UdpOpen(Link l)
 	strlcat(path, hook, sizeof(path));
 
 	/* Give it a name */
-	snprintf(nm.name, sizeof(nm.name), "mpd%d-%s", gPid, l->name);
+	snprintf(nm.name, sizeof(nm.name), "mpd%d-%s", gPid, p->name);
 	if (NgSendMsg(csock, path,
 	    NGM_GENERIC_COOKIE, NGM_NAME, &nm, sizeof(nm)) < 0) {
 		Log(LG_ERR, ("[%s] can't name %s node: %s",
-		    l->name, NG_KSOCKET_NODE_TYPE, strerror(errno)));
+		    p->name, NG_KSOCKET_NODE_TYPE, strerror(errno)));
 	}
 
+	/* Get ksocket node ID */
 	if ((pi->node_id = NgGetNodeID(csock, path)) == 0) {
 	    Log(LG_ERR, ("[%s] Cannot get %s node id: %s",
-		l->name, NG_KSOCKET_NODE_TYPE, strerror(errno)));
+		p->name, NG_KSOCKET_NODE_TYPE, strerror(errno)));
 	    goto fail;
 	};
 
-    if ((pi->incoming) || (pi->conf.self_port != 0)) {
-	/* Setsockopt socket. */
-	ksso->level=SOL_SOCKET;
-	ksso->name=SO_REUSEPORT;
-	((int *)(ksso->value))[0]=1;
-	if (NgSendMsg(csock, path, NGM_KSOCKET_COOKIE,
-    	    NGM_KSOCKET_SETOPT, &u, sizeof(u)) < 0) {
-    	    Log(LG_ERR, ("[%s] can't setsockopt() %s node: %s",
-    		l->name, NG_KSOCKET_NODE_TYPE, strerror(errno)));
-	    goto fail;
-	}
-
-	/* Bind socket */
-	u_addrtosockaddr(&pi->conf.self_addr, pi->conf.self_port, &addr);
-	if (NgSendMsg(csock, path, NGM_KSOCKET_COOKIE,
-	  NGM_KSOCKET_BIND, &addr, addr.ss_len) < 0) {
-	    Log(LG_ERR, ("[%s] can't bind() %s node: %s",
-    		l->name, NG_KSOCKET_NODE_TYPE, strerror(errno)));
-	    goto fail;
-	}
-    }
-
-    if (!pi->incoming) {
-	if ((!u_rangeempty(&pi->conf.peer_addr)) && (pi->conf.peer_port != 0)) {
-	    u_addrcopy(&pi->conf.peer_addr.addr,&pi->peer_addr);
-	    pi->peer_port = pi->conf.peer_port;
-	} else {
-	    Log(LG_ERR, ("[%s] Can't connect without peer specified", l->name));
-	    goto fail;
-	}
-    }
-    u_addrtosockaddr(&pi->peer_addr, pi->peer_port, &addr);
-
-    /* Connect socket if peer address and port is specified */
+  if ((pi->incoming) || (pi->conf.self_port != 0)) {
+    /* Setsockopt socket. */
+    ksso->level=SOL_SOCKET;
+    ksso->name=SO_REUSEPORT;
+    ((int *)(ksso->value))[0]=1;
     if (NgSendMsg(csock, path, NGM_KSOCKET_COOKIE,
-      NGM_KSOCKET_CONNECT, &addr, addr.ss_len) < 0) {
-	Log(LG_ERR, ("[%s] can't connect() %s node: %s",
-	    l->name, NG_KSOCKET_NODE_TYPE, strerror(errno)));
+        NGM_KSOCKET_SETOPT, &u, sizeof(u)) < 0) {
+    	Log(LG_ERR, ("[%s] can't setsockopt() %s node: %s",
+    	    p->name, NG_KSOCKET_NODE_TYPE, strerror(errno)));
 	goto fail;
     }
-  
-    close(csock);
 
-    /* OK */
-    l->state = PHYS_STATE_UP;
-    PhysUp(l);
-    return;
+    /* Bind socket */
+    u_addrtosockaddr(&pi->conf.self_addr, pi->conf.self_port, &addr);
+    if (NgSendMsg(csock, path, NGM_KSOCKET_COOKIE,
+	    NGM_KSOCKET_BIND, &addr, addr.ss_len) < 0) {
+	Log(LG_ERR, ("[%s] can't bind() %s node: %s",
+    	    p->name, NG_KSOCKET_NODE_TYPE, strerror(errno)));
+	goto fail;
+    }
+  }
+
+  if (!pi->incoming) {
+    if ((!u_rangeempty(&pi->conf.peer_addr)) && (pi->conf.peer_port != 0)) {
+	u_addrcopy(&pi->conf.peer_addr.addr,&pi->peer_addr);
+	pi->peer_port = pi->conf.peer_port;
+    } else {
+	Log(LG_ERR, ("[%s] Can't connect without peer specified", p->name));
+	goto fail;
+    }
+  }
+  u_addrtosockaddr(&pi->peer_addr, pi->peer_port, &addr);
+
+  /* Connect socket if peer address and port is specified */
+  if (NgSendMsg(csock, path, NGM_KSOCKET_COOKIE,
+	NGM_KSOCKET_CONNECT, &addr, addr.ss_len) < 0) {
+    Log(LG_ERR, ("[%s] can't connect() %s node: %s",
+	p->name, NG_KSOCKET_NODE_TYPE, strerror(errno)));
+    goto fail;
+  }
+  
+  close(csock);
+
+  /* OK */
+  p->state = PHYS_STATE_UP;
+  PhysUp(p);
+  return;
 
 fail:
-    UdpDoClose(l);
+    UdpDoClose(p);
     pi->incoming=0;
-    l->state = PHYS_STATE_DOWN;
+    p->state = PHYS_STATE_DOWN;
     u_addrclear(&pi->peer_addr);
     pi->peer_port=0;
+    PhysDown(p, STR_ERROR, NULL);
+
     if (csock>0)
 	close(csock);
-
-    PhysDown(l, STR_ERROR, NULL);
 }
 
 /*
@@ -304,29 +298,17 @@ fail:
  */
 
 static void
-UdpClose(Link l)
+UdpClose(PhysInfo p)
 {
-    UdpInfo const pi = (UdpInfo) l->info;
-    if (l->state != PHYS_STATE_DOWN) {
-	UdpDoClose(l);
-	pi->incoming=0;
-	l->state = PHYS_STATE_DOWN;
-	u_addrclear(&pi->peer_addr);
-	pi->peer_port=0;
-	PhysDown(l, STR_MANUALLY, NULL);
-    }
-}
-
-/*
- * UdpShutdown()
- */
-
-static void
-UdpShutdown(Link l)
-{
-	UdpDoClose(l);
-	UdpUnListen(l);
-	Freee(l->info);
+  UdpInfo const pi = (UdpInfo) p->info;
+  if (p->state != PHYS_STATE_DOWN) {
+    UdpDoClose(p);
+    pi->incoming=0;
+    p->state = PHYS_STATE_DOWN;
+    u_addrclear(&pi->peer_addr);
+    pi->peer_port=0;
+    PhysDown(p, 0, NULL);
+  }
 }
 
 /*
@@ -334,10 +316,10 @@ UdpShutdown(Link l)
  */
 
 static void
-UdpDoClose(Link l)
+UdpDoClose(PhysInfo p)
 {
-	UdpInfo	const pi = (UdpInfo) l->info;
-	char	path[NG_PATHSIZ];
+	UdpInfo	const pi = (UdpInfo) p->info;
+	char	path[NG_PATHLEN + 1];
 	int	csock;
 
 	if (pi->node_id == 0)
@@ -351,7 +333,7 @@ UdpDoClose(Link l)
 	
 	/* Disconnect session hook. */
 	snprintf(path, sizeof(path), "[%lx]:", (u_long)pi->node_id);
-	NgFuncShutdownNode(csock, l->name, path);
+	NgFuncShutdownNode(csock, p->name, path);
 	
 	close(csock);
 	
@@ -363,11 +345,11 @@ UdpDoClose(Link l)
  */
 
 static int
-UdpOrigination(Link l)
+UdpOrigination(PhysInfo p)
 {
-    UdpInfo	const pi = (UdpInfo) l->info;
+  UdpInfo	const pi = (UdpInfo) p->info;
 
-    return (pi->incoming ? LINK_ORIGINATE_REMOTE : LINK_ORIGINATE_LOCAL);
+  return (pi->incoming ? LINK_ORIGINATE_REMOTE : LINK_ORIGINATE_LOCAL);
 }
 
 /*
@@ -375,37 +357,37 @@ UdpOrigination(Link l)
  */
 
 static int
-UdpIsSync(Link l)
+UdpIsSync(PhysInfo p)
 {
-    return (1);
+  return (1);
 }
 
 static int
-UdpPeerAddr(Link l, void *buf, size_t buf_len)
+UdpPeerAddr(PhysInfo p, void *buf, int buf_len)
 {
-    UdpInfo	const pi = (UdpInfo) l->info;
+  UdpInfo	const pi = (UdpInfo) p->info;
 
-    if (u_addrtoa(&pi->peer_addr, buf, buf_len))
-	return(0);
-    else
-	return(-1);
+  if (u_addrtoa(&pi->peer_addr, buf, buf_len))
+    return(0);
+  else
+    return(-1);
 }
 
 static int
-UdpPeerPort(Link l, void *buf, size_t buf_len)
+UdpPeerPort(PhysInfo p, void *buf, int buf_len)
 {
-    UdpInfo	const pi = (UdpInfo) l->info;
+  UdpInfo	const pi = (UdpInfo) p->info;
 
-    if (snprintf(buf, buf_len, "%d", pi->peer_port))
-	return(0);
-    else
-	return(-1);
+  if (snprintf(buf, buf_len, "%d", pi->peer_port))
+    return(0);
+  else
+    return(-1);
 }
 
 static int
-UdpCallingNum(Link l, void *buf, size_t buf_len)
+UdpCallingNum(PhysInfo p, void *buf, int buf_len)
 {
-	UdpInfo const pi = (UdpInfo) l->info;
+	UdpInfo const pi = (UdpInfo) p->info;
 
 	if (pi->incoming) {
 	    if (u_addrtoa(&pi->peer_addr, buf, buf_len))
@@ -421,9 +403,9 @@ UdpCallingNum(Link l, void *buf, size_t buf_len)
 }
 
 static int
-UdpCalledNum(Link l, void *buf, size_t buf_len)
+UdpCalledNum(PhysInfo p, void *buf, int buf_len)
 {
-	UdpInfo const pi = (UdpInfo) l->info;
+	UdpInfo const pi = (UdpInfo) p->info;
 
 	if (!pi->incoming) {
 	    if (u_addrtoa(&pi->peer_addr, buf, buf_len))
@@ -445,7 +427,7 @@ UdpCalledNum(Link l, void *buf, size_t buf_len)
 void
 UdpStat(Context ctx)
 {
-	UdpInfo const pi = (UdpInfo) ctx->lnk->info;
+	UdpInfo const pi = (UdpInfo) ctx->phys->info;
 	char	buf[64];
 
 	Printf("UDP configuration:\r\n");
@@ -453,8 +435,11 @@ UdpStat(Context ctx)
 	    u_addrtoa(&pi->conf.self_addr, buf, sizeof(buf)), pi->conf.self_port);
 	Printf("\tPeer address : %s, port %u\r\n",
 	    u_rangetoa(&pi->conf.peer_addr, buf, sizeof(buf)), pi->conf.peer_port);
+	Printf("UDP options:\r\n");
+	OptStat(ctx, &pi->conf.options, gConfList);
 	Printf("UDP state:\r\n");
-	if (ctx->lnk->state != PHYS_STATE_DOWN) {
+	Printf("\tState        : %s\r\n", gPhysStateNames[ctx->phys->state]);
+	if (ctx->phys->state != PHYS_STATE_DOWN) {
 	    Printf("\tIncoming     : %s\r\n", (pi->incoming?"YES":"NO"));
 	    Printf("\tCurrent peer : %s, port %u\r\n",
 		u_addrtoa(&pi->peer_addr, buf, sizeof(buf)), pi->peer_port);
@@ -476,7 +461,8 @@ UdpAcceptEvent(int type, void *cookie)
 	char		buf1[64];
 	int 		k;
 	struct UdpIf 	*If=(struct UdpIf *)(cookie);
-	Link		l = NULL;
+	time_t const 	now = time(NULL);
+	PhysInfo	p = NULL;
 	UdpInfo		pi = NULL;
 
 	char		pktbuf[UDP_MRU+100];
@@ -506,24 +492,25 @@ UdpAcceptEvent(int type, void *cookie)
 	}
 
 	/* Examine all UDP links. */
-	for (k = 0; k < gNumLinks; k++) {
-		Link l2;
+	for (k = 0; k < gNumPhyses; k++) {
+		PhysInfo p2;
 	        UdpInfo pi2;
 
-		if (!gLinks[k] || gLinks[k]->type != &gUdpPhysType)
+		if (!gPhyses[k] || gPhyses[k]->type != &gUdpPhysType)
 			continue;
 
-		l2 = gLinks[k];
-		pi2 = (UdpInfo)l2->info;
+		p2 = gPhyses[k];
+		pi2 = (UdpInfo)p2->info;
 
-		if ((!PhysIsBusy(l2)) &&
-		    Enabled(&l2->conf.options, LINK_CONF_INCOMING) &&
+		if ((p2->state == PHYS_STATE_DOWN) &&
+		    (now - p2->lastClose >= UDP_REOPEN_PAUSE) &&
+		    Enabled(&pi2->conf.options, UDP_CONF_INCOMING) &&
 		    (pi2->If == If) &&
 		    IpAddrInRange(&pi2->conf.peer_addr, &addr) &&
 		    (pi2->conf.peer_port == 0 || pi2->conf.peer_port == port)) {
 
 			if (pi == NULL || pi2->conf.peer_addr.width > pi->conf.peer_addr.width) {
-				l = l2;
+				p = p2;
 				pi = pi2;
 				if (u_rangehost(&pi->conf.peer_addr)) {
 					break;	/* Nothing could be better */
@@ -531,21 +518,17 @@ UdpAcceptEvent(int type, void *cookie)
 			}
 		}
 	}
-	if (l != NULL && l->tmpl)
-    		l = LinkInst(l, NULL, 0, 0);
-
-	if (l != NULL) {
-    		pi = (UdpInfo)l->info;
+	if (pi != NULL) {
 		Log(LG_PHYS, ("[%s] Accepting UDP connection from %s %u to %s %u",
-		    l->name, u_addrtoa(&addr, buf, sizeof(buf)), port,
+		    p->name, u_addrtoa(&addr, buf, sizeof(buf)), port,
 		    u_addrtoa(&If->self_addr, buf1, sizeof(buf1)), If->self_port));
 
 		sockaddrtou_addr(&saddr, &pi->peer_addr, &pi->peer_port);
 
 		pi->incoming=1;
-		l->state = PHYS_STATE_READY;
+		p->state = PHYS_STATE_READY;
 
-		PhysIncoming(l);
+		PhysIncoming(p);
 	} else {
 		Log(LG_PHYS, ("No free UDP link with requested parameters "
 	    	    "was found"));
@@ -557,56 +540,24 @@ failed:
 }
 
 static int 
-UdpListen(Link l)
+ListenUdpNode(struct UdpIf *If)
 {
-	UdpInfo const pi = (UdpInfo) l->info;
 	struct sockaddr_storage addr;
 	int error;
 	char buf[64];
-	int opt, i, j = -1, free = -1;
-	
-	if (pi->If)
-	    return(1);
-
-	for (i = 0; i < UDP_MAXPARENTIFS; i++) {
-	    if (UdpIfs[i].self_port == 0)
-	        free = i;
-	    else if ((u_addrcompare(&UdpIfs[i].self_addr, &pi->conf.self_addr) == 0) &&
-	        (UdpIfs[i].self_port == pi->conf.self_port)) {
-	            j = i;
-	    	    break;
-	    }
-	}
-
-	if (j >= 0) {
-	    UdpIfs[j].refs++;
-	    pi->If=&UdpIfs[j];
-	    return(1);
-	}
-
-	if (free < 0) {
-	    Log(LG_ERR, ("[%s] UDP: Too many different listening ports! ", 
-		l->name));
-	    return (0);
-	}
-
-	UdpIfs[free].refs = 1;
-	pi->If=&UdpIfs[free];
-	
-	u_addrcopy(&pi->conf.self_addr,&pi->If->self_addr);
-	pi->If->self_port=pi->conf.self_port;
+	int opt;
 	
 	/* Make listening UDP socket. */
-	if (pi->If->self_addr.family==AF_INET6) {
-	    pi->If->csock = socket(PF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+	if (If->self_addr.family==AF_INET6) {
+	    If->csock = socket(PF_INET6, SOCK_DGRAM, IPPROTO_UDP);
 	} else {
-	    pi->If->csock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	    If->csock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	}
-	(void)fcntl(pi->If->csock, F_SETFD, 1);
+	(void)fcntl(If->csock, F_SETFD, 1);
 
 	/* Setsockopt socket. */
 	opt = 1;
-	if (setsockopt(pi->If->csock, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt))) {
+	if (setsockopt(If->csock, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt))) {
 		Log(LG_ERR, ("UDP: can't setsockopt socket: %s",
 		    strerror(errno)));
 		error = errno;
@@ -614,8 +565,8 @@ UdpListen(Link l)
 	};
 
 	/* Bind socket. */
-	u_addrtosockaddr(&pi->If->self_addr, pi->If->self_port, &addr);
-	if (bind(pi->If->csock, (struct sockaddr *)(&addr), addr.ss_len)) {
+	u_addrtosockaddr(&If->self_addr, If->self_port, &addr);
+	if (bind(If->csock, (struct sockaddr *)(&addr), addr.ss_len)) {
 		Log(LG_ERR, ("UDP: can't bind socket: %s",
 		    strerror(errno)));
 		error = errno;
@@ -623,41 +574,72 @@ UdpListen(Link l)
 	}
 
 	Log(LG_PHYS, ("UDP: waiting for connection on %s %u",
-	    u_addrtoa(&pi->If->self_addr, buf, sizeof(buf)), pi->If->self_port));
-	EventRegister(&pi->If->ctrlEvent, EVENT_READ, pi->If->csock,
-	    0, UdpAcceptEvent, pi->If);
+	    u_addrtoa(&If->self_addr, buf, sizeof(buf)), If->self_port));
+	EventRegister(&If->ctrlEvent, EVENT_READ, If->csock,
+	    0, UdpAcceptEvent, If);
 
 	return (1);
 fail2:
-	close(pi->If->csock);
-	pi->If->csock = -1;
-	pi->If->self_port = 0;
-	pi->If = NULL;
+	close(If->csock);
+	If->csock = -1;
 	return (0);
-}
+};
 
+/*
+ * UdpListenUpdate()
+ */
 
-static int 
-UdpUnListen(Link l)
+static void
+UdpListenUpdate(void *arg)
 {
-	UdpInfo const pi = (UdpInfo) l->info;
-	char buf[64];
-	
-	if (!pi->If)
-	    return(1);
+	int k;
 
-	pi->If->refs--;
-	if (pi->If->refs == 0) {
-	    Log(LG_PHYS, ("UDP: stop waiting for connection on %s %u",
-		u_addrtoa(&pi->If->self_addr, buf, sizeof(buf)), pi->If->self_port));
-	    EventUnRegister(&pi->If->ctrlEvent);
-	    close(pi->If->csock);
-	    pi->If->csock = -1;
-	    pi->If->self_port = 0;
-	    pi->If = NULL;
+	UdpListenUpdateSheduled = 0;
+
+	/* Examine all UDP links. */
+	for (k = 0; k < gNumPhyses; k++) {
+        	PhysInfo p;
+        	UdpInfo pi;
+		int i, j = -1;
+
+		if (!gPhyses[k] || gPhyses[k]->type != &gUdpPhysType)
+			continue;
+
+		p = gPhyses[k];
+		pi = (UdpInfo)p->info;
+
+		if (!Enabled(&pi->conf.options, UDP_CONF_INCOMING))
+			continue;
+
+		if (!pi->conf.self_port) {
+			Log(LG_ERR, ("UDP: Skipping link %s with undefined "
+			    "port number", p->name));
+			continue;
+		}
+
+		for (i = 0; i < UdpIfCount; i++)
+			if ((u_addrcompare(&UdpIfs[i].self_addr, &pi->conf.self_addr) == 0) &&
+			    (UdpIfs[i].self_port == pi->conf.self_port))
+				j = i;
+
+		if (j == -1) {
+			if (UdpIfCount>=UDP_MAXPARENTIFS) {
+			    Log(LG_ERR, ("[%s] UDP: Too many different listening ports! ", 
+				p->name));
+			    continue;
+			}
+			u_addrcopy(&pi->conf.self_addr,&UdpIfs[UdpIfCount].self_addr);
+			UdpIfs[UdpIfCount].self_port=pi->conf.self_port;
+
+			if (ListenUdpNode(&(UdpIfs[UdpIfCount]))) {
+
+				pi->If=&UdpIfs[UdpIfCount];
+				UdpIfCount++;
+			}
+		} else {
+			pi->If=&UdpIfs[j];
+		}
 	}
-
-	return (1);
 }
 
 /*
@@ -665,16 +647,18 @@ UdpUnListen(Link l)
  */
 
 static void
-UdpNodeUpdate(Link l)
+UdpNodeUpdate(PhysInfo p)
 {
-    UdpInfo const pi = (UdpInfo) l->info;
-    if (!pi->If) {
-	if (Enabled(&l->conf.options, LINK_CONF_INCOMING))
-	    UdpListen(l);
-    } else {
-	if (!Enabled(&l->conf.options, LINK_CONF_INCOMING))
-	    UdpUnListen(l);
-    }
+  UdpInfo pi = (UdpInfo)p->info;
+
+  if (Enabled(&pi->conf.options, UDP_CONF_INCOMING) &&
+        (!UdpListenUpdateSheduled)) {
+    	    /* Set a timer to run UdpListenUpdate(). */
+	    TimerInit(&UdpListenUpdateTimer, "UdpListenUpdate",
+		0, UdpListenUpdate, NULL);
+	    TimerStart(&UdpListenUpdateTimer);
+	    UdpListenUpdateSheduled = 1;
+  }
 }
 
 /*
@@ -684,36 +668,40 @@ UdpNodeUpdate(Link l)
 static int
 UdpSetCommand(Context ctx, int ac, char *av[], void *arg)
 {
-    UdpInfo		const pi = (UdpInfo) ctx->lnk->info;
-    struct u_range	rng;
-    int			port;
+	UdpInfo		const pi = (UdpInfo) ctx->phys->info;
+	struct u_range	rng;
+	int		port;
 	
-    switch ((intptr_t)arg) {
-	case SET_PEERADDR:
-	case SET_SELFADDR:
-    	    if (ac < 1 || ac > 2 || !ParseRange(av[0], &rng, ALLOW_IPV4|ALLOW_IPV6))
-		return(-1);
-    	    if (ac > 1) {
-		if ((port = atoi(av[1])) < 0 || port > 0xffff)
-		    return(-1);
-    	    } else {
-		port = 0;
-    	    }
-    	    if ((intptr_t)arg == SET_SELFADDR) {
-		pi->conf.self_addr = rng.addr;
-		pi->conf.self_port = port;
-    	    } else {
-		pi->conf.peer_addr = rng;
-		pi->conf.peer_port = port;
-    	    }
-	    if (pi->If) {
-		UdpUnListen(ctx->lnk);
-		UdpListen(ctx->lnk);
-	    }
-    	    break;
-	default:
-    	    assert(0);
-    }
-    return(0);
+  switch ((intptr_t)arg) {
+    case SET_PEERADDR:
+    case SET_SELFADDR:
+      if (ac < 1 || ac > 2 || !ParseRange(av[0], &rng, ALLOW_IPV4|ALLOW_IPV6))
+	return(-1);
+      if (ac > 1) {
+	if ((port = atoi(av[1])) < 0 || port > 0xffff)
+	  return(-1);
+      } else {
+	port = 0;
+      }
+      if ((intptr_t)arg == SET_SELFADDR) {
+	pi->conf.self_addr = rng.addr;
+	pi->conf.self_port = port;
+      } else {
+	pi->conf.peer_addr = rng;
+	pi->conf.peer_port = port;
+      }
+      break;
+    case SET_ENABLE:
+	EnableCommand(ac, av, &pi->conf.options, gConfList);
+    	UdpNodeUpdate(ctx->phys);
+    	break;
+    case SET_DISABLE:
+	DisableCommand(ac, av, &pi->conf.options, gConfList);
+	break;
+
+    default:
+      assert(0);
+  }
+  return(0);
 }
 

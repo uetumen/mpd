@@ -25,7 +25,7 @@ IpShowRoutes(Context ctx, int ac, char *av[], void *arg)
   if ((fp = popen(PATH_NETSTAT " -nr -f inet", "r")) == NULL)
   {
     Perror("popen");
-    return(CMD_ERR_OTHER);
+    return(0);
   }
   while (fgets(buf,sizeof(buf)-1,fp)) {
     if ((c=strrchr(buf,'\n')))
@@ -139,7 +139,7 @@ ParseRange(const char *s, struct u_range *range, u_char allow)
   int			n_bits;
   char			*widp, buf[100];
 
-  strlcpy(buf, s, sizeof(buf));
+  snprintf(buf, sizeof(buf), "%s", s);
   if ((widp = strchr(buf, '/')) != NULL)
     *widp++ = '\0';
   else

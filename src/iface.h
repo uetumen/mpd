@@ -58,7 +58,7 @@
     IFACE_CONF_NAT,
     IFACE_CONF_NETFLOW_IN,
     IFACE_CONF_NETFLOW_OUT,
-    IFACE_CONF_IPACCT
+    IFACE_CONF_IPACCT,
   };
 
   /* Dial-on-demand packet cache */
@@ -72,13 +72,13 @@
 
   struct ifaceroute {
     struct u_range	dest;			/* Destination of route */
-    u_char		ok;			/* Route installed OK */
+    u_char		ok:1;			/* Route installed OK */
     SLIST_ENTRY(ifaceroute)	next;
   };
   typedef struct ifaceroute	*IfaceRoute;
-  
+
   struct ifacestate {
-    char		ifname[IFNAMSIZ];	/* Name of my interface */
+    char		ifname[IFNAMSIZ+1];	/* Name of my interface */
     uint		ifindex;		/* System interface index */
     u_char		traffic[IFACE_IDLE_SPLIT];	/* Mark any traffic */
     u_short		mtu;			/* Interface MTU */
@@ -97,23 +97,18 @@
     struct pppTimer	sessionTimer;		/* Session timer */
     char		up_script[IFACE_MAX_SCRIPT];
     char		down_script[IFACE_MAX_SCRIPT];
-    ng_ID_t		limitID;		/* ID of limit (bpf) node */
-    SLIST_HEAD(, svcs)	ss[ACL_DIRS];		/* Where to get service stats */
-    struct svcstat	prevstats;		/* Stats from gone layers */
-    time_t		last_up;		/* Time this iface last got up */
     u_char		open:1;			/* In an open state */
-    u_char		dod:1;			/* Interface flagged -link0 */
     u_char		up:1;			/* interface is up */
     u_char		ip_up:1;		/* IP interface is up */
     u_char		ipv6_up:1;		/* IPv6 interface is up */
     u_char		nat_up:1;		/* NAT is up */
     u_char		tee_up:1;		/* TEE is up */
-    u_char		tee6_up:1;		/* TEE6 is up */
     u_char		nfin_up:1;		/* NFIN is up */
     u_char		nfout_up:1;		/* NFOUT is up */
     u_char		mss_up:1;		/* MSS is up */
     u_char		ipacct_up:1;		/* IPACCT is up */
     
+    u_char		dod:1;			/* Interface flagged -link0 */
     struct dodcache	dodCache;		/* Dial-on-demand cache */
     
     struct natstate	nat;			/* NAT config */
@@ -123,7 +118,7 @@
   typedef struct ifacestate	*IfaceState;
 
   struct acl_pool {			/* Pool of used ACL numbers */
-    char		ifname[IFNAMSIZ];     /* Name of interface */
+    char		ifname[IFNAMSIZ+1];     /* Name of interface */
     unsigned short	acl_number;		/* ACL number given by RADIUS unique on this interface */
     unsigned short	real_number;		/* Real ACL number unique on this system */
     struct acl_pool	*next;
@@ -149,14 +144,13 @@
  */
 
   extern void	IfaceInit(Bund b);
-  extern void	IfaceInst(Bund b, Bund bt);
   extern void	IfaceOpen(Bund b);
   extern void	IfaceClose(Bund b);
-  extern int	IfaceOpenCmd(Context ctx);
-  extern int	IfaceCloseCmd(Context ctx);
-  extern int	IfaceIpIfaceUp(Bund b, int ready);
+  extern void	IfaceOpenCmd(Context ctx);
+  extern void	IfaceCloseCmd(Context ctx);
+  extern void	IfaceIpIfaceUp(Bund b, int ready);
   extern void	IfaceIpIfaceDown(Bund b);
-  extern int	IfaceIpv6IfaceUp(Bund b, int ready);
+  extern void	IfaceIpv6IfaceUp(Bund b, int ready);
   extern void	IfaceIpv6IfaceDown(Bund b);
   extern void	IfaceUp(Bund b, int ready);
   extern void	IfaceDown(Bund b);
@@ -170,10 +164,6 @@
   extern void	IfaceChangeFlags(Bund b, int clear, int set);
   extern void	IfaceChangeAddr(Bund b, int add, struct u_range *self, struct u_addr *peer);
   extern int	IfaceSetRoute(Bund b, int cmd, struct u_range *dst, struct u_addr *gw);
-
-  extern void	IfaceGetStats(Bund b, struct svcstat *stat);
-  extern void	IfaceAddStats(struct svcstat *stat1, struct svcstat *stat2);
-  extern void	IfaceFreeStats(struct svcstat *stat);
 
 #endif
 

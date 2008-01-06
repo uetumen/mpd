@@ -65,15 +65,16 @@
 
   extern int		TcpGetListenPort(struct u_addr *addr, in_port_t port, int block);
   extern int		TcpAcceptConnection(int sock, struct sockaddr_storage *addr, int block);
-  extern int		GetInetSocket(int type, struct u_addr *addr, in_port_t port, int block, char *ebuf, size_t len);
+  extern int		GetInetSocket(int type, struct u_addr *addr, in_port_t port, int block, char *ebuf, int len);
 
   extern int		OpenSerialDevice(const char *label, const char *path, int baudrate);
   extern int		ExclusiveOpenDevice(const char *label, const char *path);
   extern void		ExclusiveCloseDevice(const char *label, int fd, const char *path);
 
+  extern int		WriteMbuf(Mbuf *mp, int fd, const char *label);
   extern int		PIDCheck(const char *lockfile, int killem);
 
-  extern void		LengthenArray(void *arrayp, size_t esize,
+  extern void		LengthenArray(void *arrayp, int esize,
 				int *alenp, const char *type);
 
   extern int		ExecCmd(int log, const char *label, const char *fmt, ...)
@@ -81,7 +82,7 @@
   extern int		ExecCmdNosh(int log, const char *label, const char *fmt, ...)
 				__printflike(3, 4);
   extern void		ShowMesg(int log, const char *buf, int len);
-  extern char		*Bin2Hex(const unsigned char *bin, size_t len);
+  extern char		*Bin2Hex(const unsigned char *bin, int len);
   extern u_char		*Hex2Bin(char *hexstr);
   extern u_short	Crc16(u_short fcs, u_char *cp, int len);
   extern u_long		GenerateMagic(void);
@@ -89,8 +90,7 @@
   extern int		GetAnyIpAddress(struct u_addr *ipaddr, const char *ifname);
   extern int		GetEther(struct u_addr *addr,
 			    struct sockaddr_dl *hwaddr);
-  extern int		GetPeerEther(struct u_addr *addr, struct sockaddr_dl *hwaddr);
-  extern void     	ppp_util_ascify(char *buf, size_t max,
+  extern void     ppp_util_ascify(char *buf, size_t max,
 			    const char *bytes, size_t len);
 
 #endif

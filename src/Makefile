@@ -7,16 +7,16 @@
 # See ``COPYRIGHT.whistle''
 #
 
-PROG?=			mpd5
+PROG?=			mpd4
 PREFIX?=		/usr/local
 BINDIR?=		${PREFIX}/sbin
-VERSION=		5.0rc2
+VERSION=		4.4
 NOMAN=
 NO_MAN=
 
 # Default configuration directory
 
-MPD_CONF_DIR?=		${PREFIX}/etc/mpd5
+MPD_CONF_DIR?=		${PREFIX}/etc/mpd4
 
 # Define supported physical layer types
 
@@ -54,8 +54,6 @@ LDADD+=		-L/usr/lib -lradius
 DPADD+=		${LIBRADIUS}
 LDADD+=		-lpcap
 DPADD+=		${LIBPCAP}
-LDADD+=		-lpam
-DPADD+=		${LIBPAM}
 
 LDADD+=		-L${PREFIX}/lib -lpdel -lssl -lexpat
 
@@ -88,7 +86,7 @@ STDSRCS=        assert.c auth.c bund.c rep.c ccp.c chap.c \
 		console.c command.c ecp.c event.c fsm.c iface.c input.c \
 		ip.c ipcp.c ipv6cp.c lcp.c link.c log.c main.c mbuf.c mp.c \
 		msg.c nat.c ngfunc.c pap.c phys.c proto.c radius.c timer.c \
-		util.c vars.c eap.c ccp_mppc.c msoft.c web.c ippool.c \
+		util.c vars.c custom.c eap.c ccp_mppc.c msoft.c web.c \
 		ccp_pred1.c ccp_deflate.c
 
 # Add sources and flags for the various physical layer types

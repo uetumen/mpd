@@ -18,9 +18,11 @@
   enum {
     SET_OPEN,
     SET_CLOSE,
-    SET_SELF,
+    SET_USER,
+    SET_PORT,
+    SET_IP,
     SET_DISABLE,
-    SET_ENABLE
+    SET_ENABLE,
   };
 
 
@@ -33,32 +35,35 @@
   static int	WebServletRun(struct http_servlet *servlet,
                          struct http_request *req, struct http_response *resp);
   static void	WebServletDestroy(struct http_servlet *servlet);
+  static const char*	WebAuth(void *arg,
+                      struct http_request *req, const char *username,
+		      const char *password);
 
+  static int            WebUserHashEqual(struct ghash *g, const void *item1,
+                              const void *item2);
+  static u_int32_t      WebUserHash(struct ghash *g, const void *item);
+				     
   static void	WebLogger(int sev, const char *fmt, ...);
-
-  static void	WebConsoleSessionWrite(ConsoleSession cs, const char *fmt, ...);
-  static void	WebConsoleSessionWriteV(ConsoleSession cs, const char *fmt, va_list vl);
-  static void	WebConsoleSessionShowPrompt(ConsoleSession cs);
-
-  static void	WebRunBinCmd(FILE *f, const char *query, int priv);
-  static void	WebRunCmd(FILE *f, const char *query, int priv);
-  static void	WebShowSummary(FILE *f, int priv);
 
 /*
  * GLOBAL VARIABLES
  */
 
   const struct cmdtab WebSetCmds[] = {
-    { "open",			"Open the web" ,
-  	WebSetCommand, NULL, 2, (void *) SET_OPEN },
-    { "close",			"Close the web" ,
-  	WebSetCommand, NULL, 2, (void *) SET_CLOSE },
-    { "self {ip} [{port}]",	"Set web ip and port" ,
-  	WebSetCommand, NULL, 2, (void *) SET_SELF },
+    { "open",		"Open the web" ,
+  	WebSetCommand, NULL, (void *) SET_OPEN },
+    { "close",		"Close the web" ,
+  	WebSetCommand, NULL, (void *) SET_CLOSE },
+    { "user <name> <password>", "Add a web user" ,
+      	WebSetCommand, NULL, (void *) SET_USER },
+    { "port <port>",		"Set port" ,
+  	WebSetCommand, NULL, (void *) SET_PORT },
+    { "ip <ip>",		"Set IP address" ,
+  	WebSetCommand, NULL, (void *) SET_IP },
     { "enable [opt ...]",	"Enable web option" ,
-  	WebSetCommand, NULL, 2, (void *) SET_ENABLE },
+  	WebSetCommand, NULL, (void *) SET_ENABLE },
     { "disable [opt ...]",	"Disable web option" ,
-  	WebSetCommand, NULL, 2, (void *) SET_DISABLE },
+  	WebSetCommand, NULL, (void *) SET_DISABLE },
     { NULL },
   };
 
@@ -89,6 +94,8 @@ WebInit(Web w)
   ParseAddr(DEFAULT_WEB_IP, &w->addr, ALLOW_IPV4|ALLOW_IPV6);
   w->port = DEFAULT_WEB_PORT;
 
+  w->users = ghash_create(w, 0, 0, MB_WEB, WebUserHash, WebUserHashEqual, NULL, NULL);
+
   return 0;
 }
 
@@ -118,6 +125,18 @@ WebOpen(Web w)
     return(-1);
   }
 
+  if (Enabled(&w->options, WEB_AUTH)) {
+    if (!(w->srvlet_auth = http_servlet_basicauth_create(WebAuth, w, NULL))) {
+	Log(LG_ERR, ("%s: error http_servlet_basicauth_create: %d", __FUNCTION__, errno));
+	return(-1);
+    }
+
+    if (http_server_register_servlet(w->srv, w->srvlet_auth, NULL, ".*", 5) < 0) {
+	Log(LG_ERR, ("%s: error http_server_register_servlet: %d", __FUNCTION__, errno));
+        return(-1);
+    }
+  }
+  
   w->srvlet.arg=NULL;
   w->srvlet.hook=NULL;
   w->srvlet.run=WebServletRun;
@@ -159,6 +178,8 @@ int
 WebStat(Context ctx, int ac, char *av[], void *arg)
 {
   Web		w = &gWeb;
+  WebUser	u;
+  struct ghash_walk     walk;
   char		addrstr[64];
 
   Printf("Web configuration:\r\n");
@@ -168,6 +189,11 @@ WebStat(Context ctx, int ac, char *av[], void *arg)
 
   Printf("Web options:\r\n");
   OptStat(ctx, &w->options, gConfList);
+
+  Printf("Web configured users:\r\n");
+  ghash_walk_init(w->users, &walk);
+  while ((u = ghash_walk_next(w->users, &walk)) !=  NULL)
+    Printf("\tUsername: %s\r\n", u->username);
 
   return 0;
 }
@@ -196,23 +222,6 @@ WebConsoleSessionWrite(ConsoleSession cs, const char *fmt, ...)
   va_end(vl);
 }
 
-/*
- * WebConsoleShowPrompt()
- */
-
-static void
-WebConsoleSessionShowPrompt(ConsoleSession cs)
-{
-    if (cs->context.lnk)
-	cs->write(cs, "[%s] ", cs->context.lnk->name);
-    else if (cs->context.bund)
-	cs->write(cs, "[%s] ", cs->context.bund->name);
-    else if (cs->context.rep)
-	cs->write(cs, "[%s] ", cs->context.rep->name);
-    else
-	cs->write(cs, "[] ");
-}
-
 static void
 WebShowCSS(FILE *f)
 {
@@ -223,112 +232,66 @@ WebShowCSS(FILE *f)
   fprintf(f, "td.r {background-color: #EECCCC; }\n");
   fprintf(f, "td.y {background-color: #EEEEBB; }\n");
   fprintf(f, "td.g {background-color: #BBEEBB; }\n");
-  fprintf(f, "td.d {background-color: #CCCCCC; }\n");
   fprintf(f, "pre {background-color: #FFFFFF; }\n");
   fprintf(f, "a, a:visited, a:link { color: blue; }\n");
 }
 
 static void
-WebShowSummary(FILE *f, int priv)
+WebShowSummary(FILE *f)
 {
   int		b,l;
   Bund		B;
   Link  	L;
   Rep		R;
+  PhysInfo	P;
   char		buf[64],buf2[64];
 
   fprintf(f, "<H2>Current status summary</H2>\n");
   fprintf(f, "<table>\n");
-  fprintf(f, "<TR><TH>Bund</TH><TH colspan=2>Iface</TH><TH>IPCP</TH><TH>IPV6CP</TH><TH>CCP</TH><TH>ECP</TH>"
-	     "<TH>Link</TH><TH>LCP</TH><TH>User</TH><TH colspan=2>Device</TH><TH>Peer</TH><TH colspan=3></TH>%s</TR>",
-	     priv?"<TH></TH>":"");
+  fprintf(f, "<TR><TH colspan=2>Iface</TH><TH>IPCP</TH><TH>IPV6CP</TH><TH>CCP</TH><TH>ECP</TH><TH>Bund</TH>"
+	     "<TH>Link</TH><TH>LCP</TH><TH>User</TH><TH colspan=2>Device</TH><TH>Peer</TH><TH colspan=3></TH><TH></TH></TR>");
+  for (b = 0; b<gNumBundles; b++) {
+    B=gBundles[b];
+    if (B) {
+	int shown = 0;
+	for (l = 0; l < B->n_links; l++) {
+	    L=B->links[l];
+	    if (L) {
+		fprintf(f, "<TR>\n");
 #define FSM_COLOR(s) (((s)==ST_OPENED)?"g":(((s)==ST_INITIAL)?"r":"y"))
 #define PHYS_COLOR(s) (((s)==PHYS_STATE_UP)?"g":(((s)==PHYS_STATE_DOWN)?"r":"y"))
-    for (b = 0; b<gNumLinks; b++) {
-	if ((L=gLinks[b]) != NULL && L->bund == NULL && L->rep == NULL) {
-	    fprintf(f, "<TR>\n");
-	    fprintf(f, "<TD colspan=\"7\">&nbsp;</a></TD>\n");
-	    fprintf(f, "<TD class=\"%s\"><A href=\"/cmd?link%%20%s&amp;show%%20link\">%s</a></TD>\n", 
-	        L->tmpl?"d":FSM_COLOR(L->lcp.fsm.state), L->name, L->name);
-	    fprintf(f, "<TD class=\"%s\"><A href=\"/cmd?link%%20%s&amp;show%%20lcp\">%s</a></TD>\n", 
-	        L->tmpl?"d":FSM_COLOR(L->lcp.fsm.state), L->name, FsmStateName(L->lcp.fsm.state));
-	    fprintf(f, "<TD class=\"%s\"><A href=\"/cmd?link%%20%s&amp;show%%20auth\">%s</a></TD>\n", 
-	        L->tmpl?"d":FSM_COLOR(L->lcp.fsm.state), L->name, L->lcp.auth.params.authname);
-	    fprintf(f, "<TD class=\"L=%s\"><A href=\"/cmd?link%%20%s&amp;show%%20device\">%s</a></TD>\n", 
-	        L->tmpl?"d":PHYS_COLOR(L->state), L->name, L->type?L->type->name:"");
-	    fprintf(f, "<TD class=\"L=%s\"><A href=\"/cmd?link%%20%s&amp;show%%20device\">%s</a></TD>\n", 
-	        L->tmpl?"d":PHYS_COLOR(L->state), L->name, gPhysStateNames[L->state]);
-	    if (L->state != PHYS_STATE_DOWN) {
-		PhysGetPeerAddr(L, buf, sizeof(buf));
-		fprintf(f, "<TD>%s</TD>\n", buf);
-		PhysGetCallingNum(L, buf, sizeof(buf));
-		PhysGetCalledNum(L, buf2, sizeof(buf2));
-		if (PhysGetOriginate(L) == LINK_ORIGINATE_REMOTE) {
-		    fprintf(f, "<TD>%s</TD><TD><=</TD><TD>%s</TD>\n", 
-			buf2, buf);
-		} else {
-		    fprintf(f, "<TD>%s</TD><TD>=></TD><TD>%s</TD>\n", 
-			buf, buf2);
+		if (!shown) {
+		    fprintf(f, "<TD rowspan=\"%d\" class=\"%s\"><A href=\"/cmd?%s&amp;show&amp;iface\">%s</a></TD>\n", 
+			B->n_links, (B->iface.up?"g":"r"), L->name, B->iface.ifname);
+		    fprintf(f, "<TD rowspan=\"%d\" class=\"%s\"><A href=\"/cmd?%s&amp;show&amp;iface\">%s</a></TD>\n", 
+			B->n_links, (B->iface.up?"g":"r"), L->name, (B->iface.up?"Up":"Down"));
+		    fprintf(f, "<TD rowspan=\"%d\" class=\"%s\"><A href=\"/cmd?%s&amp;show&amp;ipcp\">%s</a></TD>\n", 
+			B->n_links, FSM_COLOR(B->ipcp.fsm.state), L->name,FsmStateName(B->ipcp.fsm.state));
+		    fprintf(f, "<TD rowspan=\"%d\" class=\"%s\"><A href=\"/cmd?%s&amp;show&amp;ipv6cp\">%s</a></TD>\n", 
+			B->n_links, FSM_COLOR(B->ipv6cp.fsm.state), L->name,FsmStateName(B->ipv6cp.fsm.state));
+		    fprintf(f, "<TD rowspan=\"%d\" class=\"%s\"><A href=\"/cmd?%s&amp;show&amp;ccp\">%s</a></TD>\n", 
+			B->n_links, FSM_COLOR(B->ccp.fsm.state), L->name,FsmStateName(B->ccp.fsm.state));
+		    fprintf(f, "<TD rowspan=\"%d\" class=\"%s\"><A href=\"/cmd?%s&amp;show&amp;ecp\">%s</a></TD>\n", 
+			B->n_links, FSM_COLOR(B->ecp.fsm.state), L->name,FsmStateName(B->ecp.fsm.state));
+		    fprintf(f, "<TD rowspan=\"%d\"><A href=\"/cmd?%s&amp;show&amp;bund\">%s</a></TD>\n", 
+			B->n_links, L->name, B->name);
 		}
-	    } else {
-	    	fprintf(f, "<TD></TD>\n");
-	    	fprintf(f, "<TD colspan=3></TD>\n");
-	    }
-	    if (priv) {
-		if (!L->tmpl) {
-		    fprintf(f, "<TD><A href=\"/cmd?link%%20%s&amp;open\">[Open]</a><A href=\"/cmd?link%%20%s&amp;close\">[Close]</a></TD>\n", 
-	    		L->name, L->name);
-		} else {
-		    fprintf(f, "<TD></TD>\n");
-		}
-	    }
-	    fprintf(f, "</TR>\n");
-	}
-    }
-  for (b = 0; b<gNumBundles; b++) {
-    if ((B=gBundles[b]) != NULL) {
-	int rows = B->n_links?B->n_links:1;
-	int first = 1;
-	fprintf(f, "<TR>\n");
-	fprintf(f, "<TD rowspan=\"%d\" class=\"%s\"><A href=\"/cmd?bund%%20%s&amp;show%%20bund\">%s</a></TD>\n", 
-	    rows, B->tmpl?"d":(B->iface.up?"g":"r"), B->name, B->name);
-	fprintf(f, "<TD rowspan=\"%d\" class=\"%s\"><A href=\"/cmd?bund%%20%s&amp;show%%20iface\">%s</a></TD>\n", 
-	    rows, B->tmpl?"d":(B->iface.up?"g":"r"), B->name, B->iface.ifname);
-	fprintf(f, "<TD rowspan=\"%d\" class=\"%s\"><A href=\"/cmd?bund%%20%s&amp;show%%20iface\">%s</a></TD>\n", 
-	    rows, B->tmpl?"d":(B->iface.up?"g":"r"), B->name, (B->iface.up?"Up":"Down"));
-	fprintf(f, "<TD rowspan=\"%d\" class=\"%s\"><A href=\"/cmd?bund%%20%s&amp;show%%20ipcp\">%s</a></TD>\n", 
-	    rows, B->tmpl?"d":FSM_COLOR(B->ipcp.fsm.state), B->name,FsmStateName(B->ipcp.fsm.state));
-	fprintf(f, "<TD rowspan=\"%d\" class=\"%s\"><A href=\"/cmd?bund%%20%s&amp;show%%20ipv6cp\">%s</a></TD>\n", 
-	    rows, B->tmpl?"d":FSM_COLOR(B->ipv6cp.fsm.state), B->name,FsmStateName(B->ipv6cp.fsm.state));
-	fprintf(f, "<TD rowspan=\"%d\" class=\"%s\"><A href=\"/cmd?bund%%20%s&amp;show%%20ccp\">%s</a></TD>\n", 
-	    rows, B->tmpl?"d":FSM_COLOR(B->ccp.fsm.state), B->name,FsmStateName(B->ccp.fsm.state));
-	fprintf(f, "<TD rowspan=\"%d\" class=\"%s\"><A href=\"/cmd?bund%%20%s&amp;show%%20ecp\">%s</a></TD>\n", 
-	    rows, B->tmpl?"d":FSM_COLOR(B->ecp.fsm.state), B->name,FsmStateName(B->ecp.fsm.state));
-	if (B->n_links == 0) {
-	    fprintf(f, "<TD colspan=\"10\">&nbsp;</a></TD>\n</TR>\n");
-	}
-	for (l = 0; l < NG_PPP_MAX_LINKS; l++) {
-	    if ((L=B->links[l]) != NULL) {
-		if (first)
-		    first = 0;
-		else
-		    fprintf(f, "<TR>\n");
-		fprintf(f, "<TD class=\"%s\"><A href=\"/cmd?link%%20%s&amp;show%%20link\">%s</a></TD>\n", 
-		    L->tmpl?"d":FSM_COLOR(L->lcp.fsm.state), L->name, L->name);
-		fprintf(f, "<TD class=\"%s\"><A href=\"/cmd?link%%20%s&amp;show%%20lcp\">%s</a></TD>\n", 
-		    L->tmpl?"d":FSM_COLOR(L->lcp.fsm.state), L->name, FsmStateName(L->lcp.fsm.state));
-		fprintf(f, "<TD class=\"%s\"><A href=\"/cmd?link%%20%s&amp;show%%20auth\">%s</a></TD>\n", 
-		    L->tmpl?"d":FSM_COLOR(L->lcp.fsm.state), L->name, L->lcp.auth.params.authname);
-		fprintf(f, "<TD class=\"%s\"><A href=\"/cmd?link%%20%s&amp;show%%20device\">%s</a></TD>\n", 
-		    L->tmpl?"d":PHYS_COLOR(L->state), L->name, L->type?L->type->name:"");
-		fprintf(f, "<TD class=\"%s\"><A href=\"/cmd?link%%20%s&amp;show%%20device\">%s</a></TD>\n", 
-		    L->tmpl?"d":PHYS_COLOR(L->state), L->name, gPhysStateNames[L->state]);
-		if (L->state != PHYS_STATE_DOWN) {
-		    PhysGetPeerAddr(L, buf, sizeof(buf));
+		fprintf(f, "<TD><A href=\"/cmd?%s&amp;show&amp;link\">%s</a></TD>\n", 
+		    L->name, L->name);
+		fprintf(f, "<TD class=\"%s\"><A href=\"/cmd?%s&amp;show&amp;lcp\">%s</a></TD>\n", 
+		    FSM_COLOR(L->lcp.fsm.state), L->name, FsmStateName(L->lcp.fsm.state));
+		fprintf(f, "<TD><A href=\"/cmd?%s&amp;show&amp;auth\">%s</a></TD>\n", 
+		    L->name, L->lcp.auth.params.authname);
+		fprintf(f, "<TD class=\"%s\"><A href=\"/cmd?%s&amp;show&amp;phys\">%s</a></TD>\n", 
+		    PHYS_COLOR(L->phys->state), L->name, L->phys->type?L->phys->type->name:"");
+		fprintf(f, "<TD class=\"%s\"><A href=\"/cmd?%s&amp;show&amp;phys\">%s</a></TD>\n", 
+		    PHYS_COLOR(L->phys->state), L->name, gPhysStateNames[L->phys->state]);
+		if (L->phys->state != PHYS_STATE_DOWN) {
+		    PhysGetPeerAddr(L->phys, buf, sizeof(buf));
 		    fprintf(f, "<TD>%s</TD>\n", buf);
-		    PhysGetCallingNum(L, buf, sizeof(buf));
-		    PhysGetCalledNum(L, buf2, sizeof(buf2));
-		    if (PhysGetOriginate(L) == LINK_ORIGINATE_REMOTE) {
+		    PhysGetCallingNum(L->phys, buf, sizeof(buf));
+		    PhysGetCalledNum(L->phys, buf2, sizeof(buf2));
+		    if (PhysGetOriginate(L->phys) == LINK_ORIGINATE_REMOTE) {
 			    fprintf(f, "<TD>%s</TD><TD><=</TD><TD>%s</TD>\n", 
 				buf2, buf);
 		    } else {
@@ -339,44 +302,41 @@ WebShowSummary(FILE *f, int priv)
 			fprintf(f, "<TD></TD>\n");
 			fprintf(f, "<TD colspan=3></TD>\n");
 		}
-		if (priv) {
-		    fprintf(f, "<TD><A href=\"/cmd?link%%20%s&amp;open\">[Open]</a><A href=\"/cmd?link%%20%s&amp;close\">[Close]</a></TD>\n", 
-		    	L->name, L->name);
-		}
+		fprintf(f, "<TD><A href=\"/cmd?%s&amp;open\">[Open]</a><A href=\"/cmd?%s&amp;close\">[Close]</a></TD>\n", 
+		    L->name, L->name);
 		fprintf(f, "</TR>\n");
+		
+		shown = 1;
 	    }
 	}
     }
   }
   for (b = 0; b<gNumReps; b++) {
-    if ((R=gReps[b]) != NULL) {
+    R=gReps[b];
+    if (R) {
 	int shown = 0;
+	for (l = 0; l < 2; l++) {
+	    P=R->physes[l];
+	    if (P) {
+		fprintf(f, "<TR>\n");
 #define FSM_COLOR(s) (((s)==ST_OPENED)?"g":(((s)==ST_INITIAL)?"r":"y"))
 #define PHYS_COLOR(s) (((s)==PHYS_STATE_UP)?"g":(((s)==PHYS_STATE_DOWN)?"r":"y"))
-	int rows = (R->links[0]?1:0) + (R->links[1]?1:0);
-	if (rows == 0)
-	    rows = 1;
-	fprintf(f, "<TR>\n");
-	fprintf(f, "<TD rowspan=\"%d\" colspan=6>Repeater</TD>\n", rows);
-	fprintf(f, "<TD rowspan=\"%d\" class=\"%s\"><A href=\"/cmd?rep%%20%s&amp;show%%20repeater\">%s</a></TD>\n", 
-	     rows, R->p_up?"g":"r", R->name, R->name);
-	for (l = 0; l < 2; l++) {
-	    if ((L=R->links[l]) != NULL) {
-		if (shown)
-		    fprintf(f, "<TR>\n");
-		fprintf(f, "<TD class=\"%s\"><A href=\"/cmd?link%%20%s&amp;show%%20device\">%s</a></TD>\n", 
-		    PHYS_COLOR(L->state), L->name, L->name);
-		fprintf(f, "<TD colspan=2></TD>\n");
-		fprintf(f, "<TD class=\"%s\"><A href=\"/cmd?link%%20%s&amp;show%%20device\">%s</a></TD>\n", 
-		    PHYS_COLOR(L->state), L->name, L->type?L->type->name:"");
-		fprintf(f, "<TD class=\"%s\"><A href=\"/cmd?link%%20%s&amp;show%%20device\">%s</a></TD>\n", 
-		    PHYS_COLOR(L->state), L->name, gPhysStateNames[L->state]);
-		if (L->state != PHYS_STATE_DOWN) {
-		    PhysGetPeerAddr(L, buf, sizeof(buf));
+		if (!shown) {
+		    fprintf(f, "<TD rowspan=2 colspan=6>Repeater</TD>\n");
+		    fprintf(f, "<TD rowspan=2 class=\"%s\"><A href=\"/cmd?%s&amp;show&amp;repeater\">%s</a></TD>\n", 
+			(R->p_up?"g":"r"), P->name, R->name);
+		}
+		fprintf(f, "<TD colspan=3></TD>\n");
+		fprintf(f, "<TD class=\"%s\"><A href=\"/cmd?%s&amp;show&amp;phys\">%s</a></TD>\n", 
+		    PHYS_COLOR(P->state), P->name, P->type?P->type->name:"");
+		fprintf(f, "<TD class=\"%s\"><A href=\"/cmd?%s&amp;show&amp;phys\">%s</a></TD>\n", 
+		    PHYS_COLOR(P->state), P->name, gPhysStateNames[P->state]);
+		if (P->state != PHYS_STATE_DOWN) {
+		    PhysGetPeerAddr(P, buf, sizeof(buf));
 		    fprintf(f, "<TD>%s</TD>\n", buf);
-		    PhysGetCallingNum(L, buf, sizeof(buf));
-		    PhysGetCalledNum(L, buf2, sizeof(buf2));
-		    if (PhysGetOriginate(L) == LINK_ORIGINATE_REMOTE) {
+		    PhysGetCallingNum(P, buf, sizeof(buf));
+		    PhysGetCalledNum(P, buf2, sizeof(buf2));
+		    if (PhysGetOriginate(P) == LINK_ORIGINATE_REMOTE) {
 			    fprintf(f, "<TD>%s</TD><TD><=</TD><TD>%s</TD>\n", 
 				buf2, buf);
 		    } else {
@@ -393,124 +353,84 @@ WebShowSummary(FILE *f, int priv)
 		shown = 1;
 	    }
 	}
-	if (!shown) {
-	    fprintf(f, "<TD colspan = \"10\"></TD>\n");
-	    fprintf(f, "</TR>\n");
-	}
     }
   }
   fprintf(f, "</TABLE>\n");
 }
 
-static void 
-WebRunBinCmd(FILE *f, const char *query, int priv)
-{
-    Console		c = &gConsole;
-    struct console_session css;
-    ConsoleSession	cs = &css;
-    char		buf[1024];
-    char		buf1[1024];
-    char		*tmp;
-    int			argc, k;
-    char		*argv[MAX_CONSOLE_ARGS];
-  
-    memset(cs, 0, sizeof(*cs));
-
-    cs->cookie = f;
-    cs->console = c;
-    cs->close = NULL;
-    cs->write = WebConsoleSessionWrite;
-    cs->writev = WebConsoleSessionWriteV;
-    cs->prompt = WebConsoleSessionShowPrompt;
-    cs->context.cs = cs;
-    cs->context.priv = priv;
-
-    strlcpy(buf,query,sizeof(buf));
-    tmp = buf;
-    for (argc = 0; (argv[argc] = strsep(&tmp, "&")) != NULL;)
-	if (argv[argc][0] != '\0')
-    	    if (++argc >= MAX_CONSOLE_ARGS)
-        	break;
-
-    for (k = 0; k < argc; k++) {
-	int	ac, rtn;
-	char	*av[MAX_CONSOLE_ARGS];
-
-	http_request_url_decode(argv[k], buf1);
-        Log2(LG_CONSOLE, ("[%s] WEB: %s", 
-	    cs->context.lnk ? cs->context.lnk->name :
-		(cs->context.bund? cs->context.bund->name : ""), 
-	    buf1));
-	ac = ParseLine(buf1, av, sizeof(av) / sizeof(*av), 0);
-	cs->context.errmsg[0] = 0;
-	rtn = DoCommandTab(&cs->context, gCommands, ac, av);
-	fprintf(f, "RESULT: %d %s\n", rtn, cs->context.errmsg);
-    }
-    RESETREF(cs->context.lnk, NULL);
-    RESETREF(cs->context.bund, NULL);
-    RESETREF(cs->context.rep, NULL);
+static void
+WebRunCmdCleanup(void *cookie) {
 }
 
 static void 
-WebRunCmd(FILE *f, const char *query, int priv)
+WebRunCmd(FILE *f, const char *querry)
 {
-    Console		c = &gConsole;
-    struct console_session css;
-    ConsoleSession	cs = &css;
-    char		buf[1024];
-    char		buf1[1024+1];
-    char		*tmp;
-    int			argc, k;
-    char		*argv[MAX_CONSOLE_ARGS];
+  Console		c = &gConsole;
+  struct console_session css;
+  ConsoleSession	cs = &css;
+  char			buf[1024];
+  char			buf1[1024];
+  char			*tmp;
+  int			argc;
+  char			*argv[MAX_CONSOLE_ARGS];
+  char			*av[MAX_CONSOLE_ARGS];
+  int			k;
   
-    memset(cs, 0, sizeof(*cs));
+  memset(cs, 0, sizeof(*cs));
 
-    cs->cookie = f;
-    cs->console = c;
-    cs->close = NULL;
-    cs->write = WebConsoleSessionWrite;
-    cs->writev = WebConsoleSessionWriteV;
-    cs->prompt = WebConsoleSessionShowPrompt;
-    cs->context.cs = cs;
-    cs->context.priv = priv;
+  cs->cookie = f;
+  cs->console = c;
+  cs->close = NULL;
+  cs->write = WebConsoleSessionWrite;
+  cs->writev = WebConsoleSessionWriteV;
+  cs->prompt = NULL;
+  cs->context.cs = cs;
 
-    strlcpy(buf,query,sizeof(buf));
-    tmp = buf;
-    for (argc = 0; (argv[argc] = strsep(&tmp, "&")) != NULL;)
-	if (argv[argc][0] != '\0')
-    	    if (++argc >= MAX_CONSOLE_ARGS)
-        	break;
+  strlcpy(buf,querry,sizeof(buf));
+  tmp = buf;
+  
+  for (argc = 0; (argv[argc] = strsep(&tmp, "&")) != NULL;)
+      if (argv[argc][0] != '\0')
+         if (++argc >= MAX_CONSOLE_ARGS)
+            break;
 
-    fprintf(f, "<P><A href=\"/\"><< Back</A></P>\n");
-
-    if (argc == 0) {
-	fprintf(f, "<P>No command cpecified!</P>\n");
-	goto done;
+  if (argc > 1) {
+    fprintf(f, "<H2>Command '");
+    for (k = 1; k < argc; k++) {
+	fprintf(f, "%s ",argv[k]);
     }
+    fprintf(f, "' for phys '%s'</H2>\n", argv[0]);
 
-    fprintf(f, "<PRE>\n");
-    for (k = 0; k < argc; k++) {
-	int	ac;
-	char	*av[MAX_CONSOLE_ARGS];
+    if ((!strcmp(argv[1], "show")) ||
+	(!strcmp(argv[1], "open")) ||
+	(!strcmp(argv[1], "close"))) {
 
-	http_request_url_decode(argv[k], buf1);
-        Log2(LG_CONSOLE, ("[%s] WEB: %s", 
-	    cs->context.lnk ? cs->context.lnk->name :
-		(cs->context.bund? cs->context.bund->name : ""), 
-	    buf1));
-
-	cs->prompt(cs);
-	cs->write(cs, "%s\n", buf1);
+	fprintf(f, "<P><A href=\"/\"><< Back</A></P>\n");
     
-	ac = ParseLine(buf1, av, sizeof(av) / sizeof(*av), 0);
-	DoCommand(&cs->context, ac, av, NULL, 0);
+	fprintf(f, "<PRE>\n");
+
+	pthread_cleanup_push(WebRunCmdCleanup, NULL);
+
+	strcpy(buf1, "phys");
+        av[0] = buf1;
+        av[1] = argv[0];
+        DoCommand(&cs->context, 2, av, NULL, 0);
+  
+        for (k = 1; k < argc; k++) {
+    	    av[k-1] = argv[k];
+        }
+        DoCommand(&cs->context, argc-1, av, NULL, 0);
+
+	pthread_cleanup_pop(0);
+
+	fprintf(f, "</PRE>\n");
+    } else {
+	fprintf(f, "<P>Command denied!</P>\n");
     }
-    fprintf(f, "</PRE>\n");
-done:
-    fprintf(f, "<P><A href=\"/\"><< Back</A></P>\n");
-    RESETREF(cs->context.lnk, NULL);
-    RESETREF(cs->context.bund, NULL);
-    RESETREF(cs->context.rep, NULL);
+  } else {
+    fprintf(f, "<P>No command cpecified!</P>\n");
+  }
+  fprintf(f, "<P><A href=\"/\"><< Back</A></P>\n");
 }
 
 static void
@@ -524,55 +444,20 @@ WebServletRun(struct http_servlet *servlet,
 {
     FILE *f;
     const char *path;
-    const char *query;
-    int priv = 0;
-    
-    if (Enabled(&gWeb.options, WEB_AUTH)) {
-	const char *username;
-	const char *password;
-	ConsoleUser		u;
-	struct console_user	iu;
+    const char *querry;
 
-	/* Get username and password */
-	if ((username = http_request_get_username(req)) == NULL)
-    	    username = "";
-	if ((password = http_request_get_password(req)) == NULL)
-    	    password = "";
-
-	strlcpy(iu.username, username, sizeof(iu.username));
-	RWLOCK_RDLOCK(gUsersLock);
-	u = ghash_get(gUsers, &iu);
-	RWLOCK_UNLOCK(gUsersLock);
-
-	if ((u == NULL) || strcmp(u->password, password)) {
-		http_response_send_basic_auth(resp, "Access Restricted");
-		return (1);
-	}
-	priv = u->priv;
-    }
-
-    if (!(f = http_response_get_output(resp, 1))) {
+    if (!(f = http_response_get_output(resp, 0))) {
 	return 0;
     }
     if (!(path = http_request_get_path(req)))
 	return 0;
-    if (!(query = http_request_get_query_string(req)))
+    if (!(querry = http_request_get_query_string(req)))
 	return 0;
 
     if (!strcmp(path,"/mpd.css")) {
 	http_response_set_header(resp, 0, "Content-Type", "text/css");
 	WebShowCSS(f);
-    } else if (!strcmp(path,"/bincmd")) {
-	http_response_set_header(resp, 0, "Content-Type", "text/plain");
-	http_response_set_header(resp, 1, "Pragma", "no-cache");
-	http_response_set_header(resp, 1, "Cache-Control", "no-cache, must-revalidate");
-	
-	pthread_cleanup_push(WebServletRunCleanup, NULL);
-	GIANT_MUTEX_LOCK();
-	WebRunBinCmd(f, query, priv);
-	GIANT_MUTEX_UNLOCK();
-	pthread_cleanup_pop(0);
-    } else if (!strcmp(path,"/") || !strcmp(path,"/cmd")) {
+    } else {
 	http_response_set_header(resp, 0, "Content-Type", "text/html");
 	http_response_set_header(resp, 1, "Pragma", "no-cache");
 	http_response_set_header(resp, 1, "Cache-Control", "no-cache, must-revalidate");
@@ -589,23 +474,80 @@ WebServletRun(struct http_servlet *servlet,
 	fprintf(f, "<H1>Multi-link PPP Daemon for FreeBSD</H1>\n");
     
 	if (!strcmp(path,"/"))
-	    WebShowSummary(f, priv);
+	    WebShowSummary(f);
 	else if (!strcmp(path,"/cmd"))
-	    WebRunCmd(f, query, priv);
+	    WebRunCmd(f, querry);
 	    
 	GIANT_MUTEX_UNLOCK();
 	pthread_cleanup_pop(0);
 	
 	fprintf(f, "</BODY>\n</HTML>\n");
-    } else {
-	http_response_send_error(resp, 404, NULL);
     }
     return 1;
-}
+};
 
 static void	
 WebServletDestroy(struct http_servlet *servlet)
 {
+};
+
+static const char*	
+WebAuth(void *arg, struct http_request *req, const char *username,
+		      const char *password) 
+{
+    Web	w = (Web)arg;
+    
+    WebUser u;
+
+    u = ghash_get(w->users, &username);
+
+    if ((u == NULL) || strcmp(u->password, password)) 
+      return "Access Denied";
+
+    return NULL;    
+}
+
+/*
+ * WebUserHash
+ *
+ * Fowler/Noll/Vo- hash
+ * see http://www.isthe.com/chongo/tech/comp/fnv/index.html
+ *
+ * By:
+ *  chongo <Landon Curt Noll> /\oo/\
+ *  http://www.isthe.com/chongo/
+ */
+
+static u_int32_t
+WebUserHash(struct ghash *g, const void *item)
+{
+  WebUser u = (WebUser) item;
+  u_char *s = (u_char *) u->username;
+  u_int32_t hash = 0x811c9dc5;
+
+  while (*s) {
+    hash += (hash<<1) + (hash<<4) + (hash<<7) + (hash<<8) + (hash<<24);
+    /* xor the bottom with the current octet */
+    hash ^= (u_int32_t)*s++;
+  }
+
+  return hash;
+}
+
+/*
+ * WebUserHashEqual
+ */
+
+static int
+WebUserHashEqual(struct ghash *g, const void *item1, const void *item2)
+{
+  WebUser u1 = (WebUser) item1;
+  WebUser u2 = (WebUser) item2;
+
+  if (u1 && u2)
+    return (strcmp(u1->username, u2->username) == 0);
+  else
+    return 0;
 }
 
 static void
@@ -626,6 +568,7 @@ static int
 WebSetCommand(Context ctx, int ac, char *av[], void *arg) 
 {
   Web	 		w = &gWeb;
+  WebUser		u;
   int			port;
 
   switch ((intptr_t)arg) {
@@ -646,18 +589,36 @@ WebSetCommand(Context ctx, int ac, char *av[], void *arg)
 	DisableCommand(ac, av, &w->options, gConfList);
       break;
 
-    case SET_SELF:
-      if (ac < 1 || ac > 2)
+    case SET_USER:
+      if (ac != 2) 
+	return(-1);
+
+      u = Malloc(MB_WEB, sizeof(*u));
+      u->username = typed_mem_strdup(MB_WEB, av[0]);
+      u->password = typed_mem_strdup(MB_WEB, av[1]);
+      ghash_put(w->users, u);
+      break;
+
+    case SET_PORT:
+      if (ac != 1)
+	return(-1);
+
+      port =  strtol(av[0], NULL, 10);
+      if (port < 1 || port > 65535) {
+	Log(LG_ERR, ("web: Bogus port given %s", av[0]));
+	return(-1);
+      }
+      w->port=port;
+      break;
+
+    case SET_IP:
+      if (ac != 1)
 	return(-1);
 
       if (!ParseAddr(av[0],&w->addr, ALLOW_IPV4)) 
-	Error("Bogus IP address given %s", av[0]);
-
-      if (ac == 2) {
-        port =  strtol(av[1], NULL, 10);
-        if (port < 1 || port > 65535)
-	    Error("Bogus port given %s", av[1]);
-        w->port=port;
+      {
+	Log(LG_ERR, ("web: Bogus IP address given %s", av[0]));
+	return(-1);
       }
       break;
 

@@ -65,30 +65,23 @@
 
   extern const struct cmdtab	EcpSetCmds[];
 
-  extern int		gEcpCsock;		/* Socket node control socket */
-  extern int		gEcpDsock;		/* Socket node data socket */
-
 /*
  * FUNCTIONS
  */
 
   extern void	EcpInit(Bund b);
-  extern void	EcpInst(Bund b, Bund bt);
   extern void	EcpUp(Bund b);
   extern void	EcpDown(Bund b);
   extern void	EcpOpen(Bund b);
   extern void	EcpClose(Bund b);
-  extern int	EcpOpenCmd(Context ctx);
-  extern int	EcpCloseCmd(Context ctx);
+  extern void	EcpOpenCmd(Context ctx);
+  extern void	EcpCloseCmd(Context ctx);
   extern int	EcpSubtractBloat(Bund b, int size);
   extern void	EcpInput(Bund b, Mbuf bp);
   extern Mbuf	EcpDataInput(Bund b, Mbuf bp);
   extern Mbuf	EcpDataOutput(Bund b, Mbuf bp);
   extern void	EcpSendResetReq(Fsm fp);
   extern int	EcpStat(Context ctx, int ac, char *av[], void *arg);
-
-  extern int	EcpsInit(void);
-  extern void	EcpsShutdown(void);
 
 #endif
 

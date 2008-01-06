@@ -3,19 +3,18 @@
 
 <!-- <!DOCTYPE linuxdoc PUBLIC '-//FreeBSD//DTD linuxdoc//EN'> -->
 
-  <sect><heading>IPCP layer<label id="ipcp"></heading>
+  <sect><heading>IPCP layer commands<label id="ipcp"></heading>
 
 <p>
 
   This chapter describes commands that configure the IP Control
-  Protocol (IPCP) layer. To enable IPCP, <tt>ipcp</tt> option should be
-  enabled at the bundle layer. All of these commands apply to the currently
+  Protocol (IPCP) layer. All of these commands apply to the currently
   active bundle.
 
 <descrip>
 
 <tag><tt>
-set ipcp ranges <em>local/width</em> (<em>remote/width</em>|ippool <em>pool</em>)
+set ipcp ranges <em>local/width</em> <em>remote/width</em>
 </tt></tag>
 
 This command determines what IP addresses mpd will allow to be
@@ -38,9 +37,6 @@ The <tt><em>remote</em></tt> address should <em>not</em> be
 <tt>0.0.0.0</tt>. This is so if the peer requests <tt>0.0.0.0</tt>,
 we have some address to give him.  The <tt><em>width</em></tt> may
 of course be zero.
-
-It is also possible to specify ippool name to use for assigning remote ip.
-In such case width 32 is assumed.
 
 If the two sides cannot agree on the IP address assignments after
 repeated negotiation attempts, then the connection will fail. This

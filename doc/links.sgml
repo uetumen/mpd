@@ -3,30 +3,14 @@
 
 <!-- <!DOCTYPE linuxdoc PUBLIC '-//FreeBSD//DTD linuxdoc//EN'> -->
 
-  <sect><heading>Link layer<label id="links"></heading>
+  <sect><heading>Link layer commands<label id="links"></heading>
 
   <p>
   This chapter describes commands that configure the link layer.
   All of these commands apply to the currently active link, i.e.,
-  the link shown at the command line prompt.
+  the link, which physical device shown at the command line prompt.
 
 <descrip>
-
-<tag><tt>set link action (bundle|forward) <em>name</em> [ <em>regexp</em> ]</tt></tag><p>
-
-List of such command describes how incoming calls should be processed.
-"bundle" means that connection should be processed locally with
-specified bundle. "forward" means that connection should be forwarded
-using repeater to the specified link. Optional "regexp" parameneter
-defines regular expression which will be checked against peer auth name.
-
-Actions from list are checked in order of definition until regexp
-match will be found. Actions processed at three points. First time
-they are checked just after connection acception, second time just 
-after receiving peer's auth during LCP negotiation and third time
-when link is authenticated. As during first check there is no peer
-auth name known yet, check will be skipped if there are more then 
-one action specified for link or if action has regexp specified.
 
 <tag><tt>set link latency <em>microseconds</em></tt></tag><p>
 <tag><tt>set link bandwidth <em>bits-per-second</em></tt></tag><p>
@@ -158,15 +142,6 @@ If <tt>max-redial</tt> is set to 0, then mpd will redial infinitely.
 
 The default value is -1.
 
-<tag><tt>
-set link max-children <em>num</em>
-</tt></tag>
-
-This template option specifies maximum number of links, created using
-this template, that could exist at the same time. Value 0 disables template.
-
-The default value is 10000.
-
 <tag><tt>set link accept <em>option ...</em> </tt></tag><p>
 <tag><tt>set link deny <em>option ...</em> </tt></tag><p>
 <tag><tt>set link enable <em>option ...</em> </tt></tag><p>
@@ -214,8 +189,8 @@ Default <tt><bf>disable</bf></tt> and <tt><bf>accept</bf></tt>.
 CHAP style authentication. This style of authentication is safer
 than PAP, because only a hash of the password is passed over the
 link.  Mpd supports MD5 style CHAP and Microsoft style CHAP versions
-1 and 2.  Mpd will prefer Microsoft CHAP over MD5 CHAP to get
-encryption keys.
+1 and 2.  Mpd will prefer MD5 CHAP over Microsoft CHAP, unless the
+link is a pptp link.
 
 This parameter is an alias for <tt>md5-chap</tt> <tt>ms-chapv1</tt> <tt>ms-chapv2</tt>
 
@@ -239,44 +214,23 @@ Default <tt><bf>disable</bf></tt> and <tt><bf>accept</bf></tt>.
 
 <tag><tt>eap</tt></tag>
 
-Extensible Authentication Protocol. For details see
-<ref id="eap" name="the EAP chapter">.
+Extensible Authentication Protocol.
 
 Default <tt><bf>disable</bf></tt> and <tt><bf>accept</bf></tt>.
-
-<tag><tt>incoming</tt></tag>
-
-This option enables the acceptance of incoming connections.
-If this option is disabled, mpd will not accept incoming connections
-using this link. To avoid races it is advised to enable it after
-all other link options are configured.
-
-The default is disable.
-
-<tag><tt>multilink</tt></tag>
-
-This command enables multi-link PPP on the link. This option is required
-in both directions if there is more than one link in the bundle. However,
-multi-link PPP is sometimes useful on single links when the link MTU is
-low; multi-link PPP allows arbitrarily long packets to go over a link
-in fragments.
-
-The default is <tt>disable</tt> and <tt>deny</tt>
-(i.e., normal non-multilink PPP).
 
 <tag><tt>acfcomp</tt></tag>
 
 Address and control field compression. This option only applies
 to asynchronous link types. It saves two bytes per frame.
 
-The default is <tt><bf>enable</bf></tt> and <tt><bf>accept</bf></tt>.
+Default <tt><bf>enable</bf></tt> and <tt><bf>accept</bf></tt>.
 
 <tag><tt>protocomp</tt></tag>
 
 Protocol field compression. This option saves one byte per frame
 for most frames.
 
-The default is <tt><bf>enable</bf></tt> and <tt><bf>accept</bf></tt>.
+Default <tt><bf>enable</bf></tt> and <tt><bf>accept</bf></tt>.
 
 <tag><tt>magicnum</tt></tag><p>
 <tag><tt>check-magic</tt></tag>
@@ -337,40 +291,6 @@ Default <tt><bf>disable</bf></tt>.
 
 </descrip>
 
+
 </p>
 
-  <sect1><heading>EAP<label id="eap"></heading>
-
-<p>
-
-  This chapter describes commands that configure the EAP (Extensible Authentication 
-  Protocol). Mpd supports natively only the EAP-Type MD5; other EAP-Types may be used 
-  in conjunction with a RADIUS server. All of these commands apply to the currently
-  active link.
-
-<descrip>
-
-<tag><tt>set eap accept <em>option ...</em> </tt></tag><p>
-<tag><tt>set eap deny <em>option ...</em> </tt></tag><p>
-<tag><tt>set eap enable <em>option ...</em> </tt></tag><p>
-<tag><tt>set eap disable <em>option ...</em> </tt></tag><p>
-<tag><tt>set eap yes <em>option ...</em> </tt></tag><p>
-<tag><tt>set eap no <em>option ...</em> </tt></tag><p>
-
-These commands configure various EAP options. Most options 
-are <em>bi-directional</em> in that they can be independently
-enabled and disabled in each direction. 
-
-<tag><tt>md5</tt></tag>
-
-EAP-Type MD5. It's the same as CHAP-MD5, except that is framed inside EAP packets.
-
-The default is disable and accept.
-
-<tag><tt>radius-proxy</tt></tag>
-
-Causes Mpd to proxy all EAP requests to the RADIUS server.
-
-The default is disable.
-
-</descrip>

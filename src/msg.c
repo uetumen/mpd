@@ -24,22 +24,17 @@
     int		type;
     void	(*func)(int type, void *arg);
     void	*arg;
-    const char	*dbg;
   };
   typedef struct mpmsg	*Msg;
 
-  #define	MSG_QUEUE_LEN	8192
-  #define	MSG_QUEUE_MASK	0x1FFF
+  struct msghandler
+  {
+    void	(*func)(int type, void *arg);
+  };
 
-  struct mpmsg	msgqueue[MSG_QUEUE_LEN];
-  int		msgqueueh = 0;
-  int		msgqueuet = 0;
-  #define	QUEUELEN()	((msgqueueh >= msgqueuet)?	\
-	(msgqueueh - msgqueuet):(msgqueueh + MSG_QUEUE_LEN - msgqueuet))
-
-  int           msgpipe[2];
-  int		msgpipesent = 0;
+  int		msgpipe[2];
   EventRef	msgevent;
+  int		pipelen = 0;
 
 /*
  * INTERNAL FUNCTIONS
@@ -51,32 +46,36 @@
  * MsgRegister()
  */
 
-void
-MsgRegister2(MsgHandler *m, void (*func)(int type, void *arg), const char *dbg)
+MsgHandler
+MsgRegister(void (*func)(int type, void *arg))
 {
-    if ((msgpipe[0]==0) || (msgpipe[1]==0)) {
-	if (pipe(msgpipe) < 0) {
-	    Perror("%s: Can't create message pipe", 
-		__FUNCTION__);
-	    DoExit(EX_ERRDEAD);
-	}
-	fcntl(msgpipe[PIPE_READ], F_SETFD, 1);
-	fcntl(msgpipe[PIPE_WRITE], F_SETFD, 1);
+  MsgHandler	m;
+  
+  m = Malloc(MB_UTIL, sizeof(*m));
+  m->func = func;
 
-	if (fcntl(msgpipe[PIPE_READ], F_SETFL, O_NONBLOCK) < 0)
-    	    Perror("%s: fcntl", __FUNCTION__);
-	if (fcntl(msgpipe[PIPE_WRITE], F_SETFL, O_NONBLOCK) < 0)
-    	    Perror("%s: fcntl", __FUNCTION__);
+  if ((msgpipe[0]==0) || (msgpipe[1]==0)) {
+    if (pipe(msgpipe) < 0)
+    {
+	Perror("%s: Can't create message pipe", 
+	    __FUNCTION__);
+	DoExit(EX_ERRDEAD);
+    }
+    fcntl(msgpipe[PIPE_READ], F_SETFD, 1);
+    fcntl(msgpipe[PIPE_WRITE], F_SETFD, 1);
 
-	if (EventRegister(&msgevent, EVENT_READ,
-		msgpipe[PIPE_READ], EVENT_RECURRING, MsgEvent, NULL) < 0) {
-	    Perror("%s: Can't register event!", __FUNCTION__);
-	    DoExit(EX_ERRDEAD);
-        }
+    if (fcntl(msgpipe[PIPE_WRITE], F_SETFL, O_NONBLOCK) < 0) {
+        Perror("%s: fcntl", __FUNCTION__);
     }
 
-    m->func = func;
-    m->dbg = dbg;
+    if (EventRegister(&msgevent, EVENT_READ,
+	msgpipe[PIPE_READ], EVENT_RECURRING, MsgEvent, NULL) < 0)
+    {
+	Perror("%s: Can't register event!", __FUNCTION__);
+	DoExit(EX_ERRDEAD);
+    }
+  }
+  return(m);
 }
 
 /*
@@ -86,8 +85,8 @@ MsgRegister2(MsgHandler *m, void (*func)(int type, void *arg), const char *dbg)
 void
 MsgUnRegister(MsgHandler *m)
 {
-    m->func = NULL;
-    m->dbg = NULL;
+  Freee(MB_UTIL, *m);
+  *m = NULL;
 }
 
 /*
@@ -97,21 +96,24 @@ MsgUnRegister(MsgHandler *m)
 static void
 MsgEvent(int type, void *cookie)
 {
-    char	buf[16];
-    /* flush signaling pipe */
-    msgpipesent = 0;
-    while (read(msgpipe[PIPE_READ], buf, sizeof(buf)) == sizeof(buf));
+    int			nread, nrode;
+    struct mpmsg	msg;
 
-    while (msgqueuet != msgqueueh) {
-	Log(LG_EVENTS, ("EVENT: Message %d to %s received",
-	    msgqueue[msgqueuet].type, msgqueue[msgqueuet].dbg));
-	(*(msgqueue[msgqueuet].func))(msgqueue[msgqueuet].type, msgqueue[msgqueuet].arg);
-	Log(LG_EVENTS, ("EVENT: Message %d to %s processed",
-	    msgqueue[msgqueuet].type, msgqueue[msgqueuet].dbg));
-
-	msgqueuet = (msgqueuet + 1) & MSG_QUEUE_MASK;
-	SETOVERLOAD(QUEUELEN());
+    for (nrode = 0; nrode < sizeof(msg); nrode += nread) {
+	if ((nread = read(msgpipe[PIPE_READ],
+    	  (u_char *) &msg + nrode, sizeof(msg) - nrode)) < 0) {
+    	    Perror("%s: Can't read from message pipe", __FUNCTION__);
+    	    DoExit(EX_ERRDEAD);
+	}
+	if (nread == 0) {
+    	    Log(LG_ERR, ("%s: Unexpected EOF on message pipe!", __FUNCTION__));
+    	    DoExit(EX_ERRDEAD);
+	}
     }
+
+    SETOVERLOAD(--pipelen);
+
+    (*msg.func)(msg.type, msg.arg);
 }
 
 /*
@@ -119,30 +121,31 @@ MsgEvent(int type, void *cookie)
  */
 
 void
-MsgSend(MsgHandler *m, int type, void *arg)
+MsgSend(MsgHandler m, int type, void *arg)
 {
-    assert(m);
-    assert(m->func);
+    struct mpmsg	msg;
+    int			nw, nwrote, retry;
 
-    msgqueue[msgqueueh].type = type;
-    msgqueue[msgqueueh].func = m->func;
-    msgqueue[msgqueueh].arg = arg;
-    msgqueue[msgqueueh].dbg = m->dbg;
+    if (m == NULL)
+	    return;
 
-    msgqueueh = (msgqueueh + 1) & MSG_QUEUE_MASK;
-    if (msgqueuet == msgqueueh) {
-        Log(LG_ERR, ("%s: Fatal message queue overflow!", __FUNCTION__));
+    SETOVERLOAD(++pipelen);
+
+    msg.type = type;
+    msg.func = m->func;
+    msg.arg = arg;
+    for (nwrote = 0, retry = 10; nwrote < sizeof(msg) && retry > 0; nwrote += nw, retry--) {
+	if ((nw = write(msgpipe[PIPE_WRITE],
+    	  ((u_char *) &msg) + nwrote, sizeof(msg) - nwrote)) < 0) {
+    	    Perror("%s: Message pipe write error", __FUNCTION__);
+    	    DoExit(EX_ERRDEAD);
+	}
+    }
+    if (nwrote < sizeof(msg)) {
+        Log(LG_ERR, ("%s: Can't write to message pipe, fatal pipe overflow!", 
+	  __FUNCTION__));
         DoExit(EX_ERRDEAD);
     }
-
-    SETOVERLOAD(QUEUELEN());
-
-    if (!msgpipesent) {
-	char	buf[1];
-	if (write(msgpipe[PIPE_WRITE], buf, 1) > 0)
-	    msgpipesent = 1;
-    }
-    Log(LG_EVENTS, ("EVENT: Message %d to %s sent", type, m->dbg));
 }
 
 /*
@@ -162,8 +165,6 @@ MsgName(int msg)
       return("UP");
     case MSG_DOWN:
       return("DOWN");
-    case MSG_SHUTDOWN:
-      return("SHUTDOWN");
     default:
       return("???");
   }

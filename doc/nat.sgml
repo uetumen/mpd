@@ -3,7 +3,7 @@
 
 <!-- <!DOCTYPE linuxdoc PUBLIC '-//FreeBSD//DTD linuxdoc//EN'> -->
 
-  <sect><heading>Network Address Translation (NAT)<label id="nat"></heading>
+  <sect><heading>NAT commands<label id="nat"></heading>
 
 <p>
 
@@ -47,25 +47,25 @@ The following options are supported:
 
 Enable statistics logging.
 
-Default is disable.
+Default is disabled.
 
 <tag><tt>incoming</tt></tag>
 
 Allow unknown incoming packets to pass.
 
-Default is enable.
+Default is enabled.
 
 <tag><tt>same-ports</tt></tag>
 
 Try to use same ports while aliasing.
 
-Default is enable.
+Default is enabled.
 
 <tag><tt>unreg-only</tt></tag>
 
 Enables aliasing only for unregistered networks.
 
-Default is disable.
+Default is disabled.
 
 </descrip>
 

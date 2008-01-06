@@ -16,6 +16,9 @@
 #include "fsm.h"
 #include "mp.h"
 #include "phys.h"
+#ifdef PHYSTYPE_PPTP
+#include "pptp.h"
+#endif
 #include "link.h"
 #include "msg.h"
 #include "util.h"
@@ -106,8 +109,8 @@
     "LCP",			/* Name of protocol */
     PROTO_LCP,			/* Protocol Number */
     LCP_KNOWN_CODES,
-    TRUE,
     LG_LCP, LG_LCP2,
+    TRUE,
     LcpNewState,
     NULL,
     LcpLayerDown,
@@ -184,29 +187,6 @@ LcpInit(Link l)
 }
 
 /*
- * LcpInst()
- */
-
-void
-LcpInst(Link l, Link lt)
-{
-  LcpState	const lcp = &l->lcp;
-
-  memcpy(lcp, &lt->lcp, sizeof(*lcp));
-  FsmInst(&lcp->fsm, &lt->lcp.fsm, l);
-}
-
-/*
- * LcpShutdown()
- */
-
-void
-LcpShutdown(Link l)
-{
-    AuthShutdown(l);
-}
-
-/*
  * LcpConfigure()
  */
 
@@ -214,82 +194,99 @@ static void
 LcpConfigure(Fsm fp)
 {
     Link	l = (Link)fp->arg;
-    LcpState	const lcp = &l->lcp;
-    short	i;
+  LcpState		const lcp = &l->lcp;
+  short			i;
 
-    /* FSM stuff */
-    lcp->fsm.conf.passive = Enabled(&l->conf.options, LINK_CONF_PASSIVE);
-    lcp->fsm.conf.check_magic =
-	Enabled(&l->conf.options, LINK_CONF_CHECK_MAGIC);
-    lcp->peer_reject = 0;
+  /* FSM stuff */
+  lcp->fsm.conf.passive = Enabled(&l->conf.options, LINK_CONF_PASSIVE);
+  lcp->fsm.conf.check_magic =
+    Enabled(&l->conf.options, LINK_CONF_CHECK_MAGIC);
+  lcp->peer_reject = 0;
 
-    /* Initialize normal LCP stuff */
-    lcp->peer_mru = l->conf.mtu;
-    lcp->want_mru = l->conf.mru;
-    if (l->type && (lcp->want_mru > l->type->mru))
-	lcp->want_mru = l->type->mru;
-    lcp->peer_accmap = 0xffffffff;
-    lcp->want_accmap = l->conf.accmap;
-    lcp->peer_acfcomp = FALSE;
-    lcp->want_acfcomp = Enabled(&l->conf.options, LINK_CONF_ACFCOMP);
-    lcp->peer_protocomp = FALSE;
-    lcp->want_protocomp = Enabled(&l->conf.options, LINK_CONF_PROTOCOMP);
-    lcp->peer_magic = 0;
-    lcp->want_magic = Enabled(&l->conf.options,
+  /* Initialize normal LCP stuff */
+  lcp->peer_mru = l->conf.mtu;
+  lcp->want_mru = l->conf.mru;
+  if (l->phys->type && (lcp->want_mru > l->phys->type->mru))
+    lcp->want_mru = l->phys->type->mru;
+  lcp->peer_accmap = 0xffffffff;
+  lcp->want_accmap = l->conf.accmap;
+  lcp->peer_acfcomp = FALSE;
+  lcp->want_acfcomp = Enabled(&l->conf.options, LINK_CONF_ACFCOMP);
+  lcp->peer_protocomp = FALSE;
+  lcp->want_protocomp = Enabled(&l->conf.options, LINK_CONF_PROTOCOMP);
+  lcp->peer_magic = 0;
+  lcp->want_magic = Enabled(&l->conf.options,
 	LINK_CONF_MAGICNUM) ? GenerateMagic() : 0;
-    if (l->originate == LINK_ORIGINATE_LOCAL)
-	lcp->want_callback = Enabled(&l->conf.options, LINK_CONF_CALLBACK);
-    else
-	lcp->want_callback = FALSE;
+  if (l->originate == LINK_ORIGINATE_LOCAL)
+    lcp->want_callback = Enabled(&l->conf.options, LINK_CONF_CALLBACK);
+  else
+    lcp->want_callback = FALSE;
 
-    /* Authentication stuff */
-    lcp->peer_auth = 0;
-    lcp->want_auth = 0;
-    lcp->want_chap_alg = 0;
-    lcp->peer_ident[0] = 0;
+  /* Authentication stuff */
+  lcp->peer_auth = 0;
+  lcp->want_auth = 0;
+  lcp->want_chap_alg = 0;
+  lcp->peer_ident[0] = 0;
 
-    memset(lcp->want_protos, 0, sizeof(lcp->want_protos));
-    /* fill my list of possible auth-protos, most to least secure */
-    /* prefer MS-CHAP to others to get encryption keys */
+  memset(lcp->want_protos, 0, sizeof(lcp->want_protos));
+  /* fill my list of possible auth-protos, most to least secure */
+  /* for pptp prefer MS-CHAP and for all others CHAP-MD5 */
+#ifdef PHYSTYPE_PPTP
+  if (l->phys->type == &gPptpPhysType) {
     lcp->want_protos[0] = &gLcpAuthProtos[LINK_CONF_CHAPMSv2];
     lcp->want_protos[1] = &gLcpAuthProtos[LINK_CONF_CHAPMSv1];
     lcp->want_protos[2] = &gLcpAuthProtos[LINK_CONF_CHAPMD5];
-    lcp->want_protos[3] = &gLcpAuthProtos[LINK_CONF_PAP];
-    lcp->want_protos[4] = &gLcpAuthProtos[LINK_CONF_EAP];
+  } else {
+#endif
+    lcp->want_protos[0] = &gLcpAuthProtos[LINK_CONF_CHAPMD5];
+    lcp->want_protos[1] = &gLcpAuthProtos[LINK_CONF_CHAPMSv2];
+    lcp->want_protos[2] = &gLcpAuthProtos[LINK_CONF_CHAPMSv1];
+#ifdef PHYSTYPE_PPTP
+  }
+#endif
+  lcp->want_protos[3] = &gLcpAuthProtos[LINK_CONF_PAP];
+  lcp->want_protos[4] = &gLcpAuthProtos[LINK_CONF_EAP];
 
-    /* Use the same list for the MODE_REQ */
-    memcpy(lcp->peer_protos, lcp->want_protos, sizeof(lcp->peer_protos));
+  /* Use the same list for the MODE_REQ */
+  memcpy(lcp->peer_protos, lcp->want_protos, sizeof(lcp->peer_protos));
 
-    for (i = 0; i < LCP_NUM_AUTH_PROTOS; i++) {
-	if (Enabled(&l->conf.options, lcp->want_protos[i]->conf) && lcp->want_auth == 0) {
-	    lcp->want_auth = lcp->want_protos[i]->proto;
-	    lcp->want_chap_alg = lcp->want_protos[i]->chap_alg;
-    	    /* avoid re-requesting this proto, if it was nak'd by the peer */
-    	    lcp->want_protos[i] = NULL;
-	} else if (!Enabled(&l->conf.options, lcp->want_protos[i]->conf)) {
-    	    /* don't request disabled Protos */
-    	    lcp->want_protos[i] = NULL;
-	}
-
-	/* remove all denied protos */
-	if (!Acceptable(&l->conf.options, lcp->peer_protos[i]->conf))
-    	    lcp->peer_protos[i] = NULL;
+  for (i = 0; i < LCP_NUM_AUTH_PROTOS; i++) {
+    if (Enabled(&l->conf.options, lcp->want_protos[i]->conf) && lcp->want_auth == 0) {
+      lcp->want_auth = lcp->want_protos[i]->proto;
+      lcp->want_chap_alg = lcp->want_protos[i]->chap_alg;
+      /* avoid re-requesting this proto, if it was nak'd by the peer */
+      lcp->want_protos[i] = NULL;
+    } else if (!Enabled(&l->conf.options, lcp->want_protos[i]->conf)) {
+      /* don't request disabled Protos */
+      lcp->want_protos[i] = NULL;
     }
 
-    /* Multi-link stuff */
-    lcp->peer_mrru = 0;
-    lcp->peer_shortseq = FALSE;
-    if (Enabled(&l->conf.options, LINK_CONF_MULTILINK)) {
-	lcp->want_mrru = l->conf.mrru;
-	lcp->want_shortseq = Enabled(&l->conf.options, LINK_CONF_SHORTSEQ);
+    /* remove all denied protos */
+    if (!Acceptable(&l->conf.options, lcp->peer_protos[i]->conf))
+      lcp->peer_protos[i] = NULL;
+  }
+
+  /* Multi-link stuff */
+  lcp->peer_multilink = FALSE;
+  lcp->peer_shortseq = FALSE;
+  if (Enabled(&l->bund->conf.options, BUND_CONF_MULTILINK)) {
+    lcp->want_multilink = TRUE;
+    if (l->bund->bm.n_up > 0) {
+      lcp->want_mrru = l->bund->mp.self_mrru;	/* We must stay consistent */
+      lcp->peer_mrru = l->bund->mp.peer_mrru;
+      lcp->want_shortseq = l->bund->mp.self_short_seq;
+      lcp->peer_shortseq = l->bund->mp.peer_short_seq;
     } else {
-	lcp->want_mrru = 0;
-	lcp->want_shortseq = FALSE;
+      lcp->want_mrru = l->bund->conf.mrru;
+      lcp->peer_mrru = MP_MIN_MRRU;
+      lcp->want_shortseq = Enabled(&l->bund->conf.options, BUND_CONF_SHORTSEQ);
+      lcp->peer_shortseq = FALSE;
     }
+  }
 
-    /* Peer discriminator */
-    l->peer_discrim.class = DISCRIM_CLASS_NULL;
-    l->peer_discrim.len = 0;
+  /* Peer discriminator */
+  l->peer_discrim.class = DISCRIM_CLASS_NULL;
+  l->peer_discrim.len = 0;
 }
 
 /*
@@ -387,7 +384,11 @@ LcpNewState(Fsm fp, int old, int new)
       assert(0);
   }
 
-    LinkShutdownCheck(l, new);
+  /* Keep track of how many links in this bundle are in an open state */
+  if (!OPEN_STATE(old) && OPEN_STATE(new))
+    l->bund->bm.n_open++;
+  else if (OPEN_STATE(old) && !OPEN_STATE(new))
+    l->bund->bm.n_open--;
 }
 
 /*
@@ -397,47 +398,47 @@ LcpNewState(Fsm fp, int old, int new)
 static void
 LcpNewPhase(Link l, int new)
 {
-    LcpState	const lcp = &l->lcp;
-    int		old = lcp->phase;
+  LcpState	const lcp = &l->lcp;
+  int		old;
 
-    /* Logit */
-    Log(LG_LCP2, ("[%s] %s: phase shift %s --> %s",
-	Pref(&lcp->fsm), Fsm(&lcp->fsm), PhaseNames[old], PhaseNames[new]));
+  /* Logit */
+  Log(LG_LCP2, ("[%s] %s: phase shift %s --> %s",
+    Pref(&lcp->fsm), Fsm(&lcp->fsm), PhaseNames[lcp->phase], PhaseNames[new]));
 
-    /* Sanity check transition (The picture on RFC 1661 p. 6 is incomplete) */
-    switch (old) {
-	case PHASE_DEAD:
-    	    assert(new == PHASE_ESTABLISH);
-    	    break;
+  /* Sanity check transition (The picture on RFC 1661 p. 6 is incomplete) */
+  switch ((old = lcp->phase)) {
+    case PHASE_DEAD:
+      assert(new == PHASE_ESTABLISH);
+      break;
     case PHASE_ESTABLISH:
-        assert(new == PHASE_DEAD
+      assert(new == PHASE_DEAD
 	  || new == PHASE_TERMINATE
 	  || new == PHASE_AUTHENTICATE);
-        break;
+      break;
     case PHASE_AUTHENTICATE:
-        assert(new == PHASE_TERMINATE
+      assert(new == PHASE_TERMINATE
 	  || new == PHASE_ESTABLISH
 	  || new == PHASE_NETWORK
 	  || new == PHASE_DEAD);
-        break;
+      break;
     case PHASE_NETWORK:
-        assert(new == PHASE_TERMINATE
+      assert(new == PHASE_TERMINATE
 	  || new == PHASE_ESTABLISH
 	  || new == PHASE_DEAD);
-        break;
+      break;
     case PHASE_TERMINATE:
-        assert(new == PHASE_ESTABLISH
+      assert(new == PHASE_ESTABLISH
 	  || new == PHASE_DEAD);
-        break;
+      break;
     default:
-        assert(0);
-    }
+      assert(0);
+  }
 
-    /* Change phase now */
-    lcp->phase = new;
+  /* Change phase now */
+  lcp->phase = new;
 
-    /* Do whatever for leaving old phase */
-    switch (old) {
+  /* Do whatever for leaving old phase */
+  switch (old) {
     case PHASE_AUTHENTICATE:
       if (new != PHASE_NETWORK)
 	AuthCleanup(l);
@@ -451,16 +452,18 @@ LcpNewPhase(Link l, int new)
 
     default:
       break;
-    }
+  }
 
-    /* Do whatever for entering new phase */
-    switch (new) {
+  /* Do whatever for entering new phase */
+  switch (new) {
     case PHASE_ESTABLISH:
+      memset(&l->bm.traffic, 0, sizeof(l->bm.traffic));
+      memset(&l->bm.idleStats, 0, sizeof(l->bm.idleStats));
       break;
 
     case PHASE_AUTHENTICATE:
-      if (!PhysIsSync(l))
-        PhysSetAccm(l, lcp->peer_accmap, lcp->want_accmap);
+      if (!PhysIsSync(l->phys))
+        PhysSetAccm(l->phys, lcp->peer_accmap, lcp->want_accmap);
       AuthStart(l);
       break;
 
@@ -470,28 +473,39 @@ LcpNewPhase(Link l, int new)
 	FsmSendIdent(&lcp->fsm, l->conf.ident);
 
       /* Join my bundle */
-      if (!BundJoin(l)) {
+      switch (BundJoin(l)) {
+	case 0:
 	  Log(LG_LINK|LG_BUND,
-	    ("[%s] link did not validate in bundle",
-	    l->name));
+	    ("[%s] link did not validate in bundle \"%s\"",
+	    l->name, l->bund->name));
 	  RecordLinkUpDownReason(NULL, l,
 	    0, STR_PROTO_ERR, "%s", STR_MULTI_FAIL);
 	  LinkClose(l);
-      } else {
-    	    /* If link connection complete, reset redial counter */
-	    l->num_redial = 0;
+	  l->joined_bund = 0;
+	  break;
+	case 1:
+	  l->joined_bund = 1;
+	  break;
+	default:
+	  l->joined_bund = 1;
+	  break;
       }
+
+      /* If link connection complete, reset redial counter */
+      if (l->joined_bund)
+	l->num_redial = 0;
+
       break;
 
     case PHASE_TERMINATE:
       break;
 
     case PHASE_DEAD:
-        break;
+      break;
 
     default:
       assert(0);
-    }
+  }
 }
 
 /*
@@ -520,53 +534,34 @@ LcpAuthResult(Link l, int success)
 int
 LcpStat(Context ctx, int ac, char *av[], void *arg)
 {
-    Link	const l = ctx->lnk;
-    LcpState	const lcp = &l->lcp;
-    char	buf[64];
+  LcpState	const lcp = &ctx->lnk->lcp;
 
-    Printf("%s [%s]\r\n", lcp->fsm.type->name, FsmStateName(lcp->fsm.state));
+  Printf("%s [%s]\r\n", lcp->fsm.type->name, FsmStateName(lcp->fsm.state));
 
-    Printf("Self:\r\n");
-    Printf(	"\tMRU      : %d bytes\r\n"
+  Printf("Self:\r\n");
+  Printf(	"\tMRU      : %d bytes\r\n"
 		"\tMAGIC    : 0x%08x\r\n"
 		"\tACCMAP   : 0x%08x\r\n"
 		"\tACFCOMP  : %s\r\n"
-		"\tPROTOCOMP: %s\r\n"
-		"\tAUTHTYPE : %s\r\n",
-	(int) lcp->want_mru,
-	(int) lcp->want_magic,
-	(int) lcp->want_accmap,
-	lcp->want_acfcomp ? "Yes" : "No",
-	lcp->want_protocomp ? "Yes" : "No",
-	(lcp->want_auth)?ProtoName(lcp->want_auth):"none");
+		"\tPROTOCOMP: %s\r\n",
+    (int) lcp->want_mru,
+    (int) lcp->want_magic,
+    (int) lcp->want_accmap,
+    lcp->want_acfcomp ? "Yes" : "No",
+    lcp->want_protocomp ? "Yes" : "No");
 
-    if (lcp->want_mrru) {
-	Printf(	"\tMRRU     : %d bytes\r\n", (int) lcp->want_mrru);
-	Printf(	"\tSHORTSEQ : %s\r\n", lcp->want_shortseq ? "Yes" : "No");
-	Printf(	"\tENDPOINTDISC: %s\r\n", MpDiscrimText(&self_discrim, buf, sizeof(buf)));
-    }
-
-    Printf("Peer:\r\n");
-    Printf(	"\tMRU      : %d bytes\r\n"
+  Printf("Peer:\r\n");
+  Printf(	"\tMRU      : %d bytes\r\n"
 		"\tMAGIC    : 0x%08x\r\n"
 		"\tACCMAP   : 0x%08x\r\n"
 		"\tACFCOMP  : %s\r\n"
-		"\tPROTOCOMP: %s\r\n"
-		"\tAUTHTYPE : %s\r\n",
-	(int) lcp->peer_mru,
-        (int) lcp->peer_magic,
-	(int) lcp->peer_accmap,
-        lcp->peer_acfcomp ? "Yes" : "No",
-        lcp->peer_protocomp ? "Yes" : "No",
-        (lcp->peer_auth)?ProtoName(lcp->peer_auth):"none");
-
-    if (lcp->peer_mrru) {
-	Printf(	"\tMRRU     : %d bytes\r\n", (int) lcp->peer_mrru);
-	Printf(	"\tSHORTSEQ : %s\r\n", lcp->peer_shortseq ? "Yes" : "No");
-	Printf(	"\tENDPOINTDISC: %s\r\n", MpDiscrimText(&l->peer_discrim, buf, sizeof(buf)));
-    }
-
-    return(0);
+		"\tPROTOCOMP: %s\r\n",
+    (int) lcp->peer_mru,
+    (int) lcp->peer_magic,
+    (int) lcp->peer_accmap,
+    lcp->peer_acfcomp ? "Yes" : "No",
+    lcp->peer_protocomp ? "Yes" : "No");
+  return(0);
 }
 
 /*
@@ -577,88 +572,86 @@ static u_char *
 LcpBuildConfigReq(Fsm fp, u_char *cp)
 {
     Link	l = (Link)fp->arg;
-    LcpState	const lcp = &l->lcp;
+  LcpState	const lcp = &l->lcp;
 
-    /* Standard stuff */
-    if (lcp->want_acfcomp && !LCP_PEER_REJECTED(lcp, TY_ACFCOMP))
-	cp = FsmConfValue(cp, TY_ACFCOMP, 0, NULL);
-    if (lcp->want_protocomp && !LCP_PEER_REJECTED(lcp, TY_PROTOCOMP))
-	cp = FsmConfValue(cp, TY_PROTOCOMP, 0, NULL);
-    if ((!PhysIsSync(l)) && (!LCP_PEER_REJECTED(lcp, TY_ACCMAP)))
-	cp = FsmConfValue(cp, TY_ACCMAP, -4, &lcp->want_accmap);
-    if (!LCP_PEER_REJECTED(lcp, TY_MRU))
-	cp = FsmConfValue(cp, TY_MRU, -2, &lcp->want_mru);
-    if (lcp->want_magic && !LCP_PEER_REJECTED(lcp, TY_MAGICNUM))
-	cp = FsmConfValue(cp, TY_MAGICNUM, -4, &lcp->want_magic);
-    if (lcp->want_callback && !LCP_PEER_REJECTED(lcp, TY_CALLBACK)) {
+  /* Standard stuff */
+  if (lcp->want_acfcomp && !LCP_PEER_REJECTED(lcp, TY_ACFCOMP))
+    cp = FsmConfValue(cp, TY_ACFCOMP, 0, NULL);
+  if (lcp->want_protocomp && !LCP_PEER_REJECTED(lcp, TY_PROTOCOMP))
+    cp = FsmConfValue(cp, TY_PROTOCOMP, 0, NULL);
+  if (!PhysIsSync(l->phys)) {
+    if (!LCP_PEER_REJECTED(lcp, TY_ACCMAP))
+      cp = FsmConfValue(cp, TY_ACCMAP, -4, &lcp->want_accmap);
+  }
+  if (!LCP_PEER_REJECTED(lcp, TY_MRU))
+    cp = FsmConfValue(cp, TY_MRU, -2, &lcp->want_mru);
+  if (lcp->want_magic && !LCP_PEER_REJECTED(lcp, TY_MAGICNUM))
+    cp = FsmConfValue(cp, TY_MAGICNUM, -4, &lcp->want_magic);
+  if (lcp->want_callback && !LCP_PEER_REJECTED(lcp, TY_CALLBACK)) {
+    struct {
+      u_char	op;
+      u_char	data[0];
+    } s_callback;
+
+    s_callback.op = 0;
+    cp = FsmConfValue(cp, TY_CALLBACK, 1, &s_callback);
+  }
+
+  /* Authorization stuff */
+  switch (lcp->want_auth) {
+    case PROTO_PAP:
+      cp = FsmConfValue(cp, TY_AUTHPROTO, -2, &lcp->want_auth);
+      break;
+    case PROTO_EAP:
+      cp = FsmConfValue(cp, TY_AUTHPROTO, -2, &lcp->want_auth);
+      break;
+    case PROTO_CHAP: {
 	struct {
-    	    u_char	op;
-    	    u_char	data[0];
-	} s_callback;
+	  u_short	want_auth;
+	  u_char	chap_alg;
+	} s_mdx;
 
-	s_callback.op = 0;
-	cp = FsmConfValue(cp, TY_CALLBACK, 1, &s_callback);
-    }
+	s_mdx.want_auth = htons(PROTO_CHAP);
+	s_mdx.chap_alg = lcp->want_chap_alg;
+	cp = FsmConfValue(cp, TY_AUTHPROTO, 3, &s_mdx);
+      }
+      break;
+  }
 
-    /* Authorization stuff */
-    switch (lcp->want_auth) {
-	case PROTO_PAP:
-	case PROTO_EAP:
-    	    cp = FsmConfValue(cp, TY_AUTHPROTO, -2, &lcp->want_auth);
-    	    break;
-	case PROTO_CHAP: {
-	    struct {
-		u_short	want_auth;
-		u_char	chap_alg;
-	    } s_mdx;
+  /* Multi-link stuff */
+  if (Enabled(&l->bund->conf.options, BUND_CONF_MULTILINK)
+      && !LCP_PEER_REJECTED(lcp, TY_MRRU)) {
+    cp = FsmConfValue(cp, TY_MRRU, -2, &lcp->want_mrru);
+    if (lcp->want_shortseq && !LCP_PEER_REJECTED(lcp, TY_SHORTSEQNUM))
+      cp = FsmConfValue(cp, TY_SHORTSEQNUM, 0, NULL);
+    if (!LCP_PEER_REJECTED(lcp, TY_ENDPOINTDISC))
+      cp = FsmConfValue(cp, TY_ENDPOINTDISC,
+	1 + self_discrim.len, &self_discrim.class);
+  }
 
-	    s_mdx.want_auth = htons(PROTO_CHAP);
-	    s_mdx.chap_alg = lcp->want_chap_alg;
-	    cp = FsmConfValue(cp, TY_AUTHPROTO, 3, &s_mdx);
-        }
-        break;
-    }
-
-    /* Multi-link stuff */
-    if (Enabled(&l->conf.options, LINK_CONF_MULTILINK)
-    	    && !LCP_PEER_REJECTED(lcp, TY_MRRU)) {
-	cp = FsmConfValue(cp, TY_MRRU, -2, &lcp->want_mrru);
-	if (lcp->want_shortseq && !LCP_PEER_REJECTED(lcp, TY_SHORTSEQNUM))
-    	    cp = FsmConfValue(cp, TY_SHORTSEQNUM, 0, NULL);
-	if (!LCP_PEER_REJECTED(lcp, TY_ENDPOINTDISC))
-    	    cp = FsmConfValue(cp, TY_ENDPOINTDISC, 1 + self_discrim.len, &self_discrim.class);
-    }
-
-    /* Done */
-    return(cp);
+  /* Done */
+  return(cp);
 }
 
 static void
 LcpLayerStart(Fsm fp)
 {
     Link	l = (Link)fp->arg;
-  
-    LinkNgInit(l);
-    if (!TimerStarted(&l->openTimer))
-	PhysOpen(l);
+  PhysOpen(l->phys);
 }
 
 static void
 LcpStopActivity(Link l)
 {
-    AuthStop(l);
+  AuthStop(l);
 }
 
 static void
 LcpLayerFinish(Fsm fp)
 {
     Link	l = (Link)fp->arg;
-
-    LcpStopActivity(l);
-    if (!l->rep) {
-	PhysClose(l);
-	LinkNgShutdown(l, 1);
-    }
+  LcpStopActivity(l);
+  PhysClose(l->phys);
 }
 
 /*
@@ -772,21 +765,8 @@ static void
 LcpDecodeConfig(Fsm fp, FsmOption list, int num, int mode)
 {
     Link	l = (Link)fp->arg;
-    LcpState	const lcp = &l->lcp;
-    int		k;
-
-    /* If we have got request, forget the previous values */
-    if (mode == MODE_REQ) {
-	lcp->peer_mru = l->conf.mtu;
-	lcp->peer_accmap = 0xffffffff;
-	lcp->peer_acfcomp = FALSE;
-	lcp->peer_protocomp = FALSE;
-	lcp->peer_magic = 0;
-	lcp->peer_auth = 0;
-	lcp->peer_chap_alg = 0;
-	lcp->peer_mrru = 0;
-	lcp->peer_shortseq = FALSE;
-    }
+  LcpState	const lcp = &l->lcp;
+  int		k;
 
   /* Decode each config option */
   for (k = 0; k < num; k++) {
@@ -845,7 +825,7 @@ LcpDecodeConfig(Fsm fp, FsmOption list, int num, int mode)
 		break;
 	      }
 	      if (mru >= LCP_MIN_MRU
-		  && (mru <= l->type->mru || mru < lcp->want_mru))
+		  && (mru <= l->phys->type->mru || mru < lcp->want_mru))
 		lcp->want_mru = mru;
 	      break;
 	    case MODE_REJ:
@@ -1009,33 +989,52 @@ LcpDecodeConfig(Fsm fp, FsmOption list, int num, int mode)
 	  Log(LG_LCP, (" %s %d", oi->name, mrru));
 	  switch (mode) {
 	    case MODE_REQ:
-	      if (!Enabled(&l->conf.options, LINK_CONF_MULTILINK)) {
+	      if (!Enabled(&l->bund->conf.options, BUND_CONF_MULTILINK)) {
 		FsmRej(fp, opt);
 		break;
 	      }
-	      if (mrru < MP_MIN_MRRU || mrru > MP_MAX_MRRU) {
-	        mrru = htons((mrru > MP_MAX_MRRU)?MP_MAX_MRRU:MP_MIN_MRRU);
+	      if (l->bund->bm.n_up > 0 && mrru != l->bund->mp.peer_mrru) {
+		mrru = htons(l->bund->mp.peer_mrru);
 		memcpy(opt->data, &mrru, 2);
 		FsmNak(fp, opt);
 		break;
 	      }
+	      if (mrru > MP_MAX_MRRU) {
+		mrru = htons(MP_MAX_MRRU);
+		memcpy(opt->data, &mrru, 2);
+		FsmNak(fp, opt);
+		break;
+	      }
+	      if (mrru < MP_MIN_MRRU) {
+		mrru = htons(MP_MIN_MRRU);
+		memcpy(opt->data, &mrru, 2);
+		FsmNak(fp, opt);
+		break;
+	      }
+	      lcp->peer_multilink = TRUE;
 	      lcp->peer_mrru = mrru;
 	      FsmAck(fp, opt);
 	      break;
 	    case MODE_NAK:
 	      {
+		int	k;
+
 		/* Make sure we don't violate any rules by changing MRRU now */
+		if (l->bund->bm.n_up > 0)			/* too late */
+		  break;
 		if (mrru > lcp->want_mrru)		/* too big */
 		  break;
 		if (mrru < MP_MIN_MRRU)			/* too small; clip */
 		  mrru = MP_MIN_MRRU;
 
-		/* Update our links */
-		lcp->want_mrru = mrru;
+		/* Update our bundle, and any links currently in negotiation */
+		l->bund->mp.self_mrru = mrru;
+		for (k = 0; k < l->bund->n_links; k++)
+		  l->bund->links[k]->lcp.want_mrru = mrru;
 	      }
 	      break;
 	    case MODE_REJ:
-	      lcp->want_mrru = 0;
+	      lcp->peer_multilink = FALSE;
 	      LCP_PEER_REJ(lcp, opt->type);
 	      break;
 	  }
@@ -1046,18 +1045,30 @@ LcpDecodeConfig(Fsm fp, FsmOption list, int num, int mode)
 	Log(LG_LCP, (" %s", oi->name));
 	switch (mode) {
 	  case MODE_REQ:
-	    if (!Enabled(&l->conf.options, LINK_CONF_MULTILINK) ||
-		!Acceptable(&l->conf.options, LINK_CONF_SHORTSEQ)) {
+	    if (!Enabled(&l->bund->conf.options, BUND_CONF_MULTILINK)
+		|| !Acceptable(&l->bund->conf.options, BUND_CONF_SHORTSEQ)) {
 	      FsmRej(fp, opt);
 	      break;
 	    }
+	    lcp->peer_multilink = TRUE;
 	    lcp->peer_shortseq = TRUE;
 	    FsmAck(fp, opt);
 	    break;
 	  case MODE_NAK:	/* a NAK here doesn't make sense */
 	  case MODE_REJ:
+	    {
+	      int	k;
+
+	      /* Can't change MP configuration after one link already up */
+	      if (l->bund->bm.n_up > 0 && l->bund->mp.self_short_seq)
+		break;
+
+	      /* Update our bundle, and any links currently in negotiation */
 	      lcp->want_shortseq = FALSE;
-	      LCP_PEER_REJ(lcp, opt->type);
+	      l->bund->mp.self_short_seq = FALSE;
+	      for (k = 0; k < l->bund->n_links; k++)
+		LCP_PEER_REJ(&l->bund->links[k]->lcp, opt->type);
+	    }
 	    break;
 	}
 	break;

@@ -3,7 +3,7 @@
 
 <!-- <!DOCTYPE linuxdoc PUBLIC '-//FreeBSD//DTD linuxdoc//EN'> -->
 
-  <sect><heading>Control console<label id="console"></heading>
+  <sect><heading>Console commands<label id="console"></heading>
 
 <p>
 
@@ -28,14 +28,20 @@ Closes the console, i.e., closes the listening TCP socket.
 Only the listener is affected; active sessions are not closed.
 
 <tag><tt>
-set console self <em>ip</em> [ <em>port</em> ]
+set console port <em>port</em>
+<newline>set console ip <em>ip</em>
 </tt></tag>
 
 Sets the credentials for the console-listener. After changing one of these
 options, the console must be closed and re-opened for the changes to
 take effect.
 
-The default is '127.0.0.1 5005'.
+<tag><tt>
+set console user <em>username</em> <em>password</em>
+</tt></tag>
+
+This configures which users are allowed to connect to the console.
+This command may be invoked multiple times with different usernames.
 
 </descrip>
 
@@ -54,9 +60,7 @@ The options available for the console are:
 
 <tag><tt>logging</tt></tag>
 
-This options enables writing of logging messages to the current console.
-
-The default is enable for stdout and disable for the rest.
+This options enables writing of logging messages to the console.
 
 </descrip>
 

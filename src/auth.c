@@ -12,13 +12,13 @@
 #include "pap.h"
 #include "chap.h"
 #include "lcp.h"
+#include "custom.h"
 #include "log.h"
 #include "ngfunc.h"
 #include "msoft.h"
 #include "util.h"
 
 #include <libutil.h>
-#include <security/pam_appl.h>	
 
 /*
  * DEFINITIONS
@@ -43,11 +43,6 @@
   static void		AuthExternal(AuthData auth);
   static void		AuthExternalAcct(AuthData auth);
   static void		AuthSystem(AuthData auth);
-  static void		AuthSystemAcct(AuthData auth);
-  static void		AuthPAM(AuthData auth);
-  static void		AuthPAMAcct(AuthData auth);
-  static int		pam_conv(int n, const struct pam_message **msg,
-			    struct pam_response **resp, void *data);
   static void		AuthOpie(AuthData auth);
   static const char	*AuthCode(int proto, u_char code, char *buf, size_t len);
   static int		AuthSetCommand(Context ctx, int ac, char *av[], void *arg);
@@ -68,7 +63,7 @@
     SET_ACCT_UPDATE,
     SET_ACCT_UPDATE_LIMIT_IN,
     SET_ACCT_UPDATE_LIMIT_OUT,
-    SET_TIMEOUT
+    SET_TIMEOUT,
   };
 
 /*
@@ -76,36 +71,36 @@
  */
 
   const struct cmdtab AuthSetCmds[] = {
-    { "max-logins {num}",		"Max concurrent logins",
-	AuthSetCommand, NULL, 2, (void *) SET_MAX_LOGINS },
-    { "authname {name}",		"Authentication name",
-	AuthSetCommand, NULL, 2, (void *) SET_AUTHNAME },
-    { "password {pass}",		"Authentication password",
-	AuthSetCommand, NULL, 2, (void *) SET_PASSWORD },
-    { "extauth-script {script}",	"Authentication script",
-	AuthSetCommand, NULL, 2, (void *) SET_EXTAUTH_SCRIPT },
-    { "extacct-script {script}",	"Accounting script",
-	AuthSetCommand, NULL, 2, (void *) SET_EXTACCT_SCRIPT },
-    { "acct-update {seconds}",		"set update interval",
-	AuthSetCommand, NULL, 2, (void *) SET_ACCT_UPDATE },
-    { "update-limit-in {bytes}",	"set update suppresion limit",
-	AuthSetCommand, NULL, 2, (void *) SET_ACCT_UPDATE_LIMIT_IN },
-    { "update-limit-out {bytes}",	"set update suppresion limit",
-	AuthSetCommand, NULL, 2, (void *) SET_ACCT_UPDATE_LIMIT_OUT },
-    { "timeout {seconds}",		"set auth timeout",
-	AuthSetCommand, NULL, 2, (void *) SET_TIMEOUT },
+    { "max-logins num",			"Max concurrent logins",
+	AuthSetCommand, NULL, (void *) SET_MAX_LOGINS },
+    { "authname name",			"Authentication name",
+	AuthSetCommand, NULL, (void *) SET_AUTHNAME },
+    { "password pass",			"Authentication password",
+	AuthSetCommand, NULL, (void *) SET_PASSWORD },
+    { "extauth-script script",		"Authentication script",
+	AuthSetCommand, NULL, (void *) SET_EXTAUTH_SCRIPT },
+    { "extacct-script script",		"Authentication script",
+	AuthSetCommand, NULL, (void *) SET_EXTACCT_SCRIPT },
+    { "acct-update <seconds>",		"set update interval",
+	AuthSetCommand, NULL, (void *) SET_ACCT_UPDATE },
+    { "update-limit-in <bytes>",	"set update suppresion limit",
+	AuthSetCommand, NULL, (void *) SET_ACCT_UPDATE_LIMIT_IN },
+    { "update-limit-out <bytes>",	"set update suppresion limit",
+	AuthSetCommand, NULL, (void *) SET_ACCT_UPDATE_LIMIT_OUT },
+    { "timeout <seconds>",		"set auth timeout",
+	AuthSetCommand, NULL, (void *) SET_TIMEOUT },
     { "accept [opt ...]",		"Accept option",
-	AuthSetCommand, NULL, 2, (void *) SET_ACCEPT },
+	AuthSetCommand, NULL, (void *) SET_ACCEPT },
     { "deny [opt ...]",			"Deny option",
-	AuthSetCommand, NULL, 2, (void *) SET_DENY },
+	AuthSetCommand, NULL, (void *) SET_DENY },
     { "enable [opt ...]",		"Enable option",
-	AuthSetCommand, NULL, 2, (void *) SET_ENABLE },
+	AuthSetCommand, NULL, (void *) SET_ENABLE },
     { "disable [opt ...]",		"Disable option",
-	AuthSetCommand, NULL, 2, (void *) SET_DISABLE },
+	AuthSetCommand, NULL, (void *) SET_DISABLE },
     { "yes [opt ...]",			"Enable and accept option",
-	AuthSetCommand, NULL, 2, (void *) SET_YES },
+	AuthSetCommand, NULL, (void *) SET_YES },
     { "no [opt ...]",			"Disable and deny option",
-	AuthSetCommand, NULL, 2, (void *) SET_NO },
+	AuthSetCommand, NULL, (void *) SET_NO },
     { NULL },
   };
 
@@ -122,18 +117,16 @@
     { 0,	AUTH_CONF_INTERNAL,	"internal"	},
     { 0,	AUTH_CONF_EXT_AUTH,	"ext-auth"	},
     { 0,	AUTH_CONF_EXT_ACCT,	"ext-acct"	},
-    { 0,	AUTH_CONF_SYSTEM_AUTH,	"system-auth"	},
-    { 0,	AUTH_CONF_SYSTEM_ACCT,	"system-acct"	},
-    { 0,	AUTH_CONF_PAM_AUTH,	"pam-auth"	},
-    { 0,	AUTH_CONF_PAM_ACCT,	"pam-acct"	},
+    { 0,	AUTH_CONF_SYSTEM,	"system"	},
     { 0,	AUTH_CONF_OPIE,		"opie"		},
+    { 0,	AUTH_CONF_UTMP_WTMP,	"utmp-wtmp"	},
     { 0,	0,			NULL		},
   };
 
 void	authparamsInit(struct authparams *ap) {
     memset(ap,0,sizeof(struct authparams));
     SLIST_INIT(&ap->routes);
-}
+};
 
 void	authparamsDestroy(struct authparams *ap) {
     struct acl		*acls, *acls1;
@@ -141,37 +134,37 @@ void	authparamsDestroy(struct authparams *ap) {
     int i;
   
     if (ap->eapmsg) {
-	Freee(ap->eapmsg);
+	Freee(MB_AUTH, ap->eapmsg);
     }
     if (ap->state) {
-	Freee(ap->state);
+	Freee(MB_AUTH, ap->state);
     }
     if (ap->class) {
-	Freee(ap->class);
+	Freee(MB_AUTH, ap->class);
     }
 
     acls = ap->acl_rule;
     while (acls != NULL) {
 	acls1 = acls->next;
-	Freee(acls);
+	Freee(MB_AUTH, acls);
 	acls = acls1;
     };
     acls = ap->acl_pipe;
     while (acls != NULL) {
 	acls1 = acls->next;
-	Freee(acls);
+	Freee(MB_AUTH, acls);
 	acls = acls1;
     };
     acls = ap->acl_queue;
     while (acls != NULL) {
 	acls1 = acls->next;
-	Freee(acls);
+	Freee(MB_AUTH, acls);
 	acls = acls1;
     };
     acls = ap->acl_table;
     while (acls != NULL) {
 	acls1 = acls->next;
-	Freee(acls);
+	Freee(MB_AUTH, acls);
 	acls = acls1;
     };
 
@@ -179,7 +172,7 @@ void	authparamsDestroy(struct authparams *ap) {
 	acls = ap->acl_filters[i];
 	while (acls != NULL) {
 	    acls1 = acls->next;
-	    Freee(acls);
+	    Freee(MB_AUTH, acls);
 	    acls = acls1;
 	};
     };
@@ -188,22 +181,22 @@ void	authparamsDestroy(struct authparams *ap) {
 	acls = ap->acl_limits[i];
 	while (acls != NULL) {
 	    acls1 = acls->next;
-	    Freee(acls);
+	    Freee(MB_AUTH, acls);
 	    acls = acls1;
 	};
     };
 
     while ((r = SLIST_FIRST(&ap->routes)) != NULL) {
 	SLIST_REMOVE_HEAD(&ap->routes, next);
-	Freee(r);
+	Freee(MB_AUTH, r);
     }
 
     if (ap->msdomain) {
-	Freee(ap->msdomain);
+	Freee(MB_AUTH, ap->msdomain);
     }
     
     memset(ap,0,sizeof(struct authparams));
-}
+};
 
 void	authparamsCopy(struct authparams *src, struct authparams *dst) {
     struct acl		*acls;
@@ -213,17 +206,24 @@ void	authparamsCopy(struct authparams *src, struct authparams *dst) {
 
     memcpy(dst,src,sizeof(struct authparams));
   
-    if (src->eapmsg)
-	dst->eapmsg = Mdup(MB_AUTH, src->eapmsg, src->eapmsg_len);
-    if (src->state)
-	dst->state = Mdup(MB_AUTH, src->state, src->state_len);
-    if (src->class)
-	dst->class = Mdup(MB_AUTH, src->class, src->class_len);
+    if (src->eapmsg) {
+	dst->eapmsg = Malloc(MB_AUTH, src->eapmsg_len);
+	memcpy(dst->eapmsg, src->eapmsg, src->eapmsg_len);
+    }
+    if (src->state) {
+	dst->state = Malloc(MB_AUTH, src->state_len);
+	memcpy(dst->state, src->state, src->state_len);
+    }
+    if (src->class) {
+	dst->class = Malloc(MB_AUTH, src->class_len);
+	memcpy(dst->class, src->class, src->class_len);
+    }
 
     acls = src->acl_rule;
     pacl = &dst->acl_rule;
     while (acls != NULL) {
-	*pacl = Mdup(MB_AUTH, acls, sizeof(struct acl));
+	*pacl = Malloc(MB_AUTH, sizeof(struct acl));
+	memcpy(*pacl, acls, sizeof(struct acl));
 	acls = acls->next;
 	pacl = &((*pacl)->next);
     };
@@ -231,7 +231,8 @@ void	authparamsCopy(struct authparams *src, struct authparams *dst) {
     acls = src->acl_pipe;
     pacl = &dst->acl_pipe;
     while (acls != NULL) {
-	*pacl = Mdup(MB_AUTH, acls, sizeof(struct acl));
+	*pacl = Malloc(MB_AUTH, sizeof(struct acl));
+	memcpy(*pacl, acls, sizeof(struct acl));
 	acls = acls->next;
 	pacl = &((*pacl)->next);
     };
@@ -239,7 +240,8 @@ void	authparamsCopy(struct authparams *src, struct authparams *dst) {
     acls = src->acl_queue;
     pacl = &dst->acl_queue;
     while (acls != NULL) {
-	*pacl = Mdup(MB_AUTH, acls, sizeof(struct acl));
+	*pacl = Malloc(MB_AUTH, sizeof(struct acl));
+	memcpy(*pacl, acls, sizeof(struct acl));
 	acls = acls->next;
 	pacl = &((*pacl)->next);
     };
@@ -247,7 +249,8 @@ void	authparamsCopy(struct authparams *src, struct authparams *dst) {
     acls = src->acl_table;
     pacl = &dst->acl_table;
     while (acls != NULL) {
-	*pacl = Mdup(MB_AUTH, acls, sizeof(struct acl));
+	*pacl = Malloc(MB_AUTH, sizeof(struct acl));
+	memcpy(*pacl, acls, sizeof(struct acl));
 	acls = acls->next;
 	pacl = &((*pacl)->next);
     };
@@ -257,7 +260,8 @@ void	authparamsCopy(struct authparams *src, struct authparams *dst) {
 	acls = src->acl_filters[i];
 	pacl = &dst->acl_filters[i];
 	while (acls != NULL) {
-	    *pacl = Mdup(MB_AUTH, acls, sizeof(struct acl));
+	    *pacl = Malloc(MB_AUTH, sizeof(struct acl));
+	    memcpy(*pacl, acls, sizeof(struct acl));
 	    acls = acls->next;
 	    pacl = &((*pacl)->next);
 	};
@@ -268,7 +272,8 @@ void	authparamsCopy(struct authparams *src, struct authparams *dst) {
 	acls = src->acl_limits[i];
 	pacl = &dst->acl_limits[i];
 	while (acls != NULL) {
-	    *pacl = Mdup(MB_AUTH, acls, sizeof(struct acl));
+	    *pacl = Malloc(MB_AUTH, sizeof(struct acl));
+	    memcpy(*pacl, acls, sizeof(struct acl));
 	    acls = acls->next;
 	    pacl = &((*pacl)->next);
 	};
@@ -277,13 +282,16 @@ void	authparamsCopy(struct authparams *src, struct authparams *dst) {
 
     SLIST_INIT(&dst->routes);
     SLIST_FOREACH(r, &src->routes, next) {
-	r1 = Mdup(MB_AUTH, r, sizeof(*r1));
+	r1 = Malloc(MB_AUTH, sizeof(*r1));
+	memcpy(r1, r, sizeof(*r1));
 	SLIST_INSERT_HEAD(&dst->routes, r1, next);
     }
 
-    if (src->msdomain)
-	dst->msdomain = Mstrdup(MB_AUTH, src->msdomain);
-}
+    if (src->msdomain) {
+	dst->msdomain = Malloc(MB_AUTH, strlen(src->msdomain)+1);
+	strcpy(dst->msdomain, src->msdomain);
+    }
+};
 
 void	authparamsMove(struct authparams *src, struct authparams *dst)
 {
@@ -298,28 +306,18 @@ void	authparamsMove(struct authparams *src, struct authparams *dst)
 void
 AuthInit(Link l)
 {
-    AuthConf	const ac = &l->lcp.auth.conf;
+  AuthConf	const ac = &l->lcp.auth.conf;
   
-    ac->timeout = 40;
-    Enable(&ac->options, AUTH_CONF_INTERNAL);
+  RadiusInit(l);
 
-    EapInit(l);
-    RadiusInit(l);
-}
-
-/*
- * AuthShutdown()
- */
-
-void
-AuthShutdown(Link l)
-{
-    Auth	a = &l->lcp.auth;
+  Disable(&ac->options, AUTH_CONF_RADIUS_AUTH);
+  Disable(&ac->options, AUTH_CONF_RADIUS_ACCT);
   
-    if (a->thread)
-	paction_cancel(&a->thread);
-    if (a->acct_thread)
-	paction_cancel(&a->acct_thread);
+  Enable(&ac->options, AUTH_CONF_INTERNAL);
+  Disable(&ac->options, AUTH_CONF_EXT_AUTH);
+
+  /* default auth timeout */
+  ac->timeout = 40;
 }
 
 /*
@@ -333,10 +331,6 @@ AuthStart(Link l)
 {
     Auth	a = &l->lcp.auth;
 
-    /* generate a uniq session id */
-    snprintf(l->session_id, AUTH_MAX_SESSIONID, "%d-%s",
-	(int)(time(NULL) % 10000000), l->name);
-
     authparamsInit(&a->params);
 
     /* What auth protocols were negotiated by LCP? */
@@ -344,23 +338,17 @@ AuthStart(Link l)
     a->peer_to_self = l->lcp.want_auth;
 
     /* remember peer's IP address */
-    PhysGetPeerAddr(l, a->params.peeraddr, sizeof(a->params.peeraddr));
+    PhysGetPeerAddr(l->phys, a->params.peeraddr, sizeof(a->params.peeraddr));
   
     /* remember peer's TCP or UDP port */
-    PhysGetPeerPort(l, a->params.peerport, sizeof(a->params.peerport));
-  
-    /* remember peer's MAC address */
-    PhysGetPeerMacAddr(l, a->params.peermacaddr, sizeof(a->params.peermacaddr));
-  
-    /* remember peer's iface */
-    PhysGetPeerIface(l, a->params.peeriface, sizeof(a->params.peeriface));
+    PhysGetPeerPort(l->phys, a->params.peerport, sizeof(a->params.peerport));
   
     /* remember calling number */
-    PhysGetCallingNum(l, a->params.callingnum, sizeof(a->params.callingnum));
+    PhysGetCallingNum(l->phys, a->params.callingnum, sizeof(a->params.callingnum));
   
     /* remember called number */
-    PhysGetCalledNum(l, a->params.callednum, sizeof(a->params.callednum));
-    
+    PhysGetCalledNum(l->phys, a->params.callednum, sizeof(a->params.callednum));
+  
   Log(LG_AUTH, ("[%s] %s: auth: peer wants %s, I want %s",
     Pref(&l->lcp.fsm), Fsm(&l->lcp.fsm),
     a->self_to_peer ? ProtoName(a->self_to_peer) : "nothing",
@@ -426,39 +414,39 @@ AuthInput(Link l, int proto, Mbuf bp)
   int			len;
   struct fsmheader	fsmh;
   u_char		*pkt;
-  char			buf[32];
 
   /* Sanity check */
   if (l->lcp.phase != PHASE_AUTHENTICATE && l->lcp.phase != PHASE_NETWORK) {
     Log(LG_AUTH, ("[%s] AUTH: rec'd stray packet", l->name));
-    mbfree(bp);
+    PFREE(bp);
     return;
   }
   
   if (a->thread) {
     Log(LG_AUTH, ("[%s] AUTH: Thread already running, dropping this packet", 
       l->name));
-    mbfree(bp);
+    PFREE(bp);
     return;
   }
 
-  len = MBLEN(bp);
+  /* Make packet a single mbuf */
+  len = plength(bp = mbunify(bp));
 
   /* Sanity check length */
   if (len < sizeof(fsmh)) {
     Log(LG_AUTH, ("[%s] AUTH: rec'd runt packet: %d bytes",
       l->name, len));
-    mbfree(bp);
+    PFREE(bp);
     return;
   }
 
   auth = AuthDataNew(l);
   auth->proto = proto;
 
-  bp = mbread(bp, &fsmh, sizeof(fsmh));
+  bp = mbread(bp, (u_char *) &fsmh, sizeof(fsmh), NULL);
+  len -= sizeof(fsmh);
   if (len > ntohs(fsmh.length))
     len = ntohs(fsmh.length);
-  len -= sizeof(fsmh);
 
   if (bp == NULL && proto != PROTO_EAP && proto != PROTO_CHAP)
   {
@@ -480,16 +468,6 @@ AuthInput(Link l, int proto, Mbuf bp)
 
   pkt = MBDATA(bp);
 
-  if (proto == PROTO_EAP && bp) {
-    Log(LG_AUTH, ("[%s] %s: rec'd %s #%d len: %d, type: %s", l->name,
-      ProtoName(proto), AuthCode(proto, fsmh.code, buf, sizeof(buf)), fsmh.id,
-        ntohs(fsmh.length), EapType(pkt[0])));
-  } else {
-    Log(LG_AUTH, ("[%s] %s: rec'd %s #%d len: %d", l->name,
-      ProtoName(proto), AuthCode(proto, fsmh.code, buf, sizeof(buf)), fsmh.id,
-        ntohs(fsmh.length)));
-  }
-
   auth->id = fsmh.id;
   auth->code = fsmh.code;
   /* Status defaults to undefined */
@@ -509,7 +487,7 @@ AuthInput(Link l, int proto, Mbuf bp)
       assert(0);
   }
   
-  mbfree(bp);
+  PFREE(bp);
 }
 
 /*
@@ -537,25 +515,32 @@ AuthOutput(Link l, int proto, u_int code, u_int id, const u_char *ptr,
   lh.length = htons(plen);
 
   /* Build packet */
-  bp = mbcopyback(NULL, 0, &lh, sizeof(lh));
-  if (proto == PROTO_EAP)
-    bp = mbcopyback(bp, MBLEN(bp), &eap_type, 1);
-  if (add_len) {
-    u_char tl = len;
-    bp = mbcopyback(bp, MBLEN(bp), &tl, 1);
+  bp = mballoc(MB_AUTH, plen);
+  if (bp == NULL) {
+    Log(LG_ERR, ("[%s] %s: mballoc() error", l->name, ProtoName(proto)));
+    return;
   }
-  bp = mbcopyback(bp, MBLEN(bp), ptr, len);
+
+  memcpy(MBDATAU(bp), &lh, sizeof(lh));
+  if (proto == PROTO_EAP)
+    memcpy(MBDATAU(bp) + sizeof(lh), &eap_type, 1);
+
+  if (add_len)
+    *(MBDATAU(bp) + sizeof(lh)) = (u_char)len;
 
   if (proto == PROTO_EAP) {
-    Log(LG_AUTH, ("[%s] %s: sending %s #%d len: %d, type: %s", l->name,
-      ProtoName(proto), AuthCode(proto, code, buf, sizeof(buf)), id, plen, EapType(eap_type)));
+    memcpy(MBDATAU(bp) + sizeof(lh) + add_len + 1, ptr, len);
+    Log(LG_AUTH, ("[%s] %s: sending %s Type %s len:%d", l->name,
+      ProtoName(proto), AuthCode(proto, code, buf, sizeof(buf)), EapType(eap_type), len));
   } else {
-    Log(LG_AUTH, ("[%s] %s: sending %s #%d len: %d", l->name,
-      ProtoName(proto), AuthCode(proto, code, buf, sizeof(buf)), id, plen));
+    memcpy(MBDATAU(bp) + sizeof(lh) + add_len, ptr, len);
+    Log(LG_AUTH, ("[%s] %s: sending %s len:%d", l->name,
+      ProtoName(proto), AuthCode(proto, code, buf, sizeof(buf)), len));
   }
 
   /* Send it out */
-  NgFuncWritePppFrameLink(l, proto, bp);
+
+  NgFuncWritePppFrame(l->bund, l->bundleIndex, proto, bp);
 }
 
 /*
@@ -567,24 +552,34 @@ AuthOutput(Link l, int proto, u_int code, u_int id, const u_char *ptr,
 void
 AuthFinish(Link l, int which, int ok)
 {
-    Auth	const a = &l->lcp.auth;
+  Auth		const a = &l->lcp.auth;
 
-    if (which == AUTH_SELF_TO_PEER)
-        a->self_to_peer = 0;
-    else
-        a->peer_to_self = 0;
-    /* Did auth fail (in either direction)? */
-    if (!ok) {
-	AuthStop(l);
-	LcpAuthResult(l, FALSE);
-	return;
-    }
-    /* Did auth succeed (in both directions)? */
-    if (!a->peer_to_self && !a->self_to_peer) {
-	AuthStop(l);
-	LcpAuthResult(l, TRUE);
-	return;
-    }
+  switch (which) {
+    case AUTH_SELF_TO_PEER:
+      a->self_to_peer = 0;
+      break;
+
+    case AUTH_PEER_TO_SELF:
+      a->peer_to_self = 0;
+      break;
+
+    default:
+      assert(0);
+  }
+
+  /* Did auth fail (in either direction)? */
+  if (!ok) {
+    AuthStop(l);
+    LcpAuthResult(l, FALSE);
+    return;
+  }
+
+  /* Did auth succeed (in both directions)? */
+  if (!a->peer_to_self && !a->self_to_peer) {
+    AuthStop(l);
+    LcpAuthResult(l, TRUE);
+    return;
+  }
 }
 
 /*
@@ -596,13 +591,11 @@ AuthFinish(Link l, int which, int ok)
 void
 AuthCleanup(Link l)
 {
-    Auth	a = &l->lcp.auth;
+  Auth			a = &l->lcp.auth;
 
-    Log(LG_AUTH2, ("[%s] AUTH: Cleanup", l->name));
+  Log(LG_AUTH, ("[%s] AUTH: Cleanup", l->name));
 
-    authparamsDestroy(&a->params);
-
-    l->session_id[0] = 0;
+  authparamsDestroy(&a->params);
 }
 
 /* 
@@ -614,43 +607,37 @@ AuthCleanup(Link l)
 AuthData
 AuthDataNew(Link l) 
 {
-    AuthData	auth;
-    Auth	a = &l->lcp.auth;  
+  AuthData	auth;
+  Auth		a = &l->lcp.auth;  
 
-    auth = Malloc(MB_AUTH, sizeof(*auth));
-    auth->conf = l->lcp.auth.conf;
+  auth = Malloc(MB_AUTH, sizeof(*auth));
+  auth->conf = l->lcp.auth.conf;
 
-    strlcpy(auth->info.lnkname, l->name, sizeof(auth->info.lnkname));
-    strlcpy(auth->info.msession_id, l->msession_id, sizeof(auth->info.msession_id));
-    strlcpy(auth->info.session_id, l->session_id, sizeof(auth->info.session_id));
-    strlcpy(auth->info.peer_ident, l->lcp.peer_ident, sizeof(l->lcp.peer_ident));
+  strlcpy(auth->info.lnkname, l->name, sizeof(auth->info.lnkname));
+  strlcpy(auth->info.msession_id, l->msession_id, sizeof(auth->info.msession_id));
+  strlcpy(auth->info.session_id, l->session_id, sizeof(auth->info.session_id));
+  strlcpy(auth->info.peer_ident, l->lcp.peer_ident, sizeof(l->lcp.peer_ident));
 
-    if (l->bund) {
+  auth->info.n_links = l->bund->n_links;
+  auth->info.peer_addr = l->bund->ipcp.peer_addr;
+
+  /* Copy current link statistics */
+  memcpy(&auth->info.stats, &l->stats, sizeof(auth->info.stats));
+
+  if (l->downReasonValid) {
 	strlcpy(auth->info.ifname, l->bund->iface.ifname, sizeof(auth->info.ifname));
 	strlcpy(auth->info.bundname, l->bund->name, sizeof(auth->info.bundname));
-        auth->info.n_links = l->bund->n_links;
-	auth->info.peer_addr = l->bund->ipcp.peer_addr;
-    }
+	auth->info.downReason = Malloc(MB_LINK, strlen(l->downReason) + 1);
+	strcpy(auth->info.downReason, l->downReason);
+  }
 
-    /* Copy current link statistics */
-    memcpy(&auth->info.stats, &l->stats, sizeof(auth->info.stats));
-    
-    /* If it is present copy services statistics */
-    if (l->bund) {
-	IfaceGetStats(l->bund, &auth->info.ss);
-	IfaceAddStats(&auth->info.ss, &l->bund->iface.prevstats);
-    }
+  auth->info.last_open = l->last_open;
+  auth->info.phys_type = l->phys->type;
+  auth->info.linkID = l->phys->id;
 
-    if (l->downReasonValid)
-	auth->info.downReason = Mstrdup(MB_AUTH, l->downReason);
+  authparamsCopy(&a->params,&auth->params);
 
-    auth->info.last_up = l->last_up;
-    auth->info.phys_type = l->type;
-    auth->info.linkID = l->id;
-
-    authparamsCopy(&a->params,&auth->params);
-
-    return auth;
+  return auth;
 }
 
 /*
@@ -662,13 +649,12 @@ AuthDataNew(Link l)
 void
 AuthDataDestroy(AuthData auth)
 {
-    authparamsDestroy(&auth->params);
-    Freee(auth->info.downReason);
-    Freee(auth->reply_message);
-    Freee(auth->mschap_error);
-    Freee(auth->mschapv2resp);
-    IfaceFreeStats(&auth->info.ss);
-    Freee(auth);
+  authparamsDestroy(&auth->params);
+  Freee(MB_AUTH, auth->info.downReason);
+  Freee(MB_AUTH, auth->reply_message);
+  Freee(MB_AUTH, auth->mschap_error);
+  Freee(MB_AUTH, auth->mschapv2resp);
+  Freee(MB_AUTH, auth);
 }
 
 /*
@@ -698,89 +684,40 @@ AuthStop(Link l)
 int
 AuthStat(Context ctx, int ac, char *av[], void *arg)
 {
-    Auth	const au = &ctx->lnk->lcp.auth;
-    AuthConf	const conf = &au->conf;
-    char	buf[64];
-    struct acl	*a;
-    IfaceRoute	r;
-    int		k;
+  Auth		const a = &ctx->lnk->lcp.auth;
+  AuthConf	const conf = &a->conf;
+  char		buf[64];
 
-    Printf("Configuration:\r\n");
-    Printf("\tMy authname     : %s\r\n", conf->authname);
-    Printf("\tMax-Logins      : %d\r\n", gMaxLogins);
-    Printf("\tAcct Update     : %d\r\n", conf->acct_update);
-    Printf("\t   Limit In     : %d\r\n", conf->acct_update_lim_recv);
-    Printf("\t   Limit Out    : %d\r\n", conf->acct_update_lim_xmit);
-    Printf("\tAuth timeout    : %d\r\n", conf->timeout);
-    Printf("\tExtAuth script  : %s\r\n", conf->extauth_script);
-    Printf("\tExtAcct script  : %s\r\n", conf->extacct_script);
+  Printf("Configuration:\r\n");
+  Printf("\tMy authname     : %s\r\n", conf->authname);
+  Printf("\tMax-Logins      : %d\r\n", gMaxLogins);
+  Printf("\tAcct Update     : %d\r\n", conf->acct_update);
+  Printf("\t   Limit In     : %d\r\n", conf->acct_update_lim_recv);
+  Printf("\t   Limit Out    : %d\r\n", conf->acct_update_lim_xmit);
+  Printf("\tAuth timeout    : %d\r\n", conf->timeout);
+  Printf("\tExtAuth script  : %s\r\n", conf->extauth_script);
   
-    Printf("Auth options\r\n");
-    OptStat(ctx, &conf->options, gConfList);
+  Printf("Auth options\r\n");
+  OptStat(ctx, &conf->options, gConfList);
 
-    Printf("Auth Data\r\n");
-    Printf("\tPeer authname   : %s\r\n", au->params.authname);
-    Printf("\tIP range        : %s\r\n", (au->params.range_valid)?
-	u_rangetoa(&au->params.range,buf,sizeof(buf)):"");
-    Printf("\tIP pool         : %s\r\n", au->params.ippool);
-    Printf("\tMTU             : %u\r\n", au->params.mtu);
-    Printf("\tSession-Timeout : %u\r\n", au->params.session_timeout);
-    Printf("\tIdle-Timeout    : %u\r\n", au->params.idle_timeout);
-    Printf("\tAcct-Update     : %u\r\n", au->params.acct_update);
-    Printf("\tRoutes          :\r\n");
-    SLIST_FOREACH(r, &au->params.routes, next) {
-        Printf("\t\t%s\r\n", u_rangetoa(&r->dest,buf,sizeof(buf)));
-    }
-    Printf("\tIPFW rules      :\r\n");
-    a = au->params.acl_rule;
-    while (a) {
-        Printf("\t\t%d\t: '%s'\r\n", a->number, a->rule);
-        a = a->next;
-    }
-    Printf("\tIPFW pipes      :\r\n");
-    a = au->params.acl_pipe;
-    while (a) {
-        Printf("\t\t%d\t: '%s'\r\n", a->number, a->rule);
-        a = a->next;
-    }
-    Printf("\tIPFW queues     :\r\n");
-    a = au->params.acl_queue;
-    while (a) {
-        Printf("\t\t%d\t: '%s'\r\n", a->number, a->rule);
-        a = a->next;
-    }
-    Printf("\tIPFW tables     :\r\n");
-    a = au->params.acl_table;
-    while (a) {
-        if (a->number != 0)
-    	    Printf("\t\t%d\t: '%s'\r\n", a->number, a->rule);
-        else
-    	    Printf("\t\t#%d\t: '%s'\r\n", a->real_number, a->rule);
-        a = a->next;
-    }
-    Printf("\tTraffic filters :\r\n");
-    for (k = 0; k < ACL_FILTERS; k++) {
-        a = au->params.acl_filters[k];
-        while (a) {
-    	    Printf("\t%d#%d\t: '%s'\r\n", (k + 1), a->number, a->rule);
-    	    a = a->next;
-	}
-    }
-    Printf("\tTraffic limits  :\r\n");
-    for (k = 0; k < 2; k++) {
-        a = au->params.acl_limits[k];
-	while (a) {
-	    Printf("\t\t%s#%d%s%s\t: '%s'\r\n", (k?"out":"in"), a->number,
-		((a->name[0])?"#":""), a->name, a->rule);
-	    a = a->next;
-	}
-    }
-    Printf("\tMS-Domain       : %s\r\n", au->params.msdomain);  
-    Printf("\tMPPE Types      : %s\r\n", AuthMPPEPolicyname(au->params.msoft.policy));
-    Printf("\tMPPE Policy     : %s\r\n", AuthMPPETypesname(au->params.msoft.types, buf, sizeof(buf)));
-    Printf("\tMPPE Keys       : %s\r\n", au->params.msoft.has_keys ? "yes" : "no");
+  Printf("Auth Data\r\n");
+  Printf("\tPeer authname   : %s\r\n", a->params.authname);
+  Printf("\tMTU             : %u\r\n", a->params.mtu);
+  Printf("\tSession-Timeout : %u\r\n", a->params.session_timeout);
+  Printf("\tIdle-Timeout    : %u\r\n", a->params.idle_timeout);
+  Printf("\tAcct-Update     : %u\r\n", a->params.acct_update);
+  Printf("\tRoutes          : %s\r\n", SLIST_EMPTY(&a->params.routes) ? "no" : "yes");
+  Printf("\tACL Rules       : %s\r\n", a->params.acl_rule ? "yes" : "no");
+  Printf("\tACL Pipes       : %s\r\n", a->params.acl_pipe ? "yes" : "no");
+  Printf("\tACL Queues      : %s\r\n", a->params.acl_queue ? "yes" : "no");
+  Printf("\tACL Tables      : %s\r\n", a->params.acl_table ? "yes" : "no");
+  Printf("\tTraffic Limits  : %s\r\n", (a->params.acl_limits[0] || a->params.acl_limits[1]) ? "yes" : "no");
+  Printf("\tMS-Domain       : %s\r\n", a->params.msdomain);  
+  Printf("\tMPPE Types      : %s\r\n", AuthMPPEPolicyname(a->params.msoft.policy));
+  Printf("\tMPPE Policy     : %s\r\n", AuthMPPETypesname(a->params.msoft.types, buf, sizeof(buf)));
+  Printf("\tMPPE Keys       : %s\r\n", a->params.msoft.has_keys ? "yes" : "no");
 
-    return (0);
+  return (0);
 }
 
 
@@ -793,90 +730,86 @@ AuthStat(Context ctx, int ac, char *av[], void *arg)
 void
 AuthAccountStart(Link l, int type)
 {
-    Auth		const a = &l->lcp.auth;
-    AuthData		auth;
+  Auth		const a = &l->lcp.auth;
+  AuthData	auth;
+  u_long	updateInterval = 0;
       
+  LinkUpdateStats(l);
+  if (type == AUTH_ACCT_STOP) {
+    Log(LG_AUTH, ("[%s] AUTH: Accounting data for user %s: %lu seconds, %llu octets in, %llu octets out",
+      l->name, a->params.authname,
+      (unsigned long) (time(NULL) - l->last_open),
+      (unsigned long long)l->stats.recvOctets,
+      (unsigned long long)l->stats.xmitOctets));
+  }
+
+  if (!Enabled(&l->lcp.auth.conf.options, AUTH_CONF_RADIUS_ACCT)
+      && !Enabled(&l->lcp.auth.conf.options, AUTH_CONF_UTMP_WTMP)
+      && !Enabled(&l->lcp.auth.conf.options, AUTH_CONF_EXT_ACCT))
+    return;
+
+  if (type == AUTH_ACCT_START || type == AUTH_ACCT_STOP) {
+  
     /* maybe an outstanding thread is running */
-    if (a->acct_thread) {
-	if (type == AUTH_ACCT_START || type == AUTH_ACCT_STOP) {
-	    paction_cancel(&a->acct_thread);
-	} else {
-	    Log(LG_AUTH2, ("[%s] ACCT: Accounting thread is already running", 
-    		l->name));
-	    return;
-	}
-    }
+    paction_cancel(&a->acct_thread);
+    
+  }
 
-    LinkUpdateStats(l);
-    if (type == AUTH_ACCT_STOP) {
-	Log(LG_AUTH2, ("[%s] ACCT: Accounting data for user %s: %lu seconds, %llu octets in, %llu octets out",
-    	    l->name, a->params.authname,
-    	    (unsigned long) (time(NULL) - l->last_up),
-    	    (unsigned long long)l->stats.recvOctets,
-    	    (unsigned long long)l->stats.xmitOctets));
-    }
+  if (type == AUTH_ACCT_START) {
+    
+    if (a->params.acct_update > 0)
+      updateInterval = a->params.acct_update;
+    else if (l->lcp.auth.conf.acct_update > 0)
+      updateInterval = l->lcp.auth.conf.acct_update;
 
-    if (type == AUTH_ACCT_START) {
-	u_int		updateInterval;
+    if (updateInterval > 0) {
+	/* Save initial statistics. */
+	memcpy(&a->prev_stats, &l->stats, 
+	  sizeof(a->prev_stats));
+
+	/* Start accounting update timer. */
+	TimerInit(&a->acct_timer, "AuthAccountTimer",
+	  updateInterval * SECONDS, AuthAccountTimeout, l);
+	TimerStartRecurring(&a->acct_timer);
+    }
+  }
   
-	if (a->params.acct_update > 0)
-    	    updateInterval = a->params.acct_update;
-	else
-    	    updateInterval = a->conf.acct_update;
-
-	if (updateInterval > 0) {
-	    /* Save initial statistics. */
+  if (type == AUTH_ACCT_UPDATE) {
+    /*
+     * Suppress sending of accounting update, if byte threshold
+     * is configured, and delta since last update doesn't exceed it.
+     */
+    if (a->conf.acct_update_lim_recv > 0 ||
+      a->conf.acct_update_lim_xmit > 0) {
+	if ((l->stats.recvOctets - a->prev_stats.recvOctets <
+    	   a->conf.acct_update_lim_recv) &&
+    	  (l->stats.xmitOctets - a->prev_stats.xmitOctets <
+    	   a->conf.acct_update_lim_xmit)) {
+    	    Log(LG_AUTH, ("[%s] AUTH: Shouldn't send Interim-Update",
+    	      l->name));
+    	    return;
+        } else {
+	    /* Save current statistics. */
 	    memcpy(&a->prev_stats, &l->stats, 
-		sizeof(a->prev_stats));
-
-	    /* Start accounting update timer. */
-	    TimerInit(&a->acct_timer, "AuthAccountTimer",
-		updateInterval * SECONDS, AuthAccountTimeout, l);
-	    TimerStartRecurring(&a->acct_timer);
-	}
+	      sizeof(a->prev_stats));
+        }
     }
-  
-    if (type == AUTH_ACCT_UPDATE) {
-	/*
-	* Suppress sending of accounting update, if byte threshold
-        * is configured, and delta since last update doesn't exceed it.
-        */
-	u_int	lim_recv, lim_xmit;
-
-	if (a->params.acct_update_lim_recv > 0)
-	    lim_recv = a->params.acct_update_lim_recv;
-	else
-	    lim_recv = a->conf.acct_update_lim_recv;
-	if (a->params.acct_update_lim_xmit > 0)
-	    lim_xmit = a->params.acct_update_lim_xmit;
-	else
-	    lim_xmit = a->conf.acct_update_lim_xmit;
-	if (lim_recv > 0 || lim_xmit > 0) {
-	    if ((l->stats.recvOctets - a->prev_stats.recvOctets < lim_recv) &&
-    		    (l->stats.xmitOctets - a->prev_stats.xmitOctets < lim_xmit)) {
-    		Log(LG_AUTH2, ("[%s] ACCT: Shouldn't send Interim-Update", l->name));
-    		return;
-    	    } else {
-		/* Save current statistics. */
-		memcpy(&a->prev_stats, &l->stats, sizeof(a->prev_stats));
-    	    }
-	}
-    }
+  }
     
-    if (type == AUTH_ACCT_STOP) {
-	/* Stop accounting update timer if running. */
-	TimerStop(&a->acct_timer);
-    }
+  if (type == AUTH_ACCT_STOP) {
+    /* Stop accounting update timer if running. */
+    TimerStop(&a->acct_timer);
+  }
     
-    auth = AuthDataNew(l);
-    auth->acct_type = type;
+  auth = AuthDataNew(l);
+  auth->acct_type = type;
 
-    if (paction_start(&a->acct_thread, &gGiantMutex, AuthAccount, 
-	    AuthAccountFinish, auth) == -1) {
-	Log(LG_ERR, ("[%s] ACCT: Couldn't start thread: %d", 
-    	    l->name, errno));
-	AuthDataDestroy(auth);
-    }
+  if (paction_start(&a->acct_thread, &gGiantMutex, AuthAccount, 
+    AuthAccountFinish, auth) == -1) {
+    Log(LG_ERR, ("[%s] AUTH: Couldn't start Accounting-Thread %d", 
+      l->name, errno));
+    AuthDataDestroy(auth);
+  }
 
 }
 
@@ -891,7 +824,7 @@ AuthAccountTimeout(void *arg)
 {
     Link	l = (Link)arg;
   
-    Log(LG_AUTH2, ("[%s] ACCT: Time for Accounting Update",
+    Log(LG_AUTH, ("[%s] AUTH: Sending Accounting Update",
 	l->name));
 
     AuthAccountStart(l, AUTH_ACCT_UPDATE);
@@ -907,18 +840,37 @@ AuthAccountTimeout(void *arg)
 static void
 AuthAccount(void *arg)
 {
-    AuthData	const auth = (AuthData)arg;
+  AuthData	const auth = (AuthData)arg;
   
-    Log(LG_AUTH2, ("[%s] ACCT: Thread started", auth->info.lnkname));
+  Log(LG_AUTH, ("[%s] AUTH: Accounting-Thread started", auth->info.lnkname));
+
+  if (Enabled(&auth->conf.options, AUTH_CONF_RADIUS_ACCT))
+    RadiusAccount(auth);
+
+  if (Enabled(&auth->conf.options, AUTH_CONF_UTMP_WTMP)) {
+    struct utmp	ut;
+
+    memset(&ut, 0, sizeof(ut));
+    strlcpy(ut.ut_line, auth->info.lnkname, sizeof(ut.ut_line));
+
+    if (auth->acct_type == AUTH_ACCT_START) {
+      time_t	t;
+
+      strlcpy(ut.ut_host, auth->params.peeraddr, sizeof(ut.ut_host));
+      strlcpy(ut.ut_name, auth->params.authname, sizeof(ut.ut_name));
+      time(&t);
+      ut.ut_time = t;
+      login(&ut);
+      Log(LG_AUTH, ("[%s] AUTH: wtmp %s %s %s login", auth->info.lnkname, ut.ut_line, 
+        ut.ut_name, ut.ut_host));
+    }
   
-    if (Enabled(&auth->conf.options, AUTH_CONF_RADIUS_ACCT))
-	RadiusAccount(auth);
-
-    if (Enabled(&auth->conf.options, AUTH_CONF_PAM_ACCT))
-	AuthPAMAcct(auth);
-
-    if (Enabled(&auth->conf.options, AUTH_CONF_SYSTEM_ACCT))
-	AuthSystemAcct(auth);
+    if (auth->acct_type == AUTH_ACCT_STOP) {
+      Log(LG_AUTH, ("[%s] AUTH: wtmp %s logout", auth->info.lnkname, ut.ut_line));
+      logout(ut.ut_line);
+      logwtmp(ut.ut_line, "", "");
+    }
+  }
 
     if (Enabled(&auth->conf.options, AUTH_CONF_EXT_ACCT))
 	AuthExternalAcct(auth);
@@ -934,38 +886,30 @@ static void
 AuthAccountFinish(void *arg, int was_canceled)
 {
     AuthData		auth = (AuthData)arg;
-    Link 		l;
 
     if (was_canceled) {
-	Log(LG_AUTH2, ("[%s] ACCT: Thread was canceled", 
+	Log(LG_AUTH, ("[%s] AUTH: Accounting-Thread was canceled", 
     	    auth->info.lnkname));
     } else {
-	Log(LG_AUTH2, ("[%s] ACCT: Thread finished normally", 
+	Log(LG_AUTH, ("[%s] AUTH: Accounting-Thread finished normally", 
 	    auth->info.lnkname));
     }
     
     /* Cleanup */
     RadiusClose(auth);
-
-    if (was_canceled) {
-	AuthDataDestroy(auth);
-	return;
-    }  
     
-    l = gLinks[auth->info.linkID];
-    if (l == NULL) {
-	AuthDataDestroy(auth);
-	return;
-    }    
-
-    if (auth->drop_user && auth->acct_type != AUTH_ACCT_STOP) {
-	Log(LG_AUTH, ("[%s] ACCT: Link close requested at the accounting reply", 
-	    l->name));
-	RecordLinkUpDownReason(NULL, l, 0, STR_MANUALLY, NULL);
-	LinkClose(l);
+    if (!was_canceled && auth->drop_user && auth->acct_type != AUTH_ACCT_STOP) {
+	PhysInfo	p = gPhyses[auth->info.linkID];
+	Link		l;
+	if ((p != NULL) && ((l = p->link) != NULL)) {
+    	    Log(LG_AUTH, ("[%s] AUTH: Link close requested at the accounting reply", 
+		l->name));
+	    RecordLinkUpDownReason(NULL, l, 0, STR_MANUALLY, NULL);
+	    LinkClose(l);
+	}
     }
+    
     AuthDataDestroy(auth);
-    LinkShutdownCheck(l, l->lcp.fsm.state);
 }
 
 /*
@@ -994,7 +938,7 @@ AuthGetData(char *authname, char *password, size_t passlen,
   while ((line = ReadFullLine(fp, NULL, NULL, 0)) != NULL) {
     memset(av, 0, sizeof(av));
     ac = ParseLine(line, av, sizeof(av) / sizeof(*av), 1);
-    Freee(line);
+    Freee(MB_UTIL, line);
     if (ac >= 2
 	&& (strcmp(av[0], authname) == 0
 	 || (av[1][0] == '!' && strcmp(av[0], "*") == 0))) {
@@ -1035,27 +979,7 @@ AuthGetData(char *authname, char *password, size_t passlen,
 void 
 AuthAsyncStart(Link l, AuthData auth)
 {
-    Auth	const a = &l->lcp.auth;
-    char	*rept;
-    
-    /* Check link action */
-    rept = LinkMatchAction(l, 2, auth->params.authname);
-    if (rept) {
-	/* Action told we must forward this connection */
-	if (RepCreate(l, rept)) {
-	    Log(LG_ERR, ("[%s] Repeater to \"%s\" creation error", l->name, rept));
-	    PhysClose(l);
-	    return;
-	}
-	/* Create repeater */
-	RepIncoming(l);
-	/* Reconnect link netgraph hook to repeater */
-	LinkNgToRep(l);
-	/* Kill the LCP */
-	LcpDown(l);
-	LcpClose(l);
-	return;
-    }
+  Auth	const a = &l->lcp.auth;
   
   /* perform pre authentication checks (single-login, etc.) */
   if (AuthPreChecks(auth) < 0) {
@@ -1067,7 +991,7 @@ AuthAsyncStart(Link l, AuthData auth)
 
   if (paction_start(&a->thread, &gGiantMutex, AuthAsync, 
     AuthAsyncFinish, auth) == -1) {
-    Log(LG_ERR, ("[%s] AUTH: Couldn't start thread: %d", 
+    Log(LG_ERR, ("[%s] AUTH: Couldn't start Auth-Thread %d", 
       l->name, errno));
     auth->status = AUTH_STATUS_FAIL;
     auth->why_fail = AUTH_FAIL_NOT_EXPECTED;
@@ -1087,10 +1011,9 @@ AuthAsync(void *arg)
 {
   AuthData	const auth = (AuthData)arg;
 
-  Log(LG_AUTH2, ("[%s] AUTH: Thread started", auth->info.lnkname));
+  Log(LG_AUTH, ("[%s] AUTH: Auth-Thread started", auth->info.lnkname));
 
   if (Enabled(&auth->conf.options, AUTH_CONF_EXT_AUTH)) {
-    auth->params.authentic = AUTH_CONF_EXT_AUTH;
     Log(LG_AUTH, ("[%s] AUTH: Trying EXTERNAL", auth->info.lnkname));
     AuthExternal(auth);
     Log(LG_AUTH, ("[%s] AUTH: EXTERNAL returned %s", auth->info.lnkname, AuthStatusText(auth->status)));
@@ -1100,11 +1023,9 @@ AuthAsync(void *arg)
   }
 
   if (auth->proto == PROTO_EAP && auth->eap_radius) {
-    auth->params.authentic = AUTH_CONF_RADIUS_AUTH;
     RadiusEapProxy(auth);
     return;
   } else if (Enabled(&auth->conf.options, AUTH_CONF_RADIUS_AUTH)) {
-    auth->params.authentic = AUTH_CONF_RADIUS_AUTH;
     Log(LG_AUTH, ("[%s] AUTH: Trying RADIUS", auth->info.lnkname));
     RadiusAuthenticate(auth);
     Log(LG_AUTH, ("[%s] AUTH: RADIUS returned %s", 
@@ -1112,20 +1033,8 @@ AuthAsync(void *arg)
     if (auth->status == AUTH_STATUS_SUCCESS)
       return;
   }
-  
-  if (Enabled(&auth->conf.options, AUTH_CONF_PAM_AUTH)) {
-    auth->params.authentic = AUTH_CONF_PAM_AUTH;
-    Log(LG_AUTH, ("[%s] AUTH: Trying PAM", auth->info.lnkname));
-    AuthPAM(auth);
-    Log(LG_AUTH, ("[%s] AUTH: PAM returned %s", 
-      auth->info.lnkname, AuthStatusText(auth->status)));
-    if (auth->status == AUTH_STATUS_SUCCESS 
-      || auth->status == AUTH_STATUS_UNDEF)
-        return;
-  }
 
-  if (Enabled(&auth->conf.options, AUTH_CONF_SYSTEM_AUTH)) {
-    auth->params.authentic = AUTH_CONF_SYSTEM_AUTH;
+  if (Enabled(&auth->conf.options, AUTH_CONF_SYSTEM)) {
     Log(LG_AUTH, ("[%s] AUTH: Trying SYSTEM", auth->info.lnkname));
     AuthSystem(auth);
     Log(LG_AUTH, ("[%s] AUTH: SYSTEM returned %s", 
@@ -1136,7 +1045,6 @@ AuthAsync(void *arg)
   }
   
   if (Enabled(&auth->conf.options, AUTH_CONF_OPIE)) {
-    auth->params.authentic = AUTH_CONF_OPIE;
     Log(LG_AUTH, ("[%s] AUTH: Trying OPIE", auth->info.lnkname));
     AuthOpie(auth);
     Log(LG_AUTH, ("[%s] AUTH: OPIE returned %s", 
@@ -1173,9 +1081,10 @@ AuthAsyncFinish(void *arg, int was_canceled)
 {
     AuthData	auth = (AuthData)arg;
     Link	l;
+    PhysInfo	p;
 
     if (was_canceled)
-	Log(LG_AUTH2, ("[%s] AUTH: Thread was canceled", auth->info.lnkname));
+	Log(LG_AUTH, ("[%s] AUTH: Auth-Thread was canceled", auth->info.lnkname));
 
     /* cleanup */
     RadiusClose(auth);
@@ -1185,13 +1094,13 @@ AuthAsyncFinish(void *arg, int was_canceled)
 	return;
     }  
   
-    l = gLinks[auth->info.linkID];
-    if (l == NULL) {
+    p = gPhyses[auth->info.linkID];
+    if ((p == NULL) || ((l = p->link) == NULL)) {
 	AuthDataDestroy(auth);
 	return;
     }    
 
-    Log(LG_AUTH2, ("[%s] AUTH: Thread finished normally", l->name));
+    Log(LG_AUTH, ("[%s] AUTH: Auth-Thread finished normally", l->name));
 
     /* Replace modified data */
     authparamsDestroy(&l->lcp.auth.params);
@@ -1203,7 +1112,7 @@ AuthAsyncFinish(void *arg, int was_canceled)
 /*
  * AuthInternal()
  * 
- * Authenticate against mpd.secret
+ * Authenticate against mpd.secrets
  */
  
 static void
@@ -1212,8 +1121,8 @@ AuthInternal(AuthData auth)
     if (AuthGetData(auth->params.authname, auth->params.password, 
 	    sizeof(auth->params.password), &auth->params.range, 
 	    &auth->params.range_valid) < 0) {
-	Log(LG_AUTH, ("[%s] AUTH: User \"%s\" not found in secret file", 
-	    auth->info.lnkname, auth->params.authname));
+	Log(LG_AUTH, ("AUTH: User \"%s\" not found in secret file", 
+	    auth->params.authname));
 	auth->status = AUTH_STATUS_FAIL;
 	auth->why_fail = AUTH_FAIL_INVALID_LOGIN;
 	return;
@@ -1245,11 +1154,9 @@ AuthSystem(AuthData auth)
     err=errno;
     GIANT_MUTEX_UNLOCK(); /* We must release lock before Log() */
     if (err)
-      Log(LG_ERR, ("[%s] AUTH: Error retrieving passwd: %s",
-        auth->info.lnkname, strerror(errno)));
+      Log(LG_ERR, ("AUTH: Error retrieving passwd %s", strerror(errno)));
     else
-      Log(LG_AUTH, ("[%s] AUTH: User \"%s\" not found in the systems database",
-        auth->info.lnkname, auth->params.authname));
+      Log(LG_AUTH, ("AUTH: User \"%s\" not found in the systems database", auth->params.authname));
     auth->status = AUTH_STATUS_FAIL;
     auth->why_fail = AUTH_FAIL_INVALID_LOGIN;
     return;
@@ -1257,14 +1164,15 @@ AuthSystem(AuthData auth)
   memcpy(&pwc,pw,sizeof(struct passwd)); /* we must make copy before release lock */
   GIANT_MUTEX_UNLOCK();
   
-  Log(LG_AUTH, ("[%s] AUTH: Found user %s Uid:%d Gid:%d Fmt:%*.*s",
-    auth->info.lnkname, pwc.pw_name, pwc.pw_uid, pwc.pw_gid, 3, 3, pwc.pw_passwd));
+  Log(LG_AUTH, ("AUTH: Found user %s Uid:%d Gid:%d Fmt:%*.*s", pwc.pw_name, 
+    pwc.pw_uid, pwc.pw_gid, 3, 3, pwc.pw_passwd));
 
   if (auth->proto == PROTO_PAP) {
     /* protect non-ts crypt() */
     GIANT_MUTEX_LOCK();
     if (strcmp(crypt(pp->peer_pass, pwc.pw_passwd), pwc.pw_passwd) == 0) {
       auth->status = AUTH_STATUS_SUCCESS;
+      auth->params.authentic = AUTH_CONF_OPIE;      
     } else {
       auth->status = AUTH_STATUS_FAIL;
       auth->why_fail = AUTH_FAIL_INVALID_LOGIN;
@@ -1284,10 +1192,11 @@ AuthSystem(AuthData auth)
 
     bin = Hex2Bin(&pwc.pw_passwd[4]);
     memcpy(auth->params.msoft.nt_hash, bin, sizeof(auth->params.msoft.nt_hash));
-    Freee(bin);
+    Freee(MB_UTIL, bin);
     NTPasswordHashHash(auth->params.msoft.nt_hash, auth->params.msoft.nt_hash_hash);
     auth->params.msoft.has_nt_hash = TRUE;
     auth->status = AUTH_STATUS_UNDEF;
+    auth->params.authentic = AUTH_CONF_OPIE;
     return;
 
   } else {
@@ -1297,184 +1206,6 @@ AuthSystem(AuthData auth)
     return;
   }
 
-}
-
-/*
- * AuthSystemAcct()
- * 
- * Account with system
- */
-
-static void
-AuthSystemAcct(AuthData auth)
-{
-	struct utmp	ut;
-
-	memset(&ut, 0, sizeof(ut));
-	strlcpy(ut.ut_line, auth->info.lnkname, sizeof(ut.ut_line));
-
-	if (auth->acct_type == AUTH_ACCT_START) {
-    	    time_t	t;
-
-    	    strlcpy(ut.ut_host, auth->params.peeraddr, sizeof(ut.ut_host));
-    	    strlcpy(ut.ut_name, auth->params.authname, sizeof(ut.ut_name));
-    	    time(&t);
-    	    ut.ut_time = t;
-    	    login(&ut);
-    	    Log(LG_AUTH, ("[%s] ACCT: wtmp %s %s %s login", auth->info.lnkname, ut.ut_line, 
-    		ut.ut_name, ut.ut_host));
-	} else if (auth->acct_type == AUTH_ACCT_STOP) {
-    	    Log(LG_AUTH, ("[%s] ACCT: wtmp %s logout", auth->info.lnkname, ut.ut_line));
-    	    logout(ut.ut_line);
-    	    logwtmp(ut.ut_line, "", "");
-	}
-}
-
-/*
- * AuthPAM()
- * 
- * Authenticate with PAM system
- */
-
-static int
-pam_conv(int n, const struct pam_message **msg, struct pam_response **resp,
-  void *data)
-{
-    AuthData 	auth = (AuthData)data;
-    int		i;
-
-    for (i = 0; i < n; i++) {
-	Log(LG_AUTH2, ("[%s] AUTH: PAM: %s",
-    	    auth->info.lnkname, msg[i]->msg));
-    }
-
-    /* We support only requests for password */
-    if (n != 1 || msg[0]->msg_style != PAM_PROMPT_ECHO_OFF)
-	return (PAM_CONV_ERR);
-
-    if ((*resp = malloc(sizeof(struct pam_response))) == NULL)
-	return (PAM_CONV_ERR);
-    (*resp)[0].resp = strdup(auth->params.pap.peer_pass);
-    (*resp)[0].resp_retcode = 0;
-
-    return ((*resp)[0].resp != NULL ? PAM_SUCCESS : PAM_CONV_ERR);
-}
- 
-static void
-AuthPAM(AuthData auth)
-{
-    struct pam_conv pamc = {
-        &pam_conv,
-	auth
-    };
-    pam_handle_t *pamh;
-    int status;
-
-    if (auth->proto != PROTO_PAP) {
-	Log(LG_ERR, ("[%s] AUTH: Using PAM only possible for PAP", auth->info.lnkname));
-	auth->status = AUTH_STATUS_FAIL;
-	auth->why_fail = AUTH_FAIL_NOT_EXPECTED;
-	return;
-    }
-    
-    if (pam_start("mpd", auth->params.authname, &pamc, &pamh) != PAM_SUCCESS) {
-	Log(LG_ERR, ("[%s] AUTH: PAM error", auth->info.lnkname));
-	auth->status = AUTH_STATUS_FAIL;
-	auth->why_fail = AUTH_FAIL_NOT_EXPECTED;
-	return;
-    }
-
-    if (auth->params.peeraddr[0] &&
-	pam_set_item(pamh, PAM_RHOST, auth->params.peeraddr) != PAM_SUCCESS) {
-	Log(LG_ERR, ("[%s] AUTH: PAM set PAM_RHOST error", auth->info.lnkname));
-    }
-
-    if (pam_set_item(pamh, PAM_TTY, auth->info.lnkname) != PAM_SUCCESS) {
-	Log(LG_ERR, ("[%s] AUTH: PAM set PAM_TTY error", auth->info.lnkname));
-    }
-
-    status = pam_authenticate(pamh, 0);
-
-    if (status == PAM_SUCCESS) {
-	status = pam_acct_mgmt(pamh, 0);
-    }
-
-    if (status == PAM_SUCCESS) {
-	auth->status = AUTH_STATUS_SUCCESS;
-    } else {
-	Log(LG_AUTH, ("[%s] AUTH: PAM error: %s",
-	    auth->info.lnkname, pam_strerror(pamh, status)));
-	switch (status) {
-	case PAM_AUTH_ERR:
-	case PAM_USER_UNKNOWN:
-    	    auth->status = AUTH_STATUS_FAIL;
-    	    auth->why_fail = AUTH_FAIL_INVALID_LOGIN;
-	    break;
-	case PAM_ACCT_EXPIRED:
-	case PAM_AUTHTOK_EXPIRED:
-	case PAM_CRED_EXPIRED:
-    	    auth->status = AUTH_STATUS_FAIL;
-    	    auth->why_fail = AUTH_FAIL_ACCT_DISABLED;
-	    break;
-	default:
-    	    auth->status = AUTH_STATUS_FAIL;
-    	    auth->why_fail = AUTH_FAIL_NOT_EXPECTED;
-	}
-    }
-
-    pam_end(pamh, status);
-}
-
-/*
- * AuthPAMAcct()
- * 
- * Account with system
- */
-
-static void
-AuthPAMAcct(AuthData auth)
-{
-    pam_handle_t *pamh;
-    int status;
-    struct pam_conv pamc = {
-        &pam_conv,
-	auth
-    };
-    
-    if (auth->acct_type != AUTH_ACCT_START &&
-      auth->acct_type != AUTH_ACCT_STOP) {
-        return;
-    }
-
-    if (pam_start("mpd", auth->params.authname, &pamc, &pamh) != PAM_SUCCESS) {
-	Log(LG_ERR, ("[%s] ACCT: PAM error", auth->info.lnkname));
-	return;
-    }
-
-    if (auth->params.peeraddr[0] &&
-	pam_set_item(pamh, PAM_RHOST, auth->params.peeraddr) != PAM_SUCCESS) {
-	Log(LG_ERR, ("[%s] ACCT: PAM set PAM_RHOST error", auth->info.lnkname));
-    }
-
-    if (pam_set_item(pamh, PAM_TTY, auth->info.lnkname) != PAM_SUCCESS) {
-	Log(LG_ERR, ("[%s] ACCT: PAM set PAM_TTY error", auth->info.lnkname));
-    }
-
-    if (auth->acct_type == AUTH_ACCT_START) {
-    	    Log(LG_AUTH, ("[%s] ACCT: PAM open session \"%s\"",
-		auth->info.lnkname, auth->params.authname));
-	    status = pam_open_session(pamh, 0);
-    } else {
-    	    Log(LG_AUTH, ("[%s] ACCT: PAM close session \"%s\"",
-		auth->info.lnkname, auth->params.authname));
-	    status = pam_close_session(pamh, 0);
-    }
-    if (status != PAM_SUCCESS) {
-    	Log(LG_AUTH, ("[%s] ACCT: PAM session error",
-	    auth->info.lnkname));
-    }
-    
-    pam_end(pamh, status);
 }
 
 /*
@@ -1518,6 +1249,7 @@ AuthOpie(AuthData auth)
 
   if (auth->proto == PROTO_PAP ) {
     if (!opieverify(&auth->opie.data, pp->peer_pass)) {
+      auth->params.authentic = AUTH_CONF_OPIE;
       auth->status = AUTH_STATUS_SUCCESS;
     } else {
       auth->why_fail = AUTH_FAIL_INVALID_LOGIN;
@@ -1540,6 +1272,7 @@ AuthOpie(AuthData auth)
 
   opiebtoe(english, &key);
   strlcpy(auth->params.password, english, sizeof(auth->params.password));
+  auth->params.authentic = AUTH_CONF_OPIE;
 }
 
 /*
@@ -1561,7 +1294,7 @@ AuthPreChecks(AuthData auth)
     int		ac;
     u_long	num = 0;
     for(ac = 0; ac < gNumBundles; ac++)
-      if (gBundles[ac] && gBundles[ac]->open)
+      if (gBundles[ac]->open)
 	if (!strcmp(gBundles[ac]->params.authname, auth->params.authname))
 	  num++;
 
@@ -1812,19 +1545,19 @@ AuthSetCommand(Context ctx, int ac, char *av[], void *arg)
   switch ((intptr_t)arg) {
 
     case SET_AUTHNAME:
-      strlcpy(autc->authname, *av, sizeof(autc->authname));
+      snprintf(autc->authname, sizeof(autc->authname), "%s", *av);
       break;
 
     case SET_PASSWORD:
-      strlcpy(autc->password, *av, sizeof(autc->password));
+      snprintf(autc->password, sizeof(autc->password), "%s", *av);
       break;
       
     case SET_EXTAUTH_SCRIPT:
-      strlcpy(autc->extauth_script, *av, sizeof(autc->extauth_script));
+      snprintf(autc->extauth_script, sizeof(autc->extauth_script), "%s", *av);
       break;
       
     case SET_EXTACCT_SCRIPT:
-      strlcpy(autc->extacct_script, *av, sizeof(autc->extacct_script));
+      snprintf(autc->extacct_script, sizeof(autc->extacct_script), "%s", *av);
       break;
       
     case SET_MAX_LOGINS:
@@ -1834,7 +1567,7 @@ AuthSetCommand(Context ctx, int ac, char *av[], void *arg)
     case SET_ACCT_UPDATE:
       val = atoi(*av);
       if (val < 0)
-	Error("Update interval must be positive.");
+	Log(LG_ERR, ("Update interval must be positive."));
       else
 	autc->acct_update = val;
       break;
@@ -1843,7 +1576,7 @@ AuthSetCommand(Context ctx, int ac, char *av[], void *arg)
     case SET_ACCT_UPDATE_LIMIT_OUT:
       val = atoi(*av);
       if (val < 0)
-	Error("Update suppression limit must be positive.");
+	Log(LG_ERR, ("Update suppression limit must be positive."));
       else {
 	if ((intptr_t)arg == SET_ACCT_UPDATE_LIMIT_IN)
 	  autc->acct_update_lim_recv = val;
@@ -1855,7 +1588,7 @@ AuthSetCommand(Context ctx, int ac, char *av[], void *arg)
     case SET_TIMEOUT:
       val = atoi(*av);
       if (val <= 20)
-	Error("Authorization timeout must be greater then 20.");
+	Log(LG_ERR, ("Authorization timeout must be greater then 20."));
       else
 	autc->timeout = val;
       break;
@@ -1905,12 +1638,6 @@ AuthExternal(AuthData auth)
     char	*attr, *val;
     int		len;
  
-    if (!auth->conf.extauth_script[0]) {
-	    Log(LG_ERR, ("[%s] Ext-auth: Script not specified!", 
-		auth->info.lnkname));
-	    auth->status = AUTH_STATUS_FAIL;
-	    return;
-    }
     if (strchr(auth->params.authname, '\'') ||
 	strchr(auth->params.authname, '\n')) {
 	    Log(LG_ERR, ("[%s] Ext-auth: Denied character in USER_NAME!", 
@@ -1932,17 +1659,18 @@ AuthExternal(AuthData auth)
     if (auth->proto == PROTO_PAP)
 	fprintf(fp, "USER_PASSWORD:%s\n", auth->params.pap.peer_pass);
 
-    fprintf(fp, "ACCT_SESSION_ID:%s\n", auth->info.session_id);
-    fprintf(fp, "LINK:%s\n", auth->info.lnkname);
     fprintf(fp, "NAS_PORT:%d\n", auth->info.linkID);
     fprintf(fp, "NAS_PORT_TYPE:%s\n", auth->info.phys_type->name);
-    fprintf(fp, "CALLING_STATION_ID:%s\n", auth->params.callingnum);
-    fprintf(fp, "CALLED_STATION_ID:%s\n", auth->params.callednum);
-    fprintf(fp, "PEER_ADDR:%s\n", auth->params.peeraddr);
-    fprintf(fp, "PEER_PORT:%s\n", auth->params.peerport);
-    fprintf(fp, "PEER_MAC_ADDR:%s\n", auth->params.peermacaddr);
-    fprintf(fp, "PEER_IFACE:%s\n", auth->params.peeriface);
-    fprintf(fp, "PEER_IDENT:%s\n", auth->info.peer_ident);
+    if (strlen(auth->params.callingnum))
+	fprintf(fp, "CALLING_STATION_ID:%s\n", auth->params.callingnum);
+    if (strlen(auth->params.callednum))
+	fprintf(fp, "CALLED_STATION_ID:%s\n", auth->params.callednum);
+    if (strlen(auth->params.peeraddr))
+	fprintf(fp, "PEER_ADDR:%s\n", auth->params.peeraddr);
+    if (strlen(auth->params.peerport))
+	fprintf(fp, "PEER_PORT:%s\n", auth->params.peerport);
+    if (strlen(auth->info.peer_ident))
+	fprintf(fp, "PEER_IDENT:%s\n", auth->info.peer_ident);
  
 
     /* REQUEST DONE */
@@ -1967,10 +1695,10 @@ AuthExternal(AuthData auth)
 
 	/* Log data w/o password */
 	if (strcmp(attr, "USER_PASSWORD") != 0) {
-	    Log(LG_AUTH2, ("[%s] Ext-auth: attr:'%s', value:'%s'", 
+	    Log(LG_AUTH, ("[%s] Ext-auth: attr:'%s', value:'%s'", 
 		auth->info.lnkname, attr, val));
 	} else {
-	    Log(LG_AUTH2, ("[%s] Ext-auth: attr:'%s', value:'XXX'", 
+	    Log(LG_AUTH, ("[%s] Ext-auth: attr:'%s', value:'XXX'", 
 		auth->info.lnkname, attr));
 	}
     
@@ -1983,10 +1711,10 @@ AuthExternal(AuthData auth)
 	    auth->status = AUTH_STATUS_FAIL;
 
     } else if (strcmp(attr, "USER_NAME") == 0) {
-	strlcpy(auth->params.authname, val, sizeof(auth->params.authname));
+	strncpy(auth->params.authname, val, sizeof(auth->params.authname));
 
     } else if (strcmp(attr, "USER_PASSWORD") == 0) {
-	strlcpy(auth->params.password, val, sizeof(auth->params.password));
+	strncpy(auth->params.password, val, sizeof(auth->params.password));
 
     } else if (strcmp(attr, "FRAMED_IP_ADDRESS") == 0) {
         auth->params.range_valid = 
@@ -2008,14 +1736,14 @@ AuthExternal(AuthData auth)
 	    j = 0;
 	    SLIST_FOREACH(r1, &auth->params.routes, next) {
 	      if (!u_rangecompare(&r->dest, &r1->dest)) {
-	        Log(LG_AUTH, ("[%s] Ext-auth: Duplicate route", auth->info.lnkname));
+	        Log(LG_RADIUS, ("[%s] RADIUS: %s: Duplicate route", auth->info.lnkname, __func__));
 	        j = 1;
 	      }
 	    };
 	    if (j == 0) {
 	        SLIST_INSERT_HEAD(&auth->params.routes, r, next);
 	    } else {
-	        Freee(r);
+	        Freee(MB_AUTH, r);
 	    }
 	}
 
@@ -2035,14 +1763,14 @@ AuthExternal(AuthData auth)
 	    j = 0;
 	    SLIST_FOREACH(r1, &auth->params.routes, next) {
 	      if (!u_rangecompare(&r->dest, &r1->dest)) {
-	        Log(LG_AUTH, ("[%s] Ext-auth: Duplicate route", auth->info.lnkname));
+	        Log(LG_RADIUS, ("[%s] RADIUS: %s: Duplicate route", auth->info.lnkname, __func__));
 	        j = 1;
 	      }
 	    };
 	    if (j == 0) {
 	        SLIST_INSERT_HEAD(&auth->params.routes, r, next);
 	    } else {
-	        Freee(r);
+	        Freee(MB_AUTH, r);
 	    }
 	}
 
@@ -2052,39 +1780,24 @@ AuthExternal(AuthData auth)
     } else if (strcmp(attr, "IDLE_TIMEOUT") == 0) {
 	auth->params.idle_timeout = atoi(val);
 
-    } else if (strcmp(attr, "ACCT_INTERIM_INTERVAL") == 0) {
-	auth->params.acct_update = atoi(val);
-
-    } else if (strcmp(attr, "ACCT_INTERIM_LIM_RECV") == 0) {
-	auth->params.acct_update_lim_recv = atoi(val);
-
-    } else if (strcmp(attr, "ACCT_INTERIM_LIM_XMIT") == 0) {
-	auth->params.acct_update_lim_xmit = atoi(val);
-
     } else if (strcmp(attr, "FRAMED_MTU") == 0) {
 	auth->params.mtu = atoi(val);
 
-    } else if (strcmp(attr, "FRAMED_COMPRESSION") == 0) {
-	if (atoi(val) == 1)
-	    auth->params.vjc_enable = 1;
-
-    } else if (strcmp(attr, "FRAMED_POOL") == 0) {
-	strlcpy(auth->params.ippool, val, sizeof(auth->params.ippool));
-
     } else if (strcmp(attr, "REPLY_MESSAGE") == 0) {
 	if (auth->reply_message)
-		Freee(auth->reply_message);
-	auth->reply_message = Mstrdup(MB_AUTH, val);
+		Freee(MB_AUTH, auth->reply_message);
+	auth->reply_message = Malloc(MB_AUTH, strlen(val) + 1);
+	strcpy(auth->reply_message, val);
 
     } else if (strcmp(attr, "MS_CHAP_ERROR") == 0) {
 	if (auth->mschap_error)
-		Freee(auth->mschap_error);
-	/* "E=%d R=0 M=%s" */
-	auth->mschap_error = Mstrdup(MB_AUTH, val);
+		Freee(MB_AUTH, auth->mschap_error);
+	auth->mschap_error = Malloc(MB_AUTH, strlen(val) + 1);
+	strcpy(auth->mschap_error, val); //"E=%d R=0 M=%s"
 
     } else if (strncmp(attr, "MPD_", 4) == 0) {
 	struct acl	**acls, *acls1;
-	char		*acl, *acl1, *acl2, *acl3;
+	char		*acl, *acl1, *acl2;
 	int		i;
 	
 	    if (strcmp(attr, "MPD_RULE") == 0) {
@@ -2137,17 +1850,15 @@ AuthExternal(AuthData auth)
 	      continue;
 	    }
 	    
-	    acl3 = acl1;
-	    strsep(&acl3, "=");
 	    acl2 = acl1;
-	    strsep(&acl2, "#");
+	    acl1 = strsep(&acl2, "=");
 	    i = atol(acl1);
 	    if (i <= 0) {
 	      Log(LG_ERR, ("[%s] Ext-auth: wrong acl number: %i",
 		auth->info.lnkname, i));
 	      continue;
 	    }
-	    if ((acl3 == NULL) || (acl3[0] == 0)) {
+	    if ((acl2 == NULL) || (acl2[0] == 0)) {
 	      Log(LG_ERR, ("[%s] Ext-auth: wrong acl", auth->info.lnkname));
 	      continue;
 	    }
@@ -2159,9 +1870,7 @@ AuthExternal(AuthData auth)
 		    acls1->number = 0;
 		    acls1->real_number = i;
 	    }
-	    if (acl2)
-		strlcpy(acls1->name, acl2, sizeof(acls1->name));
-	    strlcpy(acls1->rule, acl3, sizeof(acls1->rule));
+	    strncpy(acls1->rule, acl2, ACL_LEN);
 	    while ((*acls != NULL) && ((*acls)->number < acls1->number))
 	      acls = &((*acls)->next);
 
@@ -2237,13 +1946,16 @@ AuthExternalAcct(AuthData auth)
     fprintf(fp, "NAS_PORT:%d\n", auth->info.linkID);
     fprintf(fp, "NAS_PORT_TYPE:%s\n", auth->info.phys_type->name);
     fprintf(fp, "ACCT_LINK_COUNT:%d\n", auth->info.n_links);
-    fprintf(fp, "CALLING_STATION_ID:%s\n", auth->params.callingnum);
-    fprintf(fp, "CALLED_STATION_ID:%s\n", auth->params.callednum);
-    fprintf(fp, "PEER_ADDR:%s\n", auth->params.peeraddr);
-    fprintf(fp, "PEER_PORT:%s\n", auth->params.peerport);
-    fprintf(fp, "PEER_MAC_ADDR:%s\n", auth->params.peermacaddr);
-    fprintf(fp, "PEER_IFACE:%s\n", auth->params.peeriface);
-    fprintf(fp, "PEER_IDENT:%s\n", auth->info.peer_ident);
+    if (strlen(auth->params.callingnum))
+	fprintf(fp, "CALLING_STATION_ID:%s\n", auth->params.callingnum);
+    if (strlen(auth->params.callednum))
+	fprintf(fp, "CALLED_STATION_ID:%s\n", auth->params.callednum);
+    if (strlen(auth->params.peeraddr))
+	fprintf(fp, "PEER_ADDR:%s\n", auth->params.peeraddr);
+    if (strlen(auth->params.peerport))
+	fprintf(fp, "PEER_PORT:%s\n", auth->params.peerport);
+    if (strlen(auth->info.peer_ident))
+	fprintf(fp, "PEER_IDENT:%s\n", auth->info.peer_ident);
 
     fprintf(fp, "FRAMED_IP_ADDRESS:%s\n",
 	inet_ntoa(auth->info.peer_addr));
@@ -2253,9 +1965,8 @@ AuthExternalAcct(AuthData auth)
     }
 
     if (auth->acct_type != AUTH_ACCT_START) {
-	struct svcstatrec *ssr;
 	fprintf(fp, "ACCT_SESSION_TIME:%ld\n", 
-	    (long int)(time(NULL) - auth->info.last_up));
+	    (long int)(time(NULL) - auth->info.last_open));
 	fprintf(fp, "ACCT_INPUT_OCTETS:%llu\n", 
 	    (long long unsigned)auth->info.stats.recvOctets);
 	fprintf(fp, "ACCT_INPUT_PACKETS:%llu\n", 
@@ -2264,19 +1975,8 @@ AuthExternalAcct(AuthData auth)
 	    (long long unsigned)auth->info.stats.xmitOctets);
 	fprintf(fp, "ACCT_OUTPUT_PACKETS:%llu\n", 
 	    (long long unsigned)auth->info.stats.xmitFrames);
-	SLIST_FOREACH(ssr, &auth->info.ss.stat[0], next) {
-	    fprintf(fp, "MPD_INPUT_OCTETS:%s:%llu\n",
-		ssr->name, (long long unsigned)ssr->Octets);
-	    fprintf(fp, "MPD_INPUT_PACKETS:%s:%llu\n",
-		ssr->name, (long long unsigned)ssr->Packets);
-	}
-	SLIST_FOREACH(ssr, &auth->info.ss.stat[1], next) {
-	    fprintf(fp, "MPD_OUTPUT_OCTETS:%s:%llu\n",
-		ssr->name, (long long unsigned)ssr->Octets);
-	    fprintf(fp, "MPD_OUTPUT_PACKETS:%s:%llu\n",
-		ssr->name, (long long unsigned)ssr->Packets);
-	}
     }
+	
 
     /* REQUEST DONE */
     fprintf(fp, "\n");
@@ -2298,7 +1998,7 @@ AuthExternalAcct(AuthData auth)
 	val = line;
 	attr = strsep(&val, ":");
 
-	Log(LG_AUTH2, ("[%s] Ext-acct: attr:'%s', value:'%s'", 
+	Log(LG_AUTH, ("[%s] Ext-acct: attr:'%s', value:'%s'", 
 	    auth->info.lnkname, attr, val));
     
 	if (strcmp(attr, "MPD_DROP_USER") == 0) {

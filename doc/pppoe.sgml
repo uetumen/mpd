@@ -32,14 +32,35 @@ Sets the requested PPPoE service name. Setting service name to "*"
 on link with allowed incoming connections allows to accept incoming 
 connection requests with any service name specified.
 
-The default is "*".
-
 <tag><tt>
 set pppoe acname <em>name</em>
 </tt></tag>
 
 Set name of this PPPoE access concentrator to be sent to clients.
 If not specified, local hostname will be used.
+
+<tag><tt>set pppoe enable <em>option ...</em> </tt></tag><p>
+<tag><tt>set pppoe disable <em>option ...</em> </tt></tag><p>
+
+Enable and disable PPPoE device type options for the link.
+
+</descrip>
+
+<p>
+The following options are supported:
+
+<descrip>
+
+<tag><tt>originate</tt></tag>
+
+This option enables the initiation of PPPoE connections to the peer.
+If this option is disabled, mpd will not initiate any PPPoE connections.
+
+<tag><tt>incoming</tt></tag>
+
+This option enables the acceptance of incoming PPPoE connections.
+If this option is disabled, mpd will not accept any incoming PPPoE connections.
+You must configure iface and service parameters before using this option.
 
 </descrip>
 

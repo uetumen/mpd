@@ -66,6 +66,7 @@
   /* Pathnames */
   #define CONF_FILE 		"mpd.conf"
   #define SECRET_FILE		"mpd.secret"
+  #define LINKS_FILE		"mpd.links"
   #define SCRIPT_FILE		"mpd.script"
 
 #ifndef PATH_CONF_DIR

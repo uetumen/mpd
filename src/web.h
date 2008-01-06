@@ -21,7 +21,7 @@
 
   /* Configuration options */
   enum {
-    WEB_AUTH	/* enable auth */
+    WEB_AUTH,	/* enable auth */
   };
 
   struct web {
@@ -30,10 +30,19 @@
     in_port_t		port;
     struct http_server *srv;
     struct http_servlet srvlet;
+    struct http_servlet *srvlet_auth;
+    struct ghash	*users;		/* allowed users */
     EventRef		event;		/* connect-event */
   };
 
   typedef struct web *Web;
+
+  struct web_user {
+    char	*username;
+    char	*password;
+  };
+
+  typedef struct web_user *WebUser;
 
 /*
  * VARIABLES

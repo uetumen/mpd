@@ -26,7 +26,6 @@
 #else
 #include <netgraph/ng_ppp.h>
 #endif
-#include <regex.h>
 
 /*
  * DEFINITIONS
@@ -40,19 +39,6 @@
   #define LINK_DEFAULT_BANDWIDTH	64000		/* 64k */
   #define LINK_DEFAULT_LATENCY		2000		/* 2ms */
 
-  enum {
-    LINK_ACTION_FORWARD,
-    LINK_ACTION_BUNDLE
-  };
-
-  struct linkaction {
-    int 		action;
-    char		regex[128];
-    regex_t		regexp;
-    char		arg[LINK_MAX_NAME];	/* Link/Bundle template name */
-    SLIST_ENTRY(linkaction) next;
-  };
-
   /* Configuration options */
   enum {
     LINK_CONF_PAP,
@@ -60,7 +46,6 @@
     LINK_CONF_CHAPMSv1,
     LINK_CONF_CHAPMSv2,
     LINK_CONF_EAP,
-    LINK_CONF_INCOMING,
     LINK_CONF_ACFCOMP,
     LINK_CONF_PROTOCOMP,
     LINK_CONF_MSDOMAIN,
@@ -70,24 +55,25 @@
     LINK_CONF_RINGBACK,
     LINK_CONF_NO_ORIG_AUTH,
     LINK_CONF_CALLBACK,
-    LINK_CONF_MULTILINK,	/* multi-link */
-    LINK_CONF_SHORTSEQ		/* multi-link short sequence numbers */
   };
 
   /* Configuration for a link */
   struct linkconf {
     u_short		mtu;		/* Initial MTU value */
     u_short		mru;		/* Initial MRU value */
-    uint16_t		mrru;		/* Initial MRRU value */
     uint32_t		accmap;		/* Initial ACCMAP value */
     short		retry_timeout;	/* FSM timeout for retries */
     short		max_redial;	/* Max failed connect attempts */
     char		*ident;		/* LCP ident string */
     struct optinfo	options;	/* Configured options */
-    int			max_children;	/* Maximal number of children */
   };
 
+  /* Per-link bandwidth mgmt info */
+  #define LINK_BM_N	6		/* Number of sampling intervals */
+
   struct linkbm {
+    u_int	traffic[2][LINK_BM_N];	/* Traffic deltas */
+    u_char	wasUp[LINK_BM_N];	/* Sub-intervals link was up */
     struct ng_ppp_link_stat
 		idleStats;		/* Link management stats */
   };
@@ -105,24 +91,10 @@
   /* Total state of a link */
   struct linkst {
     char		name[LINK_MAX_NAME];	/* Human readable name */
-    int			id;			/* Index of this link in gLinks */
-    u_char		tmpl;			/* This is template, not an instance */
-    u_char		stay;			/* Must not disappear */
-    u_char		state;			/* Device current state */
-    u_char		joined_bund;		/* Link successfully joined bundle */
-    u_char		originate;		/* Who originated the connection */
-    u_char		die;			/* LCP agreed to die */
-    u_char		dead;			/* Dead flag (shutted down) */
     Bund		bund;			/* My bundle */
-    Rep			rep;			/* Rep connected to the device */
     int			bundleIndex;		/* Link number in bundle */
-    int			parent;			/* Index of the parent in gLinks */
-    int			children;		/* Number of children */
-    int			refs;			/* Number of references */
-    char		hook[NG_HOOKSIZ];	/* session hook name */
-    ng_ID_t		nodeID;			/* ID of the tee node */
+    PhysInfo		phys;			/* Physical layer info */
     MsgHandler		msgs;			/* Link events */
-    SLIST_HEAD(, linkaction) actions;
 
     /* State info */
     struct linkconf	conf;		/* Link configuration */
@@ -135,23 +107,20 @@
 
     /* Link properties */
     short		num_redial;	/* Counter for retry attempts */
-    u_char		upReasonValid;
-    u_char		downReasonValid;
+    u_char		joined_bund;	/* Link successfully joined bundle */
+    u_char		originate;	/* Who originated the connection */
     char		*upReason;	/* Reason for link going up */
     char		*downReason;	/* Reason for link going down */
+    u_char		upReasonValid:1;
+    u_char		downReasonValid:1;
     int			bandwidth;	/* Bandwidth in bits per second */
     int			latency;	/* Latency in microseconds */
-    time_t		last_up;	/* Time this link last got up */
+    time_t		last_open;	/* Time this link last was opened */
     char		msession_id[AUTH_MAX_SESSIONID]; /* a uniq msession-id */
     char		session_id[AUTH_MAX_SESSIONID];	/* a uniq session-id */
 
     /* Info gleaned from negotiations */
     struct discrim	peer_discrim;
-
-    PhysType		type;			/* Device type descriptor */
-    void		*info;			/* Type specific info */
-    MsgHandler		pmsgs;			/* Message channel */
-    struct pppTimer	openTimer;		/* Open retry timer */
   };
 
   
@@ -161,32 +130,19 @@
 
   extern const struct cmdtab	LinkSetCmds[];
 
-  extern int		gLinksCsock;		/* Socket node control socket */
-  extern int		gLinksDsock;		/* Socket node data socket */
-
 /*
  * FUNCTIONS
  */
-  extern int	LinksInit(void);
-  extern void	LinksShutdown(void);
 
   extern void	LinkUp(Link l);
   extern void	LinkDown(Link l);
   extern void	LinkOpen(Link l);
   extern void	LinkClose(Link l);
-  extern int	LinkOpenCmd(Context ctx);
-  extern int	LinkCloseCmd(Context ctx);
+  extern void	LinkOpenCmd(Context ctx);
+  extern void	LinkCloseCmd(Context ctx);
 
-  extern int	LinkCreate(Context ctx, int ac, char *av[], void *arg);
-  extern int	LinkDestroy(Context ctx, int ac, char *av[], void *arg);
-  extern Link	LinkInst(Link lt, char *name, int tmpl, int stay);
-  extern void	LinkShutdownCheck(Link l, short state);
+  extern Link	LinkNew(char *name, Bund b, int bI);
   extern void	LinkShutdown(Link l);
-  extern int	LinkNgInit(Link l);
-  extern int	LinkNgJoin(Link l);
-  extern int	LinkNgToRep(Link l);
-  extern int	LinkNgLeave(Link l);
-  extern void	LinkNgShutdown(Link l, int tee);
   extern int	LinkNuke(Link link);
   extern int	LinkStat(Context ctx, int ac, char *av[], void *arg);
   extern void	LinkUpdateStats(Link l);
@@ -196,8 +152,6 @@
   extern int	SessionCommand(Context ctx, int ac, char *av[], void *arg);
   extern void	RecordLinkUpDownReason(Bund b, Link l, int up, const char *fmt,
 			  const char *arg, ...);
-
-  extern char	*LinkMatchAction(Link l, int stage, char *login);
 
 #endif
 

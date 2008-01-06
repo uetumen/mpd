@@ -13,7 +13,6 @@
 #include "l2tp_avp.h"
 #include "l2tp_ctrl.h"
 #include "log.h"
-#include "util.h"
 
 #include <sys/types.h>
 #include <pdel/util/ghash.h>
@@ -40,6 +39,7 @@
   #define L2TP_PORT		1701
 
   #define L2TP_MAX_ERRORS	10
+  #define L2TP_REOPEN_PAUSE	5
 
   #define MAX_IOVEC		32
 
@@ -49,7 +49,6 @@
   struct l2tp_server {
     struct u_addr	self_addr;	/* self IP address */
     in_port_t		self_port;	/* self port */
-    int			refs;
     int			sock;		/* server listen socket */
     EventRef		event;		/* listen for data messages */
   };
@@ -57,13 +56,10 @@
   struct l2tp_tun {
     struct u_addr	self_addr;	/* self IP address */
     struct u_addr	peer_addr;	/* peer IP address */
-    char                peer_iface[IFNAMSIZ];	/* Peer iface */
-    u_char		peer_mac_addr[6];	/* Peer MAC address */
     in_port_t		self_port;	/* self port */
     in_port_t		peer_port;	/* peer port */
     u_char		connected;	/* control connection is connected */
     u_char		alive;		/* control connection is not dying */
-    u_int		active_sessions;/* number of calls in this sunnels */
     struct ppp_l2tp_ctrl *ctrl;		/* control connection for this tunnel */
   };
   
@@ -100,45 +96,43 @@
     SET_HOSTNAME,
     SET_SECRET,
     SET_ENABLE,
-    SET_DISABLE
+    SET_DISABLE,
   };
 
   /* Binary options */
   enum {
+    L2TP_CONF_ORIGINATE,	/* allow originating connections to peer */
+    L2TP_CONF_INCOMING,		/* allow accepting connections from peer */
     L2TP_CONF_OUTCALL,		/* when originating, calls are "outgoing" */
     L2TP_CONF_HIDDEN,		/* enable AVP hidding */
     L2TP_CONF_LENGTH,		/* enable Length field in data packets */
-    L2TP_CONF_DATASEQ		/* enable sequence fields in data packets */
+    L2TP_CONF_DATASEQ,		/* enable sequence fields in data packets */
   };
 
 /*
  * INTERNAL FUNCTIONS
  */
 
-  static int	L2tpInit(Link l);
-  static int	L2tpInst(Link l, Link lt);
-  static void	L2tpOpen(Link l);
-  static void	L2tpClose(Link l);
-  static void	L2tpShutdown(Link l);
+  static int	L2tpInit(PhysInfo p);
+  static void	L2tpOpen(PhysInfo p);
+  static void	L2tpClose(PhysInfo p);
+  static void	L2tpShutdown(PhysInfo p);
   static void	L2tpStat(Context ctx);
-  static int	L2tpOriginated(Link l);
-  static int	L2tpIsSync(Link l);
-  static int	L2tpSetAccm(Link l, u_int32_t xmit, u_int32_t recv);
-  static int	L2tpPeerAddr(Link l, void *buf, size_t buf_len);
-  static int	L2tpPeerPort(Link l, void *buf, size_t buf_len);
-  static int	L2tpPeerMacAddr(Link l, void *buf, size_t buf_len);
-  static int	L2tpPeerIface(Link l, void *buf, size_t buf_len);
-  static int	L2tpCallingNum(Link l, void *buf, size_t buf_len);
-  static int	L2tpCalledNum(Link l, void *buf, size_t buf_len);
-  static int	L2tpSetCallingNum(Link l, void *buf);
-  static int	L2tpSetCalledNum(Link l, void *buf);
+  static int	L2tpOriginated(PhysInfo p);
+  static int	L2tpIsSync(PhysInfo p);
+  static int	L2tpSetAccm(PhysInfo p, u_int32_t xmit, u_int32_t recv);
+  static int	L2tpPeerAddr(PhysInfo p, void *buf, int buf_len);
+  static int	L2tpPeerPort(PhysInfo p, void *buf, int buf_len);
+  static int	L2tpCallingNum(PhysInfo p, void *buf, int buf_len);
+  static int	L2tpCalledNum(PhysInfo p, void *buf, int buf_len);
+  static int	L2tpSetCallingNum(PhysInfo p, void *buf);
+  static int	L2tpSetCalledNum(PhysInfo p, void *buf);
 
-  static void	L2tpHookUp(Link l);
-  static void	L2tpUnhook(Link l);
+  static void	L2tpDoClose(PhysInfo l2tp);
+  static void	L2tpHookUpIncoming(PhysInfo p);
 
-  static void	L2tpNodeUpdate(Link l);
-  static int	L2tpListen(Link l);
-  static void	L2tpUnListen(Link l);
+  static void	L2tpNodeUpdate(PhysInfo p);
+  static void	L2tpListenUpdate(void *arg);
   static int	L2tpSetCommand(Context ctx, int ac, char *av[], void *arg);
 
   /* L2TP control callbacks */
@@ -167,15 +161,12 @@
 
   const struct phystype	gL2tpPhysType = {
     .name		= "l2tp",
-    .descr		= "Layer Two Tunneling Protocol",
+    .minReopenDelay	= L2TP_REOPEN_PAUSE,
     .mtu		= L2TP_MTU,
     .mru		= L2TP_MRU,
-    .tmpl		= 1,
     .init		= L2tpInit,
-    .inst		= L2tpInst,
     .open		= L2tpOpen,
     .close		= L2tpClose,
-    .update		= L2tpNodeUpdate,
     .shutdown		= L2tpShutdown,
     .showstat		= L2tpStat,
     .originate		= L2tpOriginated,
@@ -185,29 +176,27 @@
     .setcallednum	= L2tpSetCalledNum,
     .peeraddr		= L2tpPeerAddr,
     .peerport		= L2tpPeerPort,
-    .peermacaddr	= L2tpPeerMacAddr,
-    .peeriface		= L2tpPeerIface,
     .callingnum		= L2tpCallingNum,
     .callednum		= L2tpCalledNum,
   };
 
   const struct cmdtab	L2tpSetCmds[] = {
-    { "self {ip} [{port}]",		"Set local IP address",
-	L2tpSetCommand, NULL, 2, (void *) SET_SELFADDR },
-    { "peer {ip} [{port}]",		"Set remote IP address",
-	L2tpSetCommand, NULL, 2, (void *) SET_PEERADDR },
-    { "callingnum {number}",		"Set calling L2TP telephone number",
-	L2tpSetCommand, NULL, 2, (void *) SET_CALLINGNUM },
-    { "callednum {number}",		"Set called L2TP telephone number",
-	L2tpSetCommand, NULL, 2, (void *) SET_CALLEDNUM },
-    { "hostname {name}",		"Set L2TP local hostname",
-	L2tpSetCommand, NULL, 2, (void *) SET_HOSTNAME },
-    { "secret {sec}",			"Set L2TP tunnel secret",
-	L2tpSetCommand, NULL, 2, (void *) SET_SECRET },
+    { "self ip [port]",			"Set local IP address",
+	L2tpSetCommand, NULL, (void *) SET_SELFADDR },
+    { "peer ip [port]",			"Set remote IP address",
+	L2tpSetCommand, NULL, (void *) SET_PEERADDR },
+    { "callingnum number",		"Set calling L2TP telephone number",
+	L2tpSetCommand, NULL, (void *) SET_CALLINGNUM },
+    { "callednum number",		"Set called L2TP telephone number",
+	L2tpSetCommand, NULL, (void *) SET_CALLEDNUM },
+    { "hostname name",		"Set L2TP local hostname",
+	L2tpSetCommand, NULL, (void *) SET_HOSTNAME },
+    { "secret sec",		"Set L2TP tunnel secret",
+	L2tpSetCommand, NULL, (void *) SET_SECRET },
     { "enable [opt ...]",		"Enable option",
-	L2tpSetCommand, NULL, 2, (void *) SET_ENABLE },
+	L2tpSetCommand, NULL, (void *) SET_ENABLE },
     { "disable [opt ...]",		"Disable option",
-	L2tpSetCommand, NULL, 2, (void *) SET_DISABLE },
+	L2tpSetCommand, NULL, (void *) SET_DISABLE },
     { NULL },
   };
 
@@ -216,6 +205,8 @@
  */
 
   static struct confinfo	gConfList[] = {
+    { 0,	L2TP_CONF_ORIGINATE,	"originate"	},
+    { 0,	L2TP_CONF_INCOMING,	"incoming"	},
     { 0,	L2TP_CONF_OUTCALL,	"outcall"	},
     { 0,	L2TP_CONF_HIDDEN,	"hidden"	},
     { 0,	L2TP_CONF_LENGTH,	"length"	},
@@ -229,7 +220,6 @@ struct pppTimer L2tpListenUpdateTimer;
 static u_char	gInitialized = 0;
 struct ghash	*gL2tpServers;
 struct ghash	*gL2tpTuns;
-int		gNumL2tpLinks = 0;
 int		one = 1;
 
 /*
@@ -237,55 +227,34 @@ int		one = 1;
  */
 
 static int
-L2tpInit(Link l)
+L2tpInit(PhysInfo p)
 {
-    L2tpInfo	l2tp;
+  L2tpInfo	l2tp;
 
-    if (!gInitialized) {
-	if ((gL2tpServers = ghash_create(NULL, 0, 0, MB_PHYS, NULL, NULL, NULL, NULL))
-	  == NULL)
+  if (!gInitialized) {
+    if ((gL2tpServers = ghash_create(NULL, 0, 0, MB_PHYS, NULL, NULL, NULL, NULL))
+	== NULL)
 	    return(-1);
-	if ((gL2tpTuns = ghash_create(NULL, 0, 0, MB_PHYS, NULL, NULL, NULL, NULL))
-	  == NULL)
+    if ((gL2tpTuns = ghash_create(NULL, 0, 0, MB_PHYS, NULL, NULL, NULL, NULL))
+	== NULL)
 	    return(-1);
-	gInitialized = 1;
-    }
+    gInitialized = 1;
+  }
 
-    /* Initialize this link */
-    l2tp = (L2tpInfo) (l->info = Malloc(MB_PHYS, sizeof(*l2tp)));
+  /* Initialize this link */
+  l2tp = (L2tpInfo) (p->info = Malloc(MB_PHYS, sizeof(*l2tp)));
   
-    u_addrclear(&l2tp->conf.self_addr);
-    l2tp->conf.self_addr.family = AF_INET;
-    l2tp->conf.self_port = 0;
-    u_rangeclear(&l2tp->conf.peer_addr);
-    l2tp->conf.peer_addr.addr.family = AF_INET;
-    l2tp->conf.peer_addr.width = 0;
-    l2tp->conf.peer_port = 0;
+  u_addrclear(&l2tp->conf.self_addr);
+  l2tp->conf.self_addr.family = AF_INET;
+  l2tp->conf.self_port = 0;
+  u_rangeclear(&l2tp->conf.peer_addr);
+  l2tp->conf.peer_addr.addr.family = AF_INET;
+  l2tp->conf.peer_addr.width = 0;
+  l2tp->conf.peer_port = 0;
 
-    Enable(&l2tp->conf.options, L2TP_CONF_DATASEQ);
+  Enable(&l2tp->conf.options, L2TP_CONF_DATASEQ);
   
-    gNumL2tpLinks++;
-  
-    return(0);
-}
-
-/*
- * L2tpInst()
- */
-
-static int
-L2tpInst(Link l, Link lt)
-{
-	L2tpInfo pi;
-	l->info = Mdup(MB_PHYS, lt->info, sizeof(struct l2tpinfo));
-	pi = (L2tpInfo) l->info;
-    
-	if (pi->server)
-	    pi->server->refs++;
-	
-	gNumL2tpLinks++;
-  
-	return(0);
+  return(0);
 }
 
 /*
@@ -293,9 +262,9 @@ L2tpInst(Link l, Link lt)
  */
 
 static void
-L2tpOpen(Link l)
+L2tpOpen(PhysInfo p)
 {
-	L2tpInfo const pi = (L2tpInfo) l->info;
+	L2tpInfo const pi = (L2tpInfo) p->info;
 
 	struct l2tp_tun *tun = NULL;
 	struct ppp_l2tp_sess *sess;
@@ -313,7 +282,7 @@ L2tpOpen(Link l)
 	struct ngm_mkpeer mkpeer;
 	struct sockaddr_storage peer_sas;
 	struct sockaddr_storage sas;
-	char hook[NG_HOOKSIZ];
+	char hook[NG_HOOKLEN + 1];
 	char namebuf[64];
 	char hostname[MAXHOSTNAMELEN];
 	ng_ID_t node_id;
@@ -325,74 +294,87 @@ L2tpOpen(Link l)
 	pi->opened=1;
 	
 	if (pi->incoming == 1) {
-		Log(LG_PHYS2, ("[%s] L2tpOpen() on incoming call", l->name));
-		if (l->state==PHYS_STATE_READY) {
-		    l->state = PHYS_STATE_UP;
+		Log(LG_PHYS2, ("[%s] L2tpOpen() on incoming call", p->name));
+		if (p->state==PHYS_STATE_READY) {
+		    p->state = PHYS_STATE_UP;
 		    if (pi->outcall) {
 			pi->sync = 1;
-			if (l->rep) {
-			    uint32_t fr;
-			    avps = ppp_l2tp_avp_list_create();
-			    if (RepIsSync(l)) {
-				fr = htonl(L2TP_FRAMING_SYNC);
+			if (p->rep) {
+			    if ((avps = ppp_l2tp_avp_list_create()) == NULL) {
+				Log(LG_ERR, ("[%s] ppp_l2tp_avp_list_create: %s", 
+				    p->name, strerror(errno)));
 			    } else {
-				fr = htonl(L2TP_FRAMING_ASYNC);
-				pi->sync = 0;
-			    }
-			    if (ppp_l2tp_avp_list_append(avps, 1, 0, AVP_FRAMING_TYPE,
-	        	        &fr, sizeof(fr)) == -1) {
-			    	    Log(LG_ERR, ("[%s] ppp_l2tp_avp_list_append: %s", 
-				        l->name, strerror(errno)));
+				uint32_t fr;
+				if (RepIsSync(p)) {
+					fr = htonl(L2TP_FRAMING_SYNC);
+				} else {
+					fr = htonl(L2TP_FRAMING_ASYNC);
+					pi->sync = 0;
+				}
+				if (ppp_l2tp_avp_list_append(avps, 1, 0, AVP_FRAMING_TYPE,
+	        		    &fr, sizeof(fr)) == -1) {
+					Log(LG_ERR, ("[%s] ppp_l2tp_avp_list_append: %s", 
+					    p->name, strerror(errno)));
+				}
 			    }
 			} else {
 			    avps = NULL;
 			}
-			Log(LG_PHYS, ("[%s] L2TP: Call #%u connected", l->name, 
+			Log(LG_PHYS, ("[%s] L2TP: Call #%u connected", p->name, 
 			    ppp_l2tp_sess_get_serial(pi->sess)));
 			ppp_l2tp_connected(pi->sess, avps);
 			if (avps)
 			    ppp_l2tp_avp_list_destroy(&avps);
 		    }
-		    L2tpHookUp(l);
-		    PhysUp(l);
+		    L2tpHookUpIncoming(p);
+		    PhysUp(p);
 		}
 		return;
 	}
 
 	/* Sanity check. */
-	if (l->state != PHYS_STATE_DOWN) {
-		Log(LG_PHYS, ("[%s] L2TP: allready active", l->name));
+	if (p->state != PHYS_STATE_DOWN) {
+		Log(LG_PHYS, ("[%s] L2TP: allready active", p->name));
 		return;
 	};
 
-	l->state = PHYS_STATE_CONNECTING;
+	if (!Enabled(&pi->conf.options, L2TP_CONF_ORIGINATE)) {
+		Log(LG_ERR, ("[%s] L2TP: originate option is not enabled",
+		    p->name));
+		PhysDown(p, STR_DEV_NOT_READY, NULL);
+		return;
+	};
+	
 	strlcpy(pi->callingnum, pi->conf.callingnum, sizeof(pi->callingnum));
 	strlcpy(pi->callednum, pi->conf.callednum, sizeof(pi->callednum));
 
 	ghash_walk_init(gL2tpTuns, &walk);
 	while ((tun = ghash_walk_next(gL2tpTuns, &walk)) != NULL) {
-	    if (tun->ctrl && tun->alive && tun->active_sessions < gL2TPtunlimit &&
+	    if (tun->ctrl && tun->alive &&
 		(IpAddrInRange(&pi->conf.peer_addr, &tun->peer_addr)) &&
 		(pi->conf.peer_port == 0 || pi->conf.peer_port == tun->peer_port)) {
 		    pi->tun = tun;
-		    tun->active_sessions++;
 		    if (tun->connected) { /* if tun is connected then just initiate */
 		    
 			/* Create number AVPs */
-			avps = ppp_l2tp_avp_list_create();
-			if (pi->conf.callingnum[0]) {
+			if ((avps = ppp_l2tp_avp_list_create()) == NULL) {
+				Log(LG_ERR, ("[%s] ppp_l2tp_avp_list_create: %s", 
+				    p->name, strerror(errno)));
+			} else {
+			 if (pi->conf.callingnum[0]) {
 			  if (ppp_l2tp_avp_list_append(avps, 1, 0, AVP_CALLING_NUMBER,
 	        	    pi->conf.callingnum, strlen(pi->conf.callingnum)) == -1) {
 				Log(LG_ERR, ("[%s] ppp_l2tp_avp_list_append: %s", 
-				    l->name, strerror(errno)));
+				    p->name, strerror(errno)));
 			  }
-			}
-			if (pi->conf.callednum[0]) {
+			 }
+			 if (pi->conf.callednum[0]) {
 			  if (ppp_l2tp_avp_list_append(avps, 1, 0, AVP_CALLED_NUMBER,
 	        	    pi->conf.callednum, strlen(pi->conf.callednum)) == -1) {
 				Log(LG_ERR, ("[%s] ppp_l2tp_avp_list_append: %s", 
-				    l->name, strerror(errno)));
+				    p->name, strerror(errno)));
 			  }
+			 }
 			}
 			if ((sess = ppp_l2tp_initiate(tun->ctrl, 
 				Enabled(&pi->conf.options, L2TP_CONF_OUTCALL)?1:0,
@@ -400,37 +382,39 @@ L2tpOpen(Link l)
 				Enabled(&pi->conf.options, L2TP_CONF_DATASEQ)?1:0,
 				avps)) == NULL) {
 			    Log(LG_ERR, ("[%s] ppp_l2tp_initiate: %s", 
-				l->name, strerror(errno)));
+				p->name, strerror(errno)));
+			    PhysDown(p, STR_ERROR, NULL);
 			    ppp_l2tp_avp_list_destroy(&avps);
 			    pi->sess = NULL;
 			    pi->tun = NULL;
-			    tun->active_sessions--;
-			    l->state = PHYS_STATE_DOWN;
-			    PhysDown(l, STR_ERROR, NULL);
 			    return;
 			};
 			ppp_l2tp_avp_list_destroy(&avps);
 			pi->sess = sess;
 			pi->outcall = Enabled(&pi->conf.options, L2TP_CONF_OUTCALL);
 			Log(LG_PHYS, ("[%s] L2TP: %s call #%u via control connection %p initiated", 
-			    l->name, (pi->outcall?"Outgoing":"Incoming"), 
+			    p->name, (pi->outcall?"Outgoing":"Incoming"), 
 			    ppp_l2tp_sess_get_serial(sess), tun->ctrl));
-			ppp_l2tp_sess_set_cookie(sess, l);
+			ppp_l2tp_sess_set_cookie(sess, p);
 			if (!pi->outcall) {
 			    pi->sync = 1;
-			    if (l->rep) {
-				uint32_t fr;
-				avps = ppp_l2tp_avp_list_create();
-				if (RepIsSync(l)) {
-				    fr = htonl(L2TP_FRAMING_SYNC);
+			    if (p->rep) {
+				if ((avps = ppp_l2tp_avp_list_create()) == NULL) {
+				    Log(LG_ERR, ("[%s] ppp_l2tp_avp_list_create: %s", 
+					p->name, strerror(errno)));
 				} else {
-				    fr = htonl(L2TP_FRAMING_ASYNC);
-				    pi->sync = 0;
-				}
-				if (ppp_l2tp_avp_list_append(avps, 1, 0, AVP_FRAMING_TYPE,
-	        		    &fr, sizeof(fr)) == -1) {
-				        Log(LG_ERR, ("[%s] ppp_l2tp_avp_list_append: %s", 
-				    	    l->name, strerror(errno)));
+				    uint32_t fr;
+				    if (RepIsSync(p)) {
+					fr = htonl(L2TP_FRAMING_SYNC);
+				    } else {
+					fr = htonl(L2TP_FRAMING_ASYNC);
+					pi->sync = 0;
+				    }
+				    if (ppp_l2tp_avp_list_append(avps, 1, 0, AVP_FRAMING_TYPE,
+	        			&fr, sizeof(fr)) == -1) {
+					    Log(LG_ERR, ("[%s] ppp_l2tp_avp_list_append: %s", 
+						p->name, strerror(errno)));
+				    }
 				}
 			    } else {
 				avps = NULL;
@@ -445,7 +429,12 @@ L2tpOpen(Link l)
 	}
 
 	/* There is no tun which we need. Create a new one. */
-	tun = Malloc(MB_PHYS, sizeof(*tun));
+	if ((tun = Malloc(MB_PHYS, sizeof(*tun))) == NULL) {
+		Log(LG_ERR, ("[%s] malloc: %s", 
+		    p->name, strerror(errno)));
+		return;
+	}
+	memset(tun, 0, sizeof(*tun));
 	sockaddrtou_addr(&peer_sas,&tun->peer_addr,&tun->peer_port);
 	u_addrcopy(&pi->conf.peer_addr.addr, &tun->peer_addr);
 	tun->peer_port = pi->conf.peer_port?pi->conf.peer_port:L2TP_PORT;
@@ -455,7 +444,11 @@ L2tpOpen(Link l)
 	tun->connected = 0;
 
 	/* Create vendor name AVP */
-	avps = ppp_l2tp_avp_list_create();
+	if ((avps = ppp_l2tp_avp_list_create()) == NULL) {
+		Log(LG_ERR, ("[%s] ppp_l2tp_avp_list_create: %s", 
+		    p->name, strerror(errno)));
+		goto fail;
+	}
 
 	if (pi->conf.hostname[0] != 0) {
 	    strlcpy(hostname, pi->conf.hostname, sizeof(hostname));
@@ -481,7 +474,7 @@ L2tpOpen(Link l)
 	    pi->conf.secret, strlen(pi->conf.secret),
 	    Enabled(&pi->conf.options, L2TP_CONF_HIDDEN))) == NULL) {
 		Log(LG_ERR, ("[%s] ppp_l2tp_ctrl_create: %s", 
-		    l->name, strerror(errno)));
+		    p->name, strerror(errno)));
 		goto fail;
 	}
 	ppp_l2tp_ctrl_set_cookie(tun->ctrl, tun);
@@ -489,7 +482,7 @@ L2tpOpen(Link l)
 	/* Get a temporary netgraph socket node */
 	if (NgMkSockNode(NULL, &csock, &dsock) == -1) {
 		Log(LG_ERR, ("[%s] NgMkSockNode: %s", 
-		    l->name, strerror(errno)));
+		    p->name, strerror(errno)));
 		goto fail;
 	}
 
@@ -506,7 +499,7 @@ L2tpOpen(Link l)
 	if (NgSendMsg(csock, namebuf, NGM_GENERIC_COOKIE,
 	    NGM_MKPEER, &mkpeer, sizeof(mkpeer)) == -1) {
 		Log(LG_ERR, ("[%s] mkpeer: %s", 
-		    l->name, strerror(errno)));
+		    p->name, strerror(errno)));
 		goto fail;
 	}
 
@@ -521,14 +514,14 @@ L2tpOpen(Link l)
 	if (NgSendMsg(csock, namebuf, NGM_KSOCKET_COOKIE,
 	    NGM_KSOCKET_SETOPT, sockopt, sizeof(sockopt_buf)) == -1) {
 		Log(LG_ERR, ("[%s] setsockopt: %s", 
-		    l->name, strerror(errno)));
+		    p->name, strerror(errno)));
 		goto fail;
 	}
 	sockopt->name = SO_REUSEPORT;
 	if (NgSendMsg(csock, namebuf, NGM_KSOCKET_COOKIE,
 	    NGM_KSOCKET_SETOPT, sockopt, sizeof(sockopt_buf)) == -1) {
 		Log(LG_ERR, ("[%s] setsockopt: %s", 
-		    l->name, strerror(errno)));
+		    p->name, strerror(errno)));
 		goto fail;
 	}
 
@@ -538,7 +531,7 @@ L2tpOpen(Link l)
 	    if (NgSendMsg(csock, namebuf, NGM_KSOCKET_COOKIE,
 		NGM_KSOCKET_BIND, &sas, sas.ss_len) == -1) {
 		    Log(LG_ERR, ("[%s] bind: %s", 
-			l->name, strerror(errno)));
+			p->name, strerror(errno)));
 		    goto fail;
 	    }
 	}
@@ -548,18 +541,18 @@ L2tpOpen(Link l)
 	      NGM_KSOCKET_CONNECT, &sas, sas.ss_len) == -1
 	    && errno != EINPROGRESS) {
 		Log(LG_ERR, ("[%s] connect: %s", 
-		    l->name, strerror(errno)));
+		    p->name, strerror(errno)));
 		goto fail;
 	}
 
 	if (NgSendMsg(csock, namebuf, NGM_KSOCKET_COOKIE,
 	    NGM_KSOCKET_GETNAME, NULL, 0) == -1) {
 		Log(LG_ERR, ("[%s] getname send: %s", 
-		    l->name, strerror(errno)));
+		    p->name, strerror(errno)));
 	} else 
 	if (NgRecvMsg(csock, &ugetsas.reply, sizeof(ugetsas), NULL) == -1) {
 		Log(LG_ERR, ("[%s] getname recv: %s", 
-		    l->name, strerror(errno)));
+		    p->name, strerror(errno)));
 	} else {
 	    sockaddrtou_addr(getsas,&tun->self_addr,&tun->self_port);
 	}
@@ -567,11 +560,10 @@ L2tpOpen(Link l)
 	/* Add peer to our hash table */
 	if (ghash_put(gL2tpTuns, tun) == -1) {
 		Log(LG_ERR, ("[%s] ghash_put: %s", 
-		    l->name, strerror(errno)));
+		    p->name, strerror(errno)));
 		goto fail;
 	}
 	pi->tun = tun;
-	tun->active_sessions++;
 	Log(LG_PHYS, ("L2TP: Control connection %p initiated", tun->ctrl));
 	ppp_l2tp_ctrl_initiate(tun->ctrl);
 
@@ -589,40 +581,37 @@ fail:
 		(void)close(dsock);
 	if (tun != NULL) {
 		ppp_l2tp_ctrl_destroy(&tun->ctrl);
-		Freee(tun);
+		Freee(MB_PHYS, tun);
 	}
-	l->state = PHYS_STATE_DOWN;
-	PhysDown(l, STR_DEV_NOT_READY, NULL);
-}
+	PhysDown(p, STR_DEV_NOT_READY, NULL);
+};
 
 /*
  * L2tpClose()
  */
 
 static void
-L2tpClose(Link l)
+L2tpClose(PhysInfo p)
 {
-    L2tpInfo      const pi = (L2tpInfo) l->info;
+    L2tpInfo      const pi = (L2tpInfo) p->info;
 
     pi->opened = 0;
     pi->incoming = 0;
     pi->outcall = 0;
-    if (l->state == PHYS_STATE_DOWN)
+    if (p->state == PHYS_STATE_DOWN)
     	return;
-    L2tpUnhook(l);
+    PhysDown(p, 0, NULL);
+    L2tpDoClose(p);
     if (pi->sess) {
-	Log(LG_PHYS, ("[%s] L2TP: Call #%u terminated locally", l->name, 
+	Log(LG_PHYS, ("[%s] L2TP: Call #%u terminated locally", p->name, 
 	    ppp_l2tp_sess_get_serial(pi->sess)));
 	ppp_l2tp_terminate(pi->sess, L2TP_RESULT_ADMIN, 0, NULL);
 	pi->sess = NULL;
     }
-    if (pi->tun)
-	pi->tun->active_sessions--;
     pi->tun = NULL;
     pi->callingnum[0]=0;
     pi->callednum[0]=0;
-    l->state = PHYS_STATE_DOWN;
-    PhysDown(l, STR_MANUALLY, NULL);
+    p->state = PHYS_STATE_DOWN;
 }
 
 /*
@@ -630,41 +619,34 @@ L2tpClose(Link l)
  */
 
 static void
-L2tpShutdown(Link l)
+L2tpShutdown(PhysInfo p)
 {
-    gNumL2tpLinks--;
+    struct ghash_walk walk;
+    struct l2tp_tun *tun;
 
-    if (gNumL2tpLinks == 0) {
-	struct ghash_walk walk;
-	struct l2tp_tun *tun;
-
-	Log(LG_PHYS2, ("L2TP: Total shutdown"));
-	ghash_walk_init(gL2tpTuns, &walk);
-	while ((tun = ghash_walk_next(gL2tpTuns, &walk)) != NULL) {
-	    if (tun->ctrl) {
-		if (tun->alive)
-		    ppp_l2tp_ctrl_shutdown(tun->ctrl,
-			L2TP_RESULT_SHUTDOWN, 0, NULL);
-		ppp_l2tp_ctrl_destroy(&tun->ctrl);
-	    }
+    ghash_walk_init(gL2tpTuns, &walk);
+    while ((tun = ghash_walk_next(gL2tpTuns, &walk)) != NULL) {
+	if (tun->ctrl) {
+	    if (tun->alive)
+		ppp_l2tp_ctrl_shutdown(tun->ctrl,
+		    L2TP_RESULT_SHUTDOWN, 0, NULL);
+	    ppp_l2tp_ctrl_destroy(&tun->ctrl);
 	}
     }
-    L2tpUnListen(l);
-    Freee(l->info);
 }
 
 /*
- * L2tpUnhook()
+ * L2tpDoClose()
  */
 
 static void
-L2tpUnhook(Link l)
+L2tpDoClose(PhysInfo p)
 {
     int		csock = -1;
-    L2tpInfo	const pi = (L2tpInfo) l->info;
+    L2tpInfo	const pi = (L2tpInfo) p->info;
     const char	*hook;
     ng_ID_t	node_id;
-    char	path[NG_PATHSIZ];
+    char	path[NG_PATHLEN + 1];
 	
     if (pi->sess) {		/* avoid double close */
 
@@ -681,7 +663,7 @@ L2tpUnhook(Link l)
 	
 	    /* Disconnect session hook. */
 	    snprintf(path, sizeof(path), "[%lx]:", (u_long)node_id);
-	    NgFuncDisconnect(csock, l->name, path, hook);
+	    NgFuncDisconnect(csock, p->name, path, hook);
 	
 	    close(csock);
 	}
@@ -693,11 +675,11 @@ L2tpUnhook(Link l)
  */
 
 static int
-L2tpOriginated(Link l)
+L2tpOriginated(PhysInfo p)
 {
-    L2tpInfo	const l2tp = (L2tpInfo) l->info;
+  L2tpInfo	const l2tp = (L2tpInfo) p->info;
 
-    return(l2tp->incoming ? LINK_ORIGINATE_REMOTE : LINK_ORIGINATE_LOCAL);
+  return(l2tp->incoming ? LINK_ORIGINATE_REMOTE : LINK_ORIGINATE_LOCAL);
 }
 
 /*
@@ -705,17 +687,17 @@ L2tpOriginated(Link l)
  */
 
 static int
-L2tpIsSync(Link l)
+L2tpIsSync(PhysInfo p)
 {
-    L2tpInfo	const l2tp = (L2tpInfo) l->info;
+    L2tpInfo	const l2tp = (L2tpInfo) p->info;
 
     return (l2tp->sync);
 }
 
 static int
-L2tpSetAccm(Link l, u_int32_t xmit, u_int32_t recv)
+L2tpSetAccm(PhysInfo p, u_int32_t xmit, u_int32_t recv)
 {
-    L2tpInfo	const l2tp = (L2tpInfo) l->info;
+    L2tpInfo	const l2tp = (L2tpInfo) p->info;
     
     if (!l2tp->sess)
 	    return (-1);
@@ -724,27 +706,27 @@ L2tpSetAccm(Link l, u_int32_t xmit, u_int32_t recv)
 }
 
 static int
-L2tpSetCallingNum(Link l, void *buf)
+L2tpSetCallingNum(PhysInfo p, void *buf)
 {
-    L2tpInfo	const l2tp = (L2tpInfo) l->info;
+    L2tpInfo	const l2tp = (L2tpInfo) p->info;
 
     strlcpy(l2tp->conf.callingnum, buf, sizeof(l2tp->conf.callingnum));
     return(0);
 }
 
 static int
-L2tpSetCalledNum(Link l, void *buf)
+L2tpSetCalledNum(PhysInfo p, void *buf)
 {
-    L2tpInfo	const l2tp = (L2tpInfo) l->info;
+    L2tpInfo	const l2tp = (L2tpInfo) p->info;
 
     strlcpy(l2tp->conf.callednum, buf, sizeof(l2tp->conf.callednum));
     return(0);
 }
 
 static int
-L2tpPeerAddr(Link l, void *buf, size_t buf_len)
+L2tpPeerAddr(PhysInfo p, void *buf, int buf_len)
 {
-    L2tpInfo	const l2tp = (L2tpInfo) l->info;
+    L2tpInfo	const l2tp = (L2tpInfo) p->info;
 
     if (l2tp->tun) {
 	if (u_addrtoa(&l2tp->tun->peer_addr, buf, buf_len))
@@ -759,9 +741,9 @@ L2tpPeerAddr(Link l, void *buf, size_t buf_len)
 }
 
 static int
-L2tpPeerPort(Link l, void *buf, size_t buf_len)
+L2tpPeerPort(PhysInfo p, void *buf, int buf_len)
 {
-    L2tpInfo	const l2tp = (L2tpInfo) l->info;
+    L2tpInfo	const l2tp = (L2tpInfo) p->info;
 
     if (l2tp->tun) {
 	if (snprintf(buf, buf_len, "%d", l2tp->tun->peer_port))
@@ -776,47 +758,18 @@ L2tpPeerPort(Link l, void *buf, size_t buf_len)
 }
 
 static int
-L2tpPeerMacAddr(Link l, void *buf, size_t buf_len)
+L2tpCallingNum(PhysInfo p, void *buf, int buf_len)
 {
-    L2tpInfo	const l2tp = (L2tpInfo) l->info;
-
-    if (l2tp->tun && l2tp->tun->peer_iface[0]) {
-	snprintf(buf, buf_len, "%02x:%02x:%02x:%02x:%02x:%02x",
-	    l2tp->tun->peer_mac_addr[0], l2tp->tun->peer_mac_addr[1],
-	    l2tp->tun->peer_mac_addr[2], l2tp->tun->peer_mac_addr[3],
-	    l2tp->tun->peer_mac_addr[4], l2tp->tun->peer_mac_addr[5]);
-	return (0);
-    }
-    ((char*)buf)[0]=0;
-    return(0);
-}
-
-static int
-L2tpPeerIface(Link l, void *buf, size_t buf_len)
-{
-    L2tpInfo	const l2tp = (L2tpInfo) l->info;
-
-    if (l2tp->tun && l2tp->tun->peer_iface[0]) {
-	strlcpy(buf, l2tp->tun->peer_iface, buf_len);
-	return (0);
-    }
-    ((char*)buf)[0]=0;
-    return(0);
-}
-
-static int
-L2tpCallingNum(Link l, void *buf, size_t buf_len)
-{
-    L2tpInfo	const l2tp = (L2tpInfo) l->info;
+    L2tpInfo	const l2tp = (L2tpInfo) p->info;
 
     strlcpy((char*)buf, l2tp->callingnum, buf_len);
     return(0);
 }
 
 static int
-L2tpCalledNum(Link l, void *buf, size_t buf_len)
+L2tpCalledNum(PhysInfo p, void *buf, int buf_len)
 {
-    L2tpInfo	const l2tp = (L2tpInfo) l->info;
+    L2tpInfo	const l2tp = (L2tpInfo) p->info;
 
     strlcpy((char*)buf, l2tp->callednum, buf_len);
     return(0);
@@ -829,45 +782,38 @@ L2tpCalledNum(Link l, void *buf, size_t buf_len)
 void
 L2tpStat(Context ctx)
 {
-    L2tpInfo	const l2tp = (L2tpInfo) ctx->lnk->info;
-    char	buf[32];
+  L2tpInfo	const l2tp = (L2tpInfo) ctx->phys->info;
+  char		buf[32];
 
-    Printf("L2TP configuration:\r\n");
-    Printf("\tSelf addr    : %s, port %u",
-	u_addrtoa(&l2tp->conf.self_addr, buf, sizeof(buf)), l2tp->conf.self_port);
-    Printf("\r\n");
-    Printf("\tPeer range   : %s",
-	u_rangetoa(&l2tp->conf.peer_addr, buf, sizeof(buf)));
-    if (l2tp->conf.peer_port)
-	Printf(", port %u", l2tp->conf.peer_port);
-    Printf("\r\n");
-    Printf("\tHostname     : %s\r\n", l2tp->conf.hostname);
-    Printf("\tSecret       : %s\r\n", (l2tp->conf.callingnum[0])?"******":"");
-    Printf("\tCalling number: %s\r\n", l2tp->conf.callingnum);
-    Printf("\tCalled number: %s\r\n", l2tp->conf.callednum);
-    Printf("L2TP options:\r\n");
-    OptStat(ctx, &l2tp->conf.options, gConfList);
-    Printf("L2TP status:\r\n");
-    if (ctx->lnk->state != PHYS_STATE_DOWN) {
-	Printf("\tIncoming     : %s\r\n", (l2tp->incoming?"YES":"NO"));
-	if (l2tp->tun) {
-	    Printf("\tCurrent self : %s, port %u\r\n",
-		u_addrtoa(&l2tp->tun->self_addr, buf, sizeof(buf)), l2tp->tun->self_port);
-	    Printf("\tCurrent peer : %s, port %u\r\n",
-		u_addrtoa(&l2tp->tun->peer_addr, buf, sizeof(buf)), l2tp->tun->peer_port);
-	    if (l2tp->tun->peer_iface[0]) {
-		Printf("\tCurrent peer : %02x:%02x:%02x:%02x:%02x:%02x at %s\r\n",
-		    l2tp->tun->peer_mac_addr[0], l2tp->tun->peer_mac_addr[1],
-		    l2tp->tun->peer_mac_addr[2], l2tp->tun->peer_mac_addr[3],
-		    l2tp->tun->peer_mac_addr[4], l2tp->tun->peer_mac_addr[5],
-		    l2tp->tun->peer_iface);
-	    }
-
-	    Printf("\tFraming      : %s\r\n", (l2tp->sync?"Sync":"Async"));
-	}
-	Printf("\tCalling number: %s\r\n", l2tp->callingnum);
-	Printf("\tCalled number: %s\r\n", l2tp->callednum);
+  Printf("L2TP configuration:\r\n");
+  Printf("\tSelf addr    : %s, port %u",
+    u_addrtoa(&l2tp->conf.self_addr, buf, sizeof(buf)), l2tp->conf.self_port);
+  Printf("\r\n");
+  Printf("\tPeer range   : %s",
+    u_rangetoa(&l2tp->conf.peer_addr, buf, sizeof(buf)));
+  if (l2tp->conf.peer_port)
+    Printf(", port %u", l2tp->conf.peer_port);
+  Printf("\r\n");
+  Printf("\tHostname     : %s\r\n", l2tp->conf.hostname);
+  Printf("\tSecret       : %s\r\n", (l2tp->conf.callingnum[0])?"******":"");
+  Printf("\tCalling number: %s\r\n", l2tp->conf.callingnum);
+  Printf("\tCalled number: %s\r\n", l2tp->conf.callednum);
+  Printf("L2TP options:\r\n");
+  OptStat(ctx, &l2tp->conf.options, gConfList);
+  Printf("L2TP status:\r\n");
+  Printf("\tState        : %s\r\n", gPhysStateNames[ctx->phys->state]);
+  if (ctx->phys->state != PHYS_STATE_DOWN) {
+    Printf("\tIncoming     : %s\r\n", (l2tp->incoming?"YES":"NO"));
+    if (l2tp->tun) {
+	Printf("\tCurrent self : %s, port %u\r\n",
+	    u_addrtoa(&l2tp->tun->self_addr, buf, sizeof(buf)), l2tp->tun->self_port);
+	Printf("\tCurrent peer : %s, port %u\r\n",
+	    u_addrtoa(&l2tp->tun->peer_addr, buf, sizeof(buf)), l2tp->tun->peer_port);
+	Printf("\tFraming      : %s\r\n", (l2tp->sync?"Sync":"Async"));
     }
+    Printf("\tCalling number: %s\r\n", l2tp->callingnum);
+    Printf("\tCalled number: %s\r\n", l2tp->callednum);
+  }
 }
 
 /*
@@ -879,46 +825,44 @@ ppp_l2tp_ctrl_connected_cb(struct ppp_l2tp_ctrl *ctrl)
 	struct l2tp_tun *tun = ppp_l2tp_ctrl_get_cookie(ctrl);
 	struct ppp_l2tp_sess *sess;
 	struct ppp_l2tp_avp_list *avps = NULL;
-	struct sockaddr_dl  hwa;
 	int	k;
 
 	Log(LG_PHYS, ("L2TP: Control connection %p connected", ctrl));
-	
-	if (GetPeerEther(&tun->peer_addr, &hwa)) {
-	    if_indextoname(hwa.sdl_index, tun->peer_iface);
-	    memcpy(tun->peer_mac_addr, LLADDR(&hwa), sizeof(tun->peer_mac_addr));
-	};
 
 	/* Examine all L2TP links. */
-	for (k = 0; k < gNumLinks; k++) {
-		Link l;
+	for (k = 0; k < gNumPhyses; k++) {
+		PhysInfo p;
 	        L2tpInfo pi;
 
-		if (!gLinks[k] || gLinks[k]->type != &gL2tpPhysType)
+		if (!gPhyses[k] || gPhyses[k]->type != &gL2tpPhysType)
 			continue;
 
-		l = gLinks[k];
-		pi = (L2tpInfo)l->info;
+		p = gPhyses[k];
+		pi = (L2tpInfo)p->info;
 
 		if (pi->tun != tun)
 			continue;
 
 		tun->connected = 1;
 		/* Create number AVPs */
-		avps = ppp_l2tp_avp_list_create();
-		if (pi->conf.callingnum[0]) {
+		if ((avps = ppp_l2tp_avp_list_create()) == NULL) {
+			Log(LG_ERR, ("[%s] ppp_l2tp_avp_list_create: %s", 
+			    p->name, strerror(errno)));
+		} else {
+		  if (pi->conf.callingnum[0]) {
 		   if (ppp_l2tp_avp_list_append(avps, 1, 0, AVP_CALLING_NUMBER,
 	            pi->conf.callingnum, strlen(pi->conf.callingnum)) == -1) {
 			Log(LG_ERR, ("[%s] ppp_l2tp_avp_list_append: %s", 
-			    l->name, strerror(errno)));
+			    p->name, strerror(errno)));
 		   }
-		}
-		if (pi->conf.callednum[0]) {
+		  }
+		  if (pi->conf.callednum[0]) {
 		   if (ppp_l2tp_avp_list_append(avps, 1, 0, AVP_CALLED_NUMBER,
 	            pi->conf.callednum, strlen(pi->conf.callednum)) == -1) {
 			Log(LG_ERR, ("[%s] ppp_l2tp_avp_list_append: %s", 
-			    l->name, strerror(errno)));
+			    p->name, strerror(errno)));
 		   }
+		  }
 		}
 		if ((sess = ppp_l2tp_initiate(tun->ctrl,
 			    Enabled(&pi->conf.options, L2TP_CONF_OUTCALL)?1:0, 
@@ -926,35 +870,37 @@ ppp_l2tp_ctrl_connected_cb(struct ppp_l2tp_ctrl *ctrl)
 			    Enabled(&pi->conf.options, L2TP_CONF_DATASEQ)?1:0,
 			    avps)) == NULL) {
 			Log(LG_ERR, ("ppp_l2tp_initiate: %s", strerror(errno)));
+			PhysDown(p, STR_ERROR, NULL);
 			pi->sess = NULL;
 			pi->tun = NULL;
-			tun->active_sessions--;
-			l->state = PHYS_STATE_DOWN;
-			PhysDown(l, STR_ERROR, NULL);
 			continue;
 		};
 		ppp_l2tp_avp_list_destroy(&avps);
 		pi->sess = sess;
 		pi->outcall = Enabled(&pi->conf.options, L2TP_CONF_OUTCALL);
 		Log(LG_PHYS, ("[%s] L2TP: %s call #%u via control connection %p initiated", 
-		    l->name, (pi->outcall?"Outgoing":"Incoming"), 
+		    p->name, (pi->outcall?"Outgoing":"Incoming"), 
 		    ppp_l2tp_sess_get_serial(sess), tun->ctrl));
-		ppp_l2tp_sess_set_cookie(sess, l);
+		ppp_l2tp_sess_set_cookie(sess, p);
 		if (!pi->outcall) {
 		    pi->sync = 1;
-		    if (l->rep) {
-			uint32_t fr;
-			avps = ppp_l2tp_avp_list_create();
-			if (RepIsSync(l)) {
-			    fr = htonl(L2TP_FRAMING_SYNC);
+		    if (p->rep) {
+			if ((avps = ppp_l2tp_avp_list_create()) == NULL) {
+			    Log(LG_ERR, ("[%s] ppp_l2tp_avp_list_create: %s", 
+				p->name, strerror(errno)));
 			} else {
-			    fr = htonl(L2TP_FRAMING_ASYNC);
-			    pi->sync = 0;
-			}
-			if (ppp_l2tp_avp_list_append(avps, 1, 0, AVP_FRAMING_TYPE,
-	        	    &fr, sizeof(fr)) == -1) {
-			        Log(LG_ERR, ("[%s] ppp_l2tp_avp_list_append: %s", 
-			    	    l->name, strerror(errno)));
+			    uint32_t fr;
+			    if (RepIsSync(p)) {
+				fr = htonl(L2TP_FRAMING_SYNC);
+			    } else {
+				fr = htonl(L2TP_FRAMING_ASYNC);
+				pi->sync = 0;
+			    }
+			    if (ppp_l2tp_avp_list_append(avps, 1, 0, AVP_FRAMING_TYPE,
+	        		&fr, sizeof(fr)) == -1) {
+				    Log(LG_ERR, ("[%s] ppp_l2tp_avp_list_append: %s", 
+					p->name, strerror(errno)));
+			    }
 			}
 		    } else {
 			avps = NULL;
@@ -981,27 +927,26 @@ ppp_l2tp_ctrl_terminated_cb(struct ppp_l2tp_ctrl *ctrl,
 	    ctrl, error, errmsg));
 
 	/* Examine all L2TP links. */
-	for (k = 0; k < gNumLinks; k++) {
-		Link l;
+	for (k = 0; k < gNumPhyses; k++) {
+		PhysInfo p;
 	        L2tpInfo pi;
 
-		if (!gLinks[k] || gLinks[k]->type != &gL2tpPhysType)
+		if (!gPhyses[k] || gPhyses[k]->type != &gL2tpPhysType)
 			continue;
 
-		l = gLinks[k];
-		pi = (L2tpInfo)l->info;
+		p = gPhyses[k];
+		pi = (L2tpInfo)p->info;
 
 		if (pi->tun != tun)
 			continue;
 
-		l->state = PHYS_STATE_DOWN;
-		L2tpUnhook(l);
+		p->state = PHYS_STATE_DOWN;
+		PhysDown(p, STR_DROPPED, NULL);
+		L2tpDoClose(p);
 		pi->sess = NULL;
 		pi->tun = NULL;
-		tun->active_sessions--;
 		pi->callingnum[0]=0;
 	        pi->callednum[0]=0;
-		PhysDown(l, STR_DROPPED, NULL);
 	};
 	
 	tun->alive = 0;
@@ -1019,7 +964,7 @@ ppp_l2tp_ctrl_destroyed_cb(struct ppp_l2tp_ctrl *ctrl)
 	Log(LG_PHYS, ("L2TP: Control connection %p destroyed", ctrl));
 
 	ghash_remove(gL2tpTuns, tun);
-	Freee(tun);
+	Freee(MB_PHYS, tun);
 }
 
 /*
@@ -1034,7 +979,8 @@ ppp_l2tp_initiated_cb(struct ppp_l2tp_ctrl *ctrl,
 {
 	struct	l2tp_tun *const tun = ppp_l2tp_ctrl_get_cookie(ctrl);
 	struct	ppp_l2tp_avp_ptrs *ptrs = NULL;
-	Link 	l = NULL;
+	time_t  const now = time(NULL);
+	PhysInfo p = NULL;
 	L2tpInfo pi = NULL;
 	int	k;
 
@@ -1061,25 +1007,26 @@ ppp_l2tp_initiated_cb(struct ppp_l2tp_ctrl *ctrl,
 	}
 
 	/* Examine all L2TP links. */
-	for (k = 0; k < gNumLinks; k++) {
-		Link l2;
+	for (k = 0; k < gNumPhyses; k++) {
+		PhysInfo p2;
 	        L2tpInfo pi2;
 
-		if (!gLinks[k] || gLinks[k]->type != &gL2tpPhysType)
+		if (!gPhyses[k] || gPhyses[k]->type != &gL2tpPhysType)
 			continue;
 
-		l2 = gLinks[k];
-		pi2 = (L2tpInfo)l2->info;
+		p2 = gPhyses[k];
+		pi2 = (L2tpInfo)p2->info;
 
-		if ((!PhysIsBusy(l2)) &&
-		    Enabled(&l2->conf.options, LINK_CONF_INCOMING) &&
+		if ((p2->state == PHYS_STATE_DOWN) &&
+		    (now - p2->lastClose >= L2TP_REOPEN_PAUSE) &&
+		    Enabled(&pi2->conf.options, L2TP_CONF_INCOMING) &&
 		    ((u_addrempty(&pi2->conf.self_addr)) || (u_addrcompare(&pi2->conf.self_addr, &tun->self_addr) == 0)) &&
 		    (pi2->conf.self_port == 0 || pi2->conf.self_port == tun->self_port) &&
 		    (IpAddrInRange(&pi2->conf.peer_addr, &tun->peer_addr)) &&
 		    (pi2->conf.peer_port == 0 || pi2->conf.peer_port == tun->peer_port)) {
 			
 			if (pi == NULL || pi2->conf.peer_addr.width > pi->conf.peer_addr.width) {
-				l = l2;
+				p = p2;
 				pi = pi2;
 				if (u_rangehost(&pi->conf.peer_addr)) {
 					break;	/* Nothing could be better */
@@ -1087,23 +1034,18 @@ ppp_l2tp_initiated_cb(struct ppp_l2tp_ctrl *ctrl,
 			}
 		}
 	}
-	if (l != NULL && l->tmpl)
-    		l = LinkInst(l, NULL, 0, 0);
-
-	if (l != NULL) {
-    		pi = (L2tpInfo)l->info;
+	if (pi != NULL) {
 		Log(LG_PHYS, ("[%s] L2TP: %s call #%u via control connection %p accepted", 
-		    l->name, (out?"Outgoing":"Incoming"), 
+		    p->name, (out?"Outgoing":"Incoming"), 
 		    ppp_l2tp_sess_get_serial(sess), ctrl));
 
 		if (out)
-		    l->state = PHYS_STATE_READY;
+		    p->state = PHYS_STATE_READY;
 		else
-		    l->state = PHYS_STATE_CONNECTING;
+		    p->state = PHYS_STATE_CONNECTING;
 		pi->incoming = 1;
 		pi->outcall = out;
 		pi->tun = tun;
-		tun->active_sessions++;
 		pi->sess = sess;
 		if (ptrs->callingnum && ptrs->callingnum->number)
 		    strlcpy(pi->callingnum, ptrs->callingnum->number, sizeof(pi->callingnum));
@@ -1113,9 +1055,9 @@ ppp_l2tp_initiated_cb(struct ppp_l2tp_ctrl *ctrl,
 		*include_length = (Enabled(&pi->conf.options, L2TP_CONF_LENGTH)?1:0);
 		*enable_dseq = (Enabled(&pi->conf.options, L2TP_CONF_DATASEQ)?1:0);
 
-		PhysIncoming(l);
+		PhysIncoming(p);
 
-		ppp_l2tp_sess_set_cookie(sess, l);
+		ppp_l2tp_sess_set_cookie(sess, p);
 		ppp_l2tp_avp_ptrs_destroy(&ptrs);
 		return;
 	}
@@ -1135,14 +1077,14 @@ static void
 ppp_l2tp_connected_cb(struct ppp_l2tp_sess *sess,
 	const struct ppp_l2tp_avp_list *avps)
 {
-	Link l;
+	PhysInfo p;
 	L2tpInfo pi;
 	struct ppp_l2tp_avp_ptrs *ptrs = NULL;
 
-	l = ppp_l2tp_sess_get_cookie(sess);
-	pi = (L2tpInfo)l->info;
+	p = ppp_l2tp_sess_get_cookie(sess);
+	pi = (L2tpInfo)p->info;
 
-	Log(LG_PHYS, ("[%s] L2TP: Call #%u connected", l->name, 
+	Log(LG_PHYS, ("[%s] L2TP: Call #%u connected", p->name, 
 	    ppp_l2tp_sess_get_serial(sess)));
 
 	if ((pi->incoming != pi->outcall) && avps != NULL) {
@@ -1160,11 +1102,11 @@ ppp_l2tp_connected_cb(struct ppp_l2tp_sess *sess,
 	}
 
 	if (pi->opened) {
-	    l->state = PHYS_STATE_UP;
-	    L2tpHookUp(l);
-	    PhysUp(l);
+	    p->state = PHYS_STATE_UP;
+	    L2tpHookUpIncoming(p);
+	    PhysUp(p);
 	} else {
-	    l->state = PHYS_STATE_READY;
+	    p->state = PHYS_STATE_READY;
 	}
 }
 
@@ -1179,27 +1121,25 @@ ppp_l2tp_terminated_cb(struct ppp_l2tp_sess *sess,
 	u_int16_t result, u_int16_t error, const char *errmsg)
 {
 	char buf[128];
-	Link l;
+	PhysInfo p;
 	L2tpInfo pi;
 
-	l = ppp_l2tp_sess_get_cookie(sess);
-	pi = (L2tpInfo) l->info;
+	p = ppp_l2tp_sess_get_cookie(sess);
+	pi = (L2tpInfo) p->info;
 
 	/* Control side is notifying us session is down */
 	snprintf(buf, sizeof(buf), "result=%u error=%u errmsg=\"%s\"",
 	    result, error, (errmsg != NULL) ? errmsg : "");
-	Log(LG_PHYS, ("[%s] L2TP: call #%u terminated: %s", l->name, 
+	Log(LG_PHYS, ("[%s] L2TP: call #%u terminated: %s", p->name, 
 	    ppp_l2tp_sess_get_serial(sess), buf));
 
-	l->state = PHYS_STATE_DOWN;
-	L2tpUnhook(l);
+	p->state = PHYS_STATE_DOWN;
+	PhysDown(p, STR_DROPPED, NULL);
+	L2tpDoClose(p);
 	pi->sess = NULL;
-	if (pi->tun)
-	    pi->tun->active_sessions--;
 	pi->tun = NULL;
 	pi->callingnum[0]=0;
 	pi->callednum[0]=0;
-	PhysDown(l, STR_DROPPED, NULL);
 }
 
 /*
@@ -1209,25 +1149,25 @@ void
 ppp_l2tp_set_link_info_cb(struct ppp_l2tp_sess *sess,
 			u_int32_t xmit, u_int32_t recv)
 {
-	Link l = ppp_l2tp_sess_get_cookie(sess);
+	PhysInfo p = ppp_l2tp_sess_get_cookie(sess);
 
-	if (l->rep != NULL) {
-		RepSetAccm(l, xmit, recv);
+	if (p->rep != NULL) {
+		RepSetAccm(p, xmit, recv);
 	}
-}
+};
 
 /*
- * Connect L2TP and link hooks.
+ * Read an incoming packet that might be a new L2TP connection.
  */
  
 static void
-L2tpHookUp(Link l)
+L2tpHookUpIncoming(PhysInfo p)
 {
 	int		csock = -1;
-	L2tpInfo	pi = (L2tpInfo)l->info;
+	L2tpInfo	pi = (L2tpInfo)p->info;
         const char 	*hook;
         ng_ID_t		node_id;
-	char		path[NG_PATHSIZ];
+	char		path[NG_PATHLEN + 1];
 	struct ngm_connect      cn;
 
 	/* Get a temporary netgraph socket node */
@@ -1240,8 +1180,8 @@ L2tpHookUp(Link l)
 	ppp_l2tp_sess_get_hook(pi->sess, &node_id, &hook);
 
 	/* Connect our ng_ppp(4) node link hook and ng_l2tp(4) node. */
-	if (!PhysGetUpperHook(l, cn.path, cn.peerhook)) {
-	    Log(LG_PHYS, ("[%s] L2TP: can't get upper hook", l->name));
+	if (!PhysGetUpperHook(p, cn.path, cn.peerhook)) {
+	    Log(LG_PHYS, ("[%s] L2TP: can't get upper hook", p->name));
 	    goto fail;
 	}
 	snprintf(path, sizeof(path), "[%lx]:", (u_long)node_id);
@@ -1249,10 +1189,9 @@ L2tpHookUp(Link l)
 	if (NgSendMsg(csock, path, NGM_GENERIC_COOKIE, NGM_CONNECT, 
 	    &cn, sizeof(cn)) < 0) {
 		Log(LG_ERR, ("[%s] L2TP: can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
-    		    l->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
+    		    p->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
 		goto fail;
 	}
-	ppp_l2tp_sess_hooked(pi->sess);
 	close(csock);
 	return;
 
@@ -1272,7 +1211,7 @@ static void
 L2tpServerEvent(int type, void *arg)
 {
 	struct l2tp_server *const s = arg;
-	Link l = NULL;
+	PhysInfo p = NULL;
 	L2tpInfo pi = NULL;
 	struct ppp_l2tp_avp_list *avps = NULL;
 	struct l2tp_tun *tun = NULL;
@@ -1288,7 +1227,7 @@ L2tpServerEvent(int type, void *arg)
 	struct sockaddr_storage sas;
 	const size_t bufsize = 8192;
 	u_int16_t *buf = NULL;
-	char hook[NG_HOOKSIZ];
+	char hook[NG_HOOKLEN + 1];
 	char hostname[MAXHOSTNAMELEN];
 	socklen_t sas_len;
 	char namebuf[64];
@@ -1300,7 +1239,10 @@ L2tpServerEvent(int type, void *arg)
 	int	k;
 
 	/* Allocate buffer */
-	buf = Malloc(MB_PHYS, bufsize);
+	if ((buf = Malloc(MB_PHYS, bufsize)) == NULL) {
+		Log(LG_ERR, ("L2TP: malloc: %s", strerror(errno)));
+		goto fail;
+	}
 
 	/* Read packet */
 	sas_len = sizeof(peer_sas);
@@ -1318,7 +1260,11 @@ L2tpServerEvent(int type, void *arg)
 		goto fail;
 
 	/* Create a new tun */
-	tun = Malloc(MB_PHYS, sizeof(*tun));
+	if ((tun = Malloc(MB_PHYS, sizeof(*tun))) == NULL) {
+		Log(LG_ERR, ("L2TP: malloc: %s", strerror(errno)));
+		goto fail;
+	}
+	memset(tun, 0, sizeof(*tun));
 	sockaddrtou_addr(&peer_sas,&tun->peer_addr,&tun->peer_port);
 	u_addrcopy(&s->self_addr, &tun->self_addr);
 	tun->self_port = s->self_port;
@@ -1328,24 +1274,23 @@ L2tpServerEvent(int type, void *arg)
 		u_addrtoa(&tun->peer_addr, namebuf, sizeof(namebuf)), tun->peer_port));
 
 	/* Examine all L2TP links to get best possible fit tunnel parameters. */
-	for (k = 0; k < gNumLinks; k++) {
-		Link l2;
+	for (k = 0; k < gNumPhyses; k++) {
+		PhysInfo p2;
 	        L2tpInfo pi2;
 
-		if (!gLinks[k] || gLinks[k]->type != &gL2tpPhysType)
+		if (!gPhyses[k] || gPhyses[k]->type != &gL2tpPhysType)
 			continue;
 
-		l2 = gLinks[k];
-		pi2 = (L2tpInfo)l2->info;
+		p2 = gPhyses[k];
+		pi2 = (L2tpInfo)p2->info;
 
 		/* Simplified comparation as it is not a final one. */
-		if ((!PhysIsBusy(l2)) &&
-		    (pi2->server == s) &&
+		if ((pi2->server == s) &&
 		    (IpAddrInRange(&pi2->conf.peer_addr, &tun->peer_addr)) &&
 		    (pi2->conf.peer_port == 0 || pi2->conf.peer_port == tun->peer_port)) {
 			
 			if (pi == NULL || pi2->conf.peer_addr.width > pi->conf.peer_addr.width) {
-				l = l2;
+				p = p2;
 				pi = pi2;
 				if (u_rangehost(&pi->conf.peer_addr)) {
 					break;	/* Nothing could be better */
@@ -1360,8 +1305,10 @@ L2tpServerEvent(int type, void *arg)
 	}
 
 	/* Create vendor name AVP */
-	avps = ppp_l2tp_avp_list_create();
-
+	if ((avps = ppp_l2tp_avp_list_create()) == NULL) {
+		Log(LG_ERR, ("L2TP: ppp_l2tp_avp_list_create: %s", strerror(errno)));
+		goto fail;
+	}
 	if (pi->conf.hostname[0] != 0) {
 	    strlcpy(hostname, pi->conf.hostname, sizeof(hostname));
 	} else {
@@ -1402,7 +1349,7 @@ L2tpServerEvent(int type, void *arg)
 	strlcpy(connect.path, namebuf, sizeof(connect.path));
 	strlcpy(connect.ourhook, hook, sizeof(connect.ourhook));
 	strlcpy(connect.peerhook, hook, sizeof(connect.peerhook));
-	if (NgSendMsg(csock, ".:", NGM_GENERIC_COOKIE,
+	if (NgSendMsg(csock, ".", NGM_GENERIC_COOKIE,
 	    NGM_CONNECT, &connect, sizeof(connect)) == -1) {
 		Log(LG_ERR, ("L2TP: %s: %s", "connect", strerror(errno)));
 		goto fail;
@@ -1417,7 +1364,7 @@ L2tpServerEvent(int type, void *arg)
 	/* Disconnect from netgraph node "lower" hook */
 	memset(&rmhook, 0, sizeof(rmhook));
 	strlcpy(rmhook.ourhook, hook, sizeof(rmhook.ourhook));
-	if (NgSendMsg(csock, ".:", NGM_GENERIC_COOKIE,
+	if (NgSendMsg(csock, ".", NGM_GENERIC_COOKIE,
 	    NGM_RMHOOK, &rmhook, sizeof(rmhook)) == -1) {
 		Log(LG_ERR, ("L2TP: %s: %s", "rmhook", strerror(errno)));
 		goto fail;
@@ -1484,7 +1431,7 @@ L2tpServerEvent(int type, void *arg)
 	ppp_l2tp_avp_list_destroy(&avps);
 	(void)close(csock);
 	(void)close(dsock);
-	Freee(buf);
+	Freee(MB_PHYS, buf);
 	return;
 
 fail:
@@ -1495,41 +1442,29 @@ fail:
 		(void)close(dsock);
 	if (tun != NULL) {
 		ppp_l2tp_ctrl_destroy(&tun->ctrl);
-		Freee(tun);
+		Freee(MB_PHYS, tun);
 	}
 	ppp_l2tp_avp_list_destroy(&avps);
-	Freee(buf);
+	Freee(MB_PHYS, buf);
 }
 
 
 /*
- * L2tpListen()
+ * L2tpServerCreate()
  */
 
-static int
-L2tpListen(Link l)
+static struct l2tp_server *
+L2tpServerCreate(L2tpInfo const p)
 {
-	L2tpInfo	p = (L2tpInfo)l->info;
 	struct l2tp_server *s;
 	struct sockaddr_storage sa;
 	char buf[64];
-	struct ghash_walk walk;
 
-	if (p->server)
-	    return(1);
-
-	ghash_walk_init(gL2tpServers, &walk);
-	while ((s = ghash_walk_next(gL2tpServers, &walk)) != NULL) {
-	    if ((u_addrcompare(&s->self_addr, &p->conf.self_addr) == 0) && 
-		s->self_port == (p->conf.self_port?p->conf.self_port:L2TP_PORT)) {
-		    s->refs++;
-		    p->server = s;
-		    return(1);
-	    }
+	if ((s = Malloc(MB_PHYS, sizeof(struct l2tp_server))) == NULL) {
+	    return (NULL);
 	}
-
-	s = Malloc(MB_PHYS, sizeof(struct l2tp_server));
-	s->refs = 1;
+	
+	memset(s, 0, sizeof(*s));
 	u_addrcopy(&p->conf.self_addr, &s->self_addr);
 	s->self_port = p->conf.self_port?p->conf.self_port:L2TP_PORT;
 	
@@ -1565,43 +1500,12 @@ L2tpListen(Link l)
 	Log(LG_PHYS, ("L2TP: waiting for connection on %s %u",
 	    u_addrtoa(&s->self_addr, buf, sizeof(buf)), s->self_port));
 	
-	p->server = s;
-	ghash_put(gL2tpServers, s);
-	return (1);
+	return (s);
 fail:
 	if (s->sock)
 	    close(s->sock);
-	Freee(s);
-	return (0);
-}
-
-/*
- * L2tpUnListen()
- */
-
-static void
-L2tpUnListen(Link l)
-{
-	L2tpInfo	p = (L2tpInfo)l->info;
-	struct l2tp_server *s = p->server;
-	char buf[64];
-
-	if (!s)
-	    return;
-
-	s->refs--;
-	if (s->refs == 0) {
-	    Log(LG_PHYS, ("L2TP: stop waiting for connection on %s %u",
-		u_addrtoa(&s->self_addr, buf, sizeof(buf)), s->self_port));
-	
-	    ghash_remove(gL2tpServers, s);
-	    EventUnRegister(&s->event);
-	    if (s->sock)
-		close(s->sock);
-	    Freee(s);
-	    p->server = NULL;
-	}
-	return;
+	Freee(MB_PHYS, s);
+	return (NULL);
 }
 
 /*
@@ -1609,16 +1513,57 @@ L2tpUnListen(Link l)
  */
 
 static void
-L2tpNodeUpdate(Link l)
+L2tpNodeUpdate(PhysInfo p)
 {
-    L2tpInfo const pi = (L2tpInfo) l->info;
-    if (!pi->server) {
-	if (Enabled(&l->conf.options, LINK_CONF_INCOMING))
-	    L2tpListen(l);
-    } else {
-	if (!Enabled(&l->conf.options, LINK_CONF_INCOMING))
-	    L2tpUnListen(l);
+  L2tpInfo pe = (L2tpInfo)p->info;
+
+  if (Enabled(&pe->conf.options, L2TP_CONF_INCOMING) &&
+        (!L2tpListenUpdateSheduled)) {
+    	    /* Set a timer to run PppoeListenUpdate(). */
+	    TimerInit(&L2tpListenUpdateTimer, "L2tpListenUpdate",
+		0, L2tpListenUpdate, NULL);
+	    TimerStart(&L2tpListenUpdateTimer);
+	    L2tpListenUpdateSheduled = 1;
+  }
+}
+
+/*
+ * L2tpListenUpdate()
+ */
+
+static void
+L2tpListenUpdate(void *arg)
+{
+  int	k;
+
+  /* Examine all L2TP links */
+  for (k = 0; k < gNumPhyses; k++) {
+    if (gPhyses[k] && gPhyses[k]->type == &gL2tpPhysType) {
+        L2tpInfo	const p = (L2tpInfo)gPhyses[k]->info;
+
+        if (Enabled(&p->conf.options, L2TP_CONF_INCOMING)) {
+	    struct ghash_walk walk;
+	    struct l2tp_server *srv;
+
+	    ghash_walk_init(gL2tpServers, &walk);
+	    while ((srv = ghash_walk_next(gL2tpServers, &walk)) != NULL) {
+		if ((u_addrcompare(&srv->self_addr, &p->conf.self_addr) == 0) && 
+		    srv->self_port == (p->conf.self_port?p->conf.self_port:L2TP_PORT)) {
+			p->server = srv;
+			break;
+		}
+	    }
+	    if (srv == NULL) {
+		if ((srv = L2tpServerCreate(p)) == NULL) {
+		    Log(LG_ERR, ("L2tpServerCreate error"));
+		    continue;
+		}
+		p->server = srv;
+		ghash_put(gL2tpServers, srv);
+	    }
+        }
     }
+  }
 }
 
 /*
@@ -1628,87 +1573,60 @@ L2tpNodeUpdate(Link l)
 static int
 L2tpSetCommand(Context ctx, int ac, char *av[], void *arg)
 {
-    L2tpInfo		const l2tp = (L2tpInfo) ctx->lnk->info;
-    struct u_range	rng;
-    int			port;
+	L2tpInfo	const l2tp = (L2tpInfo) ctx->phys->info;
+	struct u_range	rng;
+	int		port;
 
-    switch ((intptr_t)arg) {
-	case SET_SELFADDR:
-	case SET_PEERADDR:
-    	    if (ac < 1 || ac > 2 || !ParseRange(av[0], &rng, ALLOW_IPV4|ALLOW_IPV6))
-		return(-1);
-    	    if (ac > 1) {
-		if ((port = atoi(av[1])) < 0 || port > 0xffff)
-		    return(-1);
-    	    } else {
-		port = 0;
-    	    }
-    	    if ((intptr_t)arg == SET_SELFADDR) {
-		l2tp->conf.self_addr = rng.addr;
-		l2tp->conf.self_port = port;
-		if (l2tp->server) {
-		    L2tpUnListen(ctx->lnk);
-		    L2tpListen(ctx->lnk);
-		}
-    	    } else {
-		l2tp->conf.peer_addr = rng;
-		l2tp->conf.peer_port = port;
-    	    }
-    	    break;
-	case SET_CALLINGNUM:
-    	    if (ac != 1)
-		return(-1);
-    	    strlcpy(l2tp->conf.callingnum, av[0], sizeof(l2tp->conf.callingnum));
-    	    break;
-	case SET_CALLEDNUM:
-    	    if (ac != 1)
-		return(-1);
-    	    strlcpy(l2tp->conf.callednum, av[0], sizeof(l2tp->conf.callednum));
-    	    break;
-	case SET_HOSTNAME:
-    	    if (ac != 1)
-		return(-1);
-    	    strlcpy(l2tp->conf.hostname, av[0], sizeof(l2tp->conf.hostname));
-    	    break;
-	case SET_SECRET:
-    	    if (ac != 1)
-		return(-1);
-    	    strlcpy(l2tp->conf.secret, av[0], sizeof(l2tp->conf.secret));
-    	    break;
-	case SET_ENABLE:
-    	    EnableCommand(ac, av, &l2tp->conf.options, gConfList);
-    	    break;
-	case SET_DISABLE:
-    	    DisableCommand(ac, av, &l2tp->conf.options, gConfList);
-    	    break;
-	default:
-    	    assert(0);
-    }
-    return(0);
+  switch ((intptr_t)arg) {
+    case SET_SELFADDR:
+    case SET_PEERADDR:
+      if (ac < 1 || ac > 2 || !ParseRange(av[0], &rng, ALLOW_IPV4|ALLOW_IPV6))
+	return(-1);
+      if (ac > 1) {
+	if ((port = atoi(av[1])) < 0 || port > 0xffff)
+	  return(-1);
+      } else {
+	port = 0;
+      }
+      if ((intptr_t)arg == SET_SELFADDR) {
+	l2tp->conf.self_addr = rng.addr;
+	l2tp->conf.self_port = port;
+      } else {
+	l2tp->conf.peer_addr = rng;
+	l2tp->conf.peer_port = port;
+      }
+      break;
+    case SET_CALLINGNUM:
+      if (ac != 1)
+	return(-1);
+      snprintf(l2tp->conf.callingnum, sizeof(l2tp->conf.callingnum), "%s", av[0]);
+      break;
+    case SET_CALLEDNUM:
+      if (ac != 1)
+	return(-1);
+      snprintf(l2tp->conf.callednum, sizeof(l2tp->conf.callednum), "%s", av[0]);
+      break;
+    case SET_HOSTNAME:
+      if (ac != 1)
+	return(-1);
+      snprintf(l2tp->conf.hostname, sizeof(l2tp->conf.hostname), "%s", av[0]);
+      break;
+    case SET_SECRET:
+      if (ac != 1)
+	return(-1);
+      snprintf(l2tp->conf.secret, sizeof(l2tp->conf.secret), "%s", av[0]);
+      break;
+    case SET_ENABLE:
+      EnableCommand(ac, av, &l2tp->conf.options, gConfList);
+      L2tpNodeUpdate(ctx->phys);
+      break;
+    case SET_DISABLE:
+      DisableCommand(ac, av, &l2tp->conf.options, gConfList);
+      L2tpNodeUpdate(ctx->phys);
+      break;
+    default:
+      assert(0);
+  }
+  return(0);
 }
 
-/*
- * L2tpsStat()
- */
-
-int
-L2tpsStat(Context ctx, int ac, char *av[], void *arg)
-{
-    struct l2tp_tun	*tun;
-    struct ghash_walk	walk;
-    char	buf1[64], buf2[64], buf3[64];
-
-    Printf("Active L2TP tunnels:\r\n");
-    ghash_walk_init(gL2tpTuns, &walk);
-    while ((tun = ghash_walk_next(gL2tpTuns, &walk)) != NULL) {
-
-	u_addrtoa(&tun->self_addr, buf1, sizeof(buf1));
-	u_addrtoa(&tun->peer_addr, buf2, sizeof(buf2));
-	ppp_l2tp_ctrl_stats(tun->ctrl, buf3, sizeof(buf3));
-	Printf("%p\t %s %d <=> %s %d\t%s %d calls\r\n",
-    	    tun->ctrl, buf1, tun->self_port, buf2, tun->peer_port,
-	    buf3, tun->active_sessions);
-    }
-
-    return 0;
-}

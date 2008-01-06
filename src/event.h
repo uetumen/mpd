@@ -28,9 +28,8 @@
     EventHdlr		handler;
     struct pevent	*pe;
     void		*arg;
-    const char		*dbg;
   };
-  typedef struct event_ref	EventRef;
+  typedef struct event_ref	*EventRef;
 
 /*
  * FUNCTIONS
@@ -38,18 +37,14 @@
 
   extern int	EventInit(void);
   extern void	EventStop(void);
-#define EventRegister(ref, type, value, flags, action, cookie) 		\
-	    EventRegister2(ref, type, value, flags, action, cookie,	\
-	    #type " " #action "()",__FILE__, __LINE__)
-  extern int	EventRegister2(EventRef *ref, int type, int value,
-		  int flags, EventHdlr action, void *cookie, const char *dbg,
-		  const char *file, int line);
-#define EventUnRegister(ref)						\
-	    EventUnRegister2(ref, __FILE__, __LINE__)
-  extern int	EventUnRegister2(EventRef *ref, const char *file, int line);
+  extern int	EventRegister(EventRef *ref, int type, int value,
+		  int flags, EventHdlr action, void *cookie);
+  extern int	EventUnRegister(EventRef *ref);
   extern int	EventIsRegistered(EventRef *ref);
   extern int	EventTimerRemain(EventRef *ref);
   extern void	EventDump(Context ctx, const char *msg);
+
+  extern void	EventSetLog(int sanity, void (*warnx)(const char *fmt, ...));
 
 #endif
 
