@@ -144,11 +144,12 @@ Stored process ID and lock file
 .El
 .Sh SEE ALSO
 .Xr netgraph 4 ,
+.Xr ngctl 8 ,
 .Xr ng_ppp 4 ,
+.Xr ng_iface 4 ,
 .Xr ppp 8 ,
 .Xr pppd 8 .
-.Sh AUTHOR
-Mpd was written by Archie Cobbs <archie@freebsd.org>, based
-on the original
-.Xr ppp 8
-daemon written by Toshiharu OHNO <tony-o@iij.ad.jp>.
+.Sh AUTHORS
+.An Archie Cobbs Aq archie@FreeBSD.org
+.An Alexander Motin Aq mav@FreeBSD.org
+.An based on ppp daemon written by Toshiharu OHNO Aq tony-o@iij.ad.jp
