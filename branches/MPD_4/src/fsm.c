@@ -1203,14 +1203,13 @@ FsmRecvVendor(Fsm fp, FsmHeader lhp, Mbuf bp)
 static void
 FsmRecvTimeRemain(Fsm fp, FsmHeader lhp, Mbuf bp)
 {
-    u_int32_t	remain = 0;
-
-    bp = mbread(bp, (u_char *) &remain, sizeof(remain), NULL);
-    remain = ntohl(remain);
-    Log(fp->log, (" %u seconds remain", remain));
-    if (bp)
-	ShowMesg(fp->log, (char *) MBDATA(bp), MBLEN(bp));
     bp = FsmCheckMagic(fp, bp);
+    if (bp) {
+	u_int32_t	remain = 0;
+	bp = mbread(bp, (u_char *) &remain, sizeof(remain), NULL);
+	remain = ntohl(remain);
+	Log(fp->log, (" %u seconds remain", remain));
+    }
     if (fp->type->RecvTimeRemain)
 	(*fp->type->RecvTimeRemain)(fp, bp);
     PFREE(bp);

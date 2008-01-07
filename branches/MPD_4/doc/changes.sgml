@@ -6,6 +6,15 @@
   <sect><heading>Change history<label id="changes"></heading>
 
   <p>
+    Changes since version 4.4:
+    <itemize>
+	<item> Bugfixes:
+	<itemize>
+	  <item> Fixed LCP Time-Remaining packet processing.
+	  </item>
+	</itemize>
+    </itemize>
+  </p>
     Changes since version 4.3:
     <itemize>
 	<item> New features:
