@@ -1206,7 +1206,7 @@ FsmRecvTimeRemain(Fsm fp, FsmHeader lhp, Mbuf bp)
     bp = FsmCheckMagic(fp, bp);
     if (bp) {
 	u_int32_t	remain = 0;
-	bp = mbread(bp, (u_char *) &remain, sizeof(remain), NULL);
+	mbcopy(bp, (u_char *) &remain, sizeof(remain));
 	remain = ntohl(remain);
 	Log(fp->log, (" %u seconds remain", remain));
     }
