@@ -254,11 +254,14 @@ PptpOpen(PhysInfo p)
 	  break;
 	}
 
-	p->state = PHYS_STATE_UP;
-	PhysUp(p);
-
 	(*pptp->cinfo.answer)(pptp->cinfo.cookie,
 	  PPTP_OCR_RESL_OK, 0, 0, 64000 /*XXX*/ );
+
+	/* Report UP if there was no error. */
+	if (p->state == PHYS_STATE_CONNECTING) {
+	    p->state = PHYS_STATE_UP;
+	    PhysUp(p);
+	}
 	return;
       }
       return; 	/* wait for peer's incoming pptp call to complete */
