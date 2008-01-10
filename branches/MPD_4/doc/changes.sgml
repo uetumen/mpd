@@ -12,6 +12,8 @@
 	<itemize>
 	  <item> Fixed LCP Time-Remaining packet processing.
 	  </item>
+	  <item> Fixed packet order on accepting outgoing PPTP call.
+	  </item>
 	</itemize>
     </itemize>
   </p>
