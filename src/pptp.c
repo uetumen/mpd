@@ -573,12 +573,15 @@ PptpResult(void *cookie, const char *errmsg, int frameType)
 	if (pptp->originate && !pptp->outcall)
 		(*pptp->cinfo.connected)(pptp->cinfo.cookie, 64000 /*XXX*/ );
 
-	/* OK */
-	p->state = PHYS_STATE_UP;
-	pptp->sync = (frameType&PPTP_FRAMECAP_ASYNC)?0:1;
-	PhysUp(p);
+	/* Report UP if there was no error. */
+	if (p->state == PHYS_STATE_CONNECTING) {
+		p->state = PHYS_STATE_UP;
+		pptp->sync = (frameType&PPTP_FRAMECAP_ASYNC)?0:1;
+		PhysUp(p);
+	}
       } else {
 	Log(LG_PHYS, ("[%s] PPTP call failed", p->name));
+	PptpKillNode(p);		/* For the (*connected)() error. */
 	PhysDown(p, STR_CON_FAILED, "%s", errmsg);
 	p->state = PHYS_STATE_DOWN;
 	u_addrclear(&pptp->self_addr);
