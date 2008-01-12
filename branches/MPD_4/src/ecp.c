@@ -581,16 +581,12 @@ EcpLayerDown(Fsm fp)
 
   if (ecp->xmit != NULL && ecp->xmit->Encrypt != NULL) {
     /* Disconnect hook. */
-    if (NgFuncDisconnect(b->csock, b->name, ".:", NG_PPP_HOOK_ENCRYPT) < 0) {
-	Log(LG_ERR, ("can't remove hook %s: %s", NG_PPP_HOOK_ENCRYPT, strerror(errno)));
-    }
+    NgFuncDisconnect(b->csock, b->name, ".:", NG_PPP_HOOK_ENCRYPT);
   }
   
   if (ecp->recv != NULL && ecp->recv->Decrypt != NULL) {
     /* Disconnect hook. */
-    if (NgFuncDisconnect(b->csock, b->name, ".:", NG_PPP_HOOK_DECRYPT) < 0) {
-	Log(LG_ERR, ("can't remove hook %s: %s", NG_PPP_HOOK_DECRYPT, strerror(errno)));
-    }
+    NgFuncDisconnect(b->csock, b->name, ".:", NG_PPP_HOOK_DECRYPT);
   }
 
   if (ecp->xmit && ecp->xmit->Cleanup)
