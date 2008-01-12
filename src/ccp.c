@@ -690,16 +690,12 @@ CcpLayerDown(Fsm fp)
   
   if (ccp->xmit != NULL && ccp->xmit->Compress != NULL) {
     /* Disconnect hook. */
-    if (NgFuncDisconnect(b->csock, b->name, ".:", NG_PPP_HOOK_COMPRESS) < 0) {
-	Log(LG_ERR, ("can't remove hook %s: %s", NG_PPP_HOOK_COMPRESS, strerror(errno)));
-    }
+    NgFuncDisconnect(b->csock, b->name, ".:", NG_PPP_HOOK_COMPRESS);
   }
   
   if (ccp->recv != NULL && ccp->recv->Decompress != NULL) {
     /* Disconnect hook. */
-    if (NgFuncDisconnect(b->csock, b->name, ".:", NG_PPP_HOOK_DECOMPRESS) < 0) {
-	Log(LG_ERR, ("can't remove hook %s: %s", NG_PPP_HOOK_DECOMPRESS, strerror(errno)));
-    }
+    NgFuncDisconnect(b->csock, b->name, ".:", NG_PPP_HOOK_DECOMPRESS);
   }
   if (ccp->recv && ccp->recv->Cleanup)
     (*ccp->recv->Cleanup)(b, COMP_DIR_RECV);
