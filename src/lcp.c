@@ -1062,19 +1062,12 @@ LcpDecodeConfig(Fsm fp, FsmOption list, int num, int mode)
 	    }
 	    break;
 	  case MODE_REJ:
-	    {
-	      int	k;
-
-	      /* Can't change MP configuration after one link already up */
-	      if (l->bund->bm.n_up > 0 && l->bund->mp.self_short_seq)
+	    /* Can't change MP configuration after one link already up */
+	    if (l->bund->bm.n_up > 0 && l->bund->mp.self_short_seq)
 		break;
 
-	      /* Update our bundle, and any links currently in negotiation */
-	      lcp->want_shortseq = FALSE;
-	      l->bund->mp.self_short_seq = FALSE;
-	      for (k = 0; k < l->bund->n_links; k++)
-		LCP_PEER_REJ(&l->bund->links[k]->lcp, opt->type);
-	    }
+	    lcp->want_shortseq = FALSE;
+	    LCP_PEER_REJ(&l->bund->links[k]->lcp, opt->type);
 	    break;
 	}
 	break;
