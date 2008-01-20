@@ -1067,7 +1067,7 @@ LcpDecodeConfig(Fsm fp, FsmOption list, int num, int mode)
 		break;
 
 	    lcp->want_shortseq = FALSE;
-	    LCP_PEER_REJ(&l->bund->links[k]->lcp, opt->type);
+	    LCP_PEER_REJ(lcp, opt->type);
 	    break;
 	}
 	break;
