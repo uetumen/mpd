@@ -14,6 +14,9 @@
 	  </item>
 	  <item> Fixed packet order on accepting outgoing PPTP call.
 	  </item>
+	  <item> Changed NAK on multilink options processing.
+		 NAK enables rejected options back.
+	  </item>
 	</itemize>
     </itemize>
   </p>

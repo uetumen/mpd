@@ -217,7 +217,7 @@ BundJoin(Link l)
   if (bm->n_up > 0) {
 
     /* First of all, we have to be doing multi-link */
-    if (!b->multilink || !lcp->peer_multilink) {
+    if (!b->multilink || !lcp->peer_mrru || !lcp->want_mrru) {
       Log(LG_LCP,
 	("[%s] multi-link is not active on this bundle", l->name));
       return(0);
@@ -243,7 +243,7 @@ BundJoin(Link l)
     authparamsCopy(&l->lcp.auth.params,&b->params);
 
     /* Initialize multi-link stuff */
-    if ((b->multilink = lcp->peer_multilink)) {
+    if ((b->multilink = (lcp->peer_mrru && lcp->want_mrru)?1:0)) {
       b->peer_discrim = l->peer_discrim;
       MpInit(b, l);
     }
@@ -267,7 +267,7 @@ BundJoin(Link l)
   if (bm->n_up == 1) {
 
     /* Configure the bundle */
-    b->pppConfig.bund.enableMultilink = lcp->peer_multilink;
+    b->pppConfig.bund.enableMultilink = b->multilink;
     b->pppConfig.bund.mrru = lcp->peer_mrru;
     b->pppConfig.bund.xmitShortSeq = lcp->peer_shortseq;
     b->pppConfig.bund.recvShortSeq = lcp->want_shortseq;
