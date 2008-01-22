@@ -481,7 +481,7 @@ LcpNewPhase(Link l, int new)
 	    l->name, l->bund->name));
 	  RecordLinkUpDownReason(NULL, l,
 	    0, STR_PROTO_ERR, "%s", STR_MULTI_FAIL);
-	  LinkClose(l);
+	  FsmFailure(&l->lcp.fsm, FAIL_NEGOT_FAILURE);
 	  l->joined_bund = 0;
 	  break;
 	case 1:
