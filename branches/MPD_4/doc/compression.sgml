@@ -107,9 +107,8 @@ Enables 128-bit MPPE encryption.
 
 <tag><tt>mpp-stateless</tt></tag>
 
-Enables stateless mode. This mode requires slightly more CPU time
-and is somewhat less secure, but allows faster recovery in the face
-of dropped packets.
+Enables stateless mode. This mode requires more CPU time and is somewhat
+less secure, but allows faster recovery in the face of dropped packets.
 
 <tag><tt>mppe-policy</tt></tag>
 
