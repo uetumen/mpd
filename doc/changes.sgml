@@ -17,6 +17,8 @@
 	  <item> Changed NAK on multilink options processing.
 		 NAK enables rejected options back.
 	  </item>
+	  <item> Fixed TCP and UDP link type nodes naming bugs.
+	  </item>
 	</itemize>
     </itemize>
   </p>
