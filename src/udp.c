@@ -218,13 +218,15 @@ UdpOpen(PhysInfo p)
 	strlcat(path, ".", sizeof(path));
 	strlcat(path, hook, sizeof(path));
 
+#if NG_NODESIZ>=32
 	/* Give it a name */
-	snprintf(nm.name, sizeof(nm.name), "mpd%d-%s", gPid, p->name);
+	snprintf(nm.name, sizeof(nm.name), "mpd%d-%s-kso", gPid, p->name);
 	if (NgSendMsg(csock, path,
 	    NGM_GENERIC_COOKIE, NGM_NAME, &nm, sizeof(nm)) < 0) {
 		Log(LG_ERR, ("[%s] can't name %s node: %s",
 		    p->name, NG_KSOCKET_NODE_TYPE, strerror(errno)));
 	}
+#endif
 
 	/* Get ksocket node ID */
 	if ((pi->node_id = NgGetNodeID(csock, path)) == 0) {
