@@ -32,7 +32,7 @@
     SET_ENABLE,
     SET_DISABLE,
     SET_YES,
-    SET_NO
+    SET_NO,
   };
 
 /*
@@ -41,17 +41,17 @@
 
   const struct cmdtab EapSetCmds[] = {
     { "accept [opt ...]",		"Accept option",
-	EapSetCommand, NULL, 2, (void *) SET_ACCEPT },
+	EapSetCommand, NULL, (void *) SET_ACCEPT },
     { "deny [opt ...]",			"Deny option",
-	EapSetCommand, NULL, 2, (void *) SET_DENY },
+	EapSetCommand, NULL, (void *) SET_DENY },
     { "enable [opt ...]",		"Enable option",
-	EapSetCommand, NULL, 2, (void *) SET_ENABLE },
+	EapSetCommand, NULL, (void *) SET_ENABLE },
     { "disable [opt ...]",		"Disable option",
-	EapSetCommand, NULL, 2, (void *) SET_DISABLE },
+	EapSetCommand, NULL, (void *) SET_DISABLE },
     { "yes [opt ...]",			"Enable and accept option",
-	EapSetCommand, NULL, 2, (void *) SET_YES },
+	EapSetCommand, NULL, (void *) SET_YES },
     { "no [opt ...]",			"Disable and deny option",
-	EapSetCommand, NULL, 2, (void *) SET_NO },
+	EapSetCommand, NULL, (void *) SET_NO },
     { NULL },
   };
 
@@ -102,10 +102,13 @@ EapStart(Link l, int which)
   if (Acceptable(&eap->conf.options, EAP_CONF_MD5))
     eap->peer_types[0] = EAP_TYPE_MD5CHAL;
 
+  a->params.chap.recv_alg = l->lcp.want_chap_alg;
+  a->chap.xmit_alg = l->lcp.peer_chap_alg;
+
   if (l->originate == LINK_ORIGINATE_LOCAL)
-    a->params.msoft.chap_alg = a->self_to_peer_alg;
+    a->params.msoft.chap_alg = l->lcp.peer_chap_alg;
   else
-    a->params.msoft.chap_alg = a->peer_to_self_alg;
+    a->params.msoft.chap_alg = l->lcp.want_chap_alg;
 
   switch (which) {
     case AUTH_PEER_TO_SELF:
@@ -184,6 +187,7 @@ EapSendRequest(Link l, u_char type)
   eap->want_types[i] = 0;
 
   switch (req_type) {
+
     case EAP_TYPE_MD5CHAL:
 
       /* Invalidate any old challenge data */
@@ -192,7 +196,12 @@ EapSendRequest(Link l, u_char type)
       chap->next_id = 1;
       chap->retry = AUTH_RETRIES;
       chap->proto = PROTO_EAP;
-      a->peer_to_self_alg = CHAP_ALG_MD5;
+
+      if (req_type == EAP_TYPE_MD5CHAL) {
+	cp->recv_alg = CHAP_ALG_MD5;
+      } else {
+	cp->recv_alg = CHAP_ALG_MSOFTv2;
+      }
 
       TimerInit(&chap->chalTimer, "ChalTimer",
         l->conf.retry_timeout * SECONDS, ChapChalTimeout, l);
@@ -271,18 +280,23 @@ EapInput(Link l, AuthData auth, const u_char *pkt, u_short len)
 {
   Auth		const a = &l->lcp.auth;
   EapInfo	const eap = &a->eap;
+  ChapInfo	const chap = &a->chap;
   int		data_len = len - 1, i, acc_type;
   u_char	*data = NULL, type = 0;
+  char		buf[32];
   
   if (pkt != NULL) {
     data = data_len > 0 ? (u_char *) &pkt[1] : NULL;
     type = pkt[0];
+    Log(LG_AUTH, ("[%s] EAP: rec'd %s Type %s #%d len:%d",
+      l->name, EapCode(auth->code, buf, sizeof(buf)), EapType(type), auth->id, len));
+  } else {
+    Log(LG_AUTH, ("[%s] EAP: rec'd %s #%d len:%d",
+      l->name, EapCode(auth->code, buf, sizeof(buf)), auth->id, len));
   }
   
-  if (Enabled(&eap->conf.options, EAP_CONF_RADIUS)) {
-	EapRadiusProxy(l, auth, pkt, len);
-	return;
-  }
+  if (Enabled(&eap->conf.options, EAP_CONF_RADIUS))
+    return EapRadiusProxy(l, auth, pkt, len);
 
   switch (auth->code) {
     case EAP_REQUEST:
@@ -319,7 +333,7 @@ EapInput(Link l, AuthData auth, const u_char *pkt, u_short len)
 
 	    switch (type) {
 	      case EAP_TYPE_MD5CHAL:
-		a->self_to_peer_alg = CHAP_ALG_MD5;
+		chap->xmit_alg = CHAP_ALG_MD5;
 		auth->code = CHAP_CHALLENGE;
 		ChapInput(l, auth, &pkt[1], len - 1);
 		break;
@@ -398,8 +412,6 @@ EapRadiusProxy(Link l, AuthData auth, const u_char *pkt, u_short len)
   EapInfo	const eap = &a->eap;
   struct fsmheader	lh;
 
-  Log(LG_AUTH, ("[%s] EAP: Proxying packet to RADIUS", l->name));
-
   if (pkt != NULL) {
     data = data_len > 0 ? (u_char *) &pkt[1] : NULL;
     type = pkt[0];
@@ -408,13 +420,13 @@ EapRadiusProxy(Link l, AuthData auth, const u_char *pkt, u_short len)
   if (auth->code == EAP_RESPONSE && type == EAP_TYPE_IDENT) {
     TimerStop(&eap->identTimer);
     if (data_len >= AUTH_MAX_AUTHNAME) {
-      Log(LG_AUTH, ("[%s] EAP: Identity to big (%d), truncating",
+      Log(LG_AUTH, ("[%s] EAP-RADIUS: Identity to big (%d), truncating",
 	l->name, data_len));
         data_len = AUTH_MAX_AUTHNAME - 1;
     }
     memset(eap->identity, 0, sizeof(eap->identity));
     strncpy(eap->identity, (char *) data, data_len);
-    Log(LG_AUTH, ("[%s] EAP: Identity: %s", l->name, eap->identity));
+    Log(LG_AUTH, ("[%s] EAP-RADIUS: Identity:%s", l->name, eap->identity));
   }
 
   TimerStop(&eap->reqTimer);
@@ -451,21 +463,22 @@ EapRadiusProxyFinish(Link l, AuthData auth)
   Auth		const a = &l->lcp.auth;
   EapInfo	eap = &a->eap;
   
-  Log(LG_AUTH, ("[%s] EAP: RADIUS return status: %s", 
+  Log(LG_AUTH, ("[%s] EAP-RADIUS: RadiusEapProxyFinish: status %s", 
     l->name, AuthStatusText(auth->status)));
 
   /* this shouldn't happen normally, however be liberal */
   if (a->params.eapmsg == NULL) {
     struct fsmheader	lh;
 
-    Log(LG_AUTH, ("[%s] EAP: Warning, rec'd empty EAP-Message", 
+    Log(LG_AUTH, ("[%s] EAP-RADIUS: Warning, rec'd empty EAP-Message", 
       l->name));
     /* prepare packet */
     lh.code = auth->status == AUTH_STATUS_SUCCESS ? EAP_SUCCESS : EAP_FAILURE;
     lh.id = auth->id;
     lh.length = htons(sizeof(lh));
 
-    a->params.eapmsg = Mdup(MB_AUTH, &lh, sizeof(lh));
+    a->params.eapmsg = Malloc(MB_AUTH, sizeof(lh));
+    memcpy(a->params.eapmsg, &lh, sizeof(lh));
     a->params.eapmsg_len = sizeof(lh);
   }
 
@@ -502,16 +515,22 @@ EapRadiusSendMsg(void *ptr)
   char		buf[32];
 
   if (a->params.eapmsg_len > 4) {
-    Log(LG_AUTH, ("[%s] EAP: send %s #%d len: %d, type: %s",
-      l->name, EapCode(f->code, buf, sizeof(buf)), f->id, htons(f->length),
-      EapType(a->params.eapmsg[4])));
+    Log(LG_AUTH, ("[%s] EAP-RADIUS: send  %s  Type %s #%d len:%d ",
+      l->name, EapCode(f->code, buf, sizeof(buf)), EapType(a->params.eapmsg[4]),
+      f->id, htons(f->length)));
   } else {
-    Log(LG_AUTH, ("[%s] EAP: send %s #%d len: %d",
+    Log(LG_AUTH, ("[%s] EAP-RADIUS: send  %s  #%d len:%d ",
       l->name, EapCode(f->code, buf, sizeof(buf)), f->id, htons(f->length)));
   } 
 
-  bp = mbcopyback(NULL, 0, a->params.eapmsg, a->params.eapmsg_len);
-  NgFuncWritePppFrameLink(l, PROTO_EAP, bp);
+  bp = mballoc(MB_AUTH, a->params.eapmsg_len);
+  if (bp == NULL) {
+    Log(LG_ERR, ("[%s] EapRadiusSendMsg: mballoc() error", l->name));
+    return;
+  }
+
+  memcpy(MBDATAU(bp), a->params.eapmsg, a->params.eapmsg_len);
+  NgFuncWritePppFrame(l->bund, l->bundleIndex, PROTO_EAP, bp);
 }
 
 /*
@@ -524,12 +543,13 @@ static void
 EapRadiusSendMsgTimeout(void *ptr)
 {
     Link	l = (Link)ptr;
-    EapInfo	const eap = &l->lcp.auth.eap;
+  EapInfo	const eap = &l->lcp.auth.eap;
 
-    if (--eap->retry > 0) {
-	TimerStart(&eap->reqTimer);
-	EapRadiusSendMsg(l);
-    }
+  TimerStop(&eap->reqTimer);
+  if (--eap->retry > 0) {
+    TimerStart(&eap->reqTimer);
+    EapRadiusSendMsg(l);
+  }
 }
 
 /*
@@ -544,10 +564,11 @@ EapIdentTimeout(void *ptr)
     Link	l = (Link)ptr;
     EapInfo	const eap = &l->lcp.auth.eap;
 
-    if (--eap->retry > 0) {
-	TimerStart(&eap->identTimer);
-	EapSendIdentRequest(l);
-    }
+  TimerStop(&eap->identTimer);
+  if (--eap->retry > 0) {
+    TimerStart(&eap->identTimer);
+    EapSendIdentRequest(l);
+  }
 }
 
 /*

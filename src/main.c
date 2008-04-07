@@ -18,8 +18,6 @@
 #include "web.h"
 #include "ngfunc.h"
 #include "util.h"
-#include "ippool.h"
-#include "ccp_mppc.h"
 
 #include <netgraph.h>
 
@@ -52,8 +50,6 @@
 				"Kill running mpd process before start"	},
     { 1, 'f',	"file",		"config-file",
 				"Set configuration file"	},
-    { 0, 'o',	"one-shot",	"",
-				"Terminate daemon after last link shutdown"	},
     { 1, 'p',	"pidfile",	"filename",
 				"Set PID filename"		},
 #ifdef SYSLOG_FACILITY
@@ -75,11 +71,11 @@
  * GLOBAL VARIABLES
  */
 
+  PhysInfo		*gPhyses;
   Rep			*gReps;
-  Link			*gLinks;
   Bund			*gBundles;
+  int			gNumPhyses;
   int			gNumReps;
-  int			gNumLinks;
   int			gNumBundles;
   struct console	gConsole;
   struct web		gWeb;
@@ -88,17 +84,6 @@
   int			gOverload = 0;
   pid_t          	gPid;
   int			gRouteSeq = 0;
-
-  int			gPPTPto = 10;
-  int			gPPTPtunlimit = 100;
-  int			gL2TPto = 10;
-#if ((__FreeBSD_version > 603100 && __FreeBSD_version < 700000) || __FreeBSD_version >= 700055)
-  int			gL2TPtunlimit = 100;
-#else
-  int			gL2TPtunlimit = 10;
-#endif
-  int			gChildren = 0;		/* Current number of children links */
-  int			gMaxChildren = 10000;	/* Maximal number of children links */
 
   struct globalconf	gGlobalConf;
 
@@ -117,6 +102,7 @@
   static void		OptParse(int ac, char *av[]);
   static int		OptApply(Option opt, int ac, char *av[]);
   static Option		OptDecode(char *arg, int longform);
+  static void		EventWarnx(const char *fmt, ...);
 
   static void		ConfigRead(int type, void *arg);
   static void		OpenCloseSignal(int sig);
@@ -144,18 +130,14 @@
 int
 main(int ac, char *av[])
 {
-    int			ret, k;
+    int			ret;
     char		*args[MAX_ARGS];
     Context		c;
-    PhysType		pt;
 
     gPid=getpid();
 
     /* enable libpdel typed_mem */
     typed_mem_enable();
-
-    /* init global-config */
-    memset(&gGlobalConf, 0, sizeof(gGlobalConf));
 
     /* Read and parse command line */
     if (ac > MAX_ARGS)
@@ -167,7 +149,6 @@ main(int ac, char *av[])
     ConsoleInit(&gConsole);
 
     memset(&gCtx, 0, sizeof(gCtx));
-    gCtx.priv = 2;
     if (gBackground) {
 	c = &gCtx;
     } else {
@@ -176,89 +157,85 @@ main(int ac, char *av[])
     	    c = &gCtx;
     }
 
-    /* init web-stuff */
-    WebInit(&gWeb);
+  /* init web-stuff */
+  WebInit(&gWeb);
 
-    /* Set up libnetgraph logging */
-    NgSetErrLog(NgFuncErr, NgFuncErrx);
+  /* Set up libnetgraph logging */
+  NgSetErrLog(NgFuncErr, NgFuncErrx);
 
-    /* Background mode? */
-    if (gBackground) {
-	if (daemon(TRUE, FALSE) < 0)
-    	    err(1, "daemon");
-	gPid=getpid();
-	(void) chdir(gConfDirectory);
-    }
+  /* init global-config */
+  memset(&gGlobalConf, 0, sizeof(gGlobalConf));
+  Disable(&gGlobalConf.options, GLOBAL_CONF_TCPWRAPPER);
 
-    /* Open log file */
-    if (LogOpen())
-	exit(EX_ERRDEAD);
+  /* Background mode? */
+  if (gBackground) {
+    if (daemon(TRUE, FALSE) < 0)
+      err(1, "daemon");
+    gPid=getpid();
+    (void) chdir(gConfDirectory);
+  }
 
-    /* Randomize */
-    srandomdev();
+  /* Open log file */
+  if (LogOpen())
+    exit(EX_ERRDEAD);
 
-    /* Welcome */
-    Greetings();
+  /* Randomize */
+  srandomdev();
 
-    /* Check PID file */
-    if (PIDCheck(gPidFile, gKillProc) < 0)
-	exit(EX_UNAVAILABLE);
+  /* Welcome */
+  Greetings();
 
-    /* Do some initialization */
-    MpSetDiscrim();
-    IPPoolInit();
-    MppcTestCap();
-    LinksInit();
-    CcpsInit();
-    EcpsInit();
-    
-    /* Init device types. */
-    for (k = 0; (pt = gPhysTypes[k]); k++) {
-	if (pt->tinit && (pt->tinit)()) {
-	    Log(LG_ERR, ("Device type '%s' initialization error.\n", pt->name));
-	    exit(EX_UNAVAILABLE);
-	}
-    }
+  /* Check PID file */
+  if (PIDCheck(gPidFile, gKillProc) < 0)
+    exit(EX_UNAVAILABLE);
 
-    ret = pthread_mutex_init (&gGiantMutex, NULL);
-    if (ret != 0) {
-	Log(LG_ERR, ("Could not create giant mutex %d", ret));
-	exit(EX_UNAVAILABLE);
-    }
+  /* Do some initialization */
+  MpSetDiscrim();
+#ifdef LOCAT_MAIN_FILE
+  LocatPush(LOCAT_MAIN_FILE);
+#endif
 
-    /* Create signaling pipe */
-    if ((ret = pipe(gSignalPipe)) != 0) {
-	Log(LG_ERR, ("Could not create signal pipe %d", ret));
-	exit(EX_UNAVAILABLE);
-    }
-    if (EventRegister(&gSignalEvent, EVENT_READ, gSignalPipe[0], 
+  ret = pthread_mutex_init (&gGiantMutex, NULL);
+  if (ret != 0) {
+    Log(LG_ERR, ("Could not create giant mutex %d", ret));
+    exit(EX_UNAVAILABLE);
+  }
+
+  EventSetLog(1, EventWarnx);
+
+  /* Create signaling pipe */
+  if ((ret = pipe(gSignalPipe)) != 0) {
+    Log(LG_ERR, ("Could not create signal pipe %d", ret));
+    exit(EX_UNAVAILABLE);
+  }
+  if (EventRegister(&gSignalEvent, EVENT_READ, gSignalPipe[0], 
       EVENT_RECURRING, SignalHandler, NULL) != 0)
-	exit(EX_UNAVAILABLE);
+    exit(EX_UNAVAILABLE);
 
-    /* Register for some common fatal signals so we can exit cleanly */
-    signal(SIGINT, SendSignal);
-    signal(SIGTERM, SendSignal);
-    signal(SIGHUP, SendSignal);
+  /* Register for some common fatal signals so we can exit cleanly */
+  signal(SIGINT, SendSignal);
+  signal(SIGTERM, SendSignal);
+  signal(SIGHUP, SendSignal);
 
-    /* Catastrophic signals */
-    signal(SIGSEGV, SendSignal);
-    signal(SIGBUS, SendSignal);
-    signal(SIGABRT, SendSignal);
+  /* Catastrophic signals */
+  signal(SIGSEGV, SendSignal);
+  signal(SIGBUS, SendSignal);
+  signal(SIGABRT, SendSignal);
 
-    /* Other signals make us do things */
-    signal(SIGUSR1, SendSignal);
-    signal(SIGUSR2, SendSignal);
+  /* Other signals make us do things */
+  signal(SIGUSR1, SendSignal);
+  signal(SIGUSR2, SendSignal);
 
-    /* Signals we ignore */
-    signal(SIGPIPE, SIG_IGN);
+  /* Signals we ignore */
+  signal(SIGPIPE, SIG_IGN);
 
-    EventRegister(&gConfigReadEvent, EVENT_TIMEOUT,
-	0, 0, ConfigRead, c);
+  EventRegister(&gConfigReadEvent, EVENT_TIMEOUT,
+    0, 0, ConfigRead, c);
 
-    pthread_exit(NULL);
+  pthread_exit(NULL);
 
-    assert(0);
-    return(1);	/* Never reached, but needed to silence compiler warning */
+  assert(0);
+  return(1);	/* Never reached, but needed to silence compiler warning */
 }
 
 /*
@@ -268,9 +245,9 @@ main(int ac, char *av[])
 void
 Greetings(void)
 {
-    Log(LG_ALWAYS, ("Multi-link PPP daemon for FreeBSD"));
-    Log(LG_ALWAYS, (" "));
-    Log(LG_ALWAYS, ("process %lu started, version %s", (u_long) gPid, gVersion));
+  Log(LG_ALWAYS, ("Multi-link PPP daemon for FreeBSD"));
+  Log(LG_ALWAYS, (" "));
+  Log(LG_ALWAYS, ("process %lu started, version %s", (u_long) gPid, gVersion));
 }
 
 /*
@@ -295,9 +272,6 @@ ConfigRead(int type, void *arg)
 	    DoExit(EX_CONFIG);
 	}
     }
-    CheckOneShot();
-    if (c->cs)
-	c->cs->prompt(c->cs);
 }
 
 /*
@@ -310,13 +284,13 @@ CloseIfaces(void)
     Bund	b;
     int		k;
 
-    /* Shut down all interfaces we grabbed */
-    for (k = 0; k < gNumBundles; k++) {
-	if (((b = gBundles[k]) != NULL) && (!b->tmpl)) {
-    	    IfaceClose(b);
-    	    BundNcpsClose(b);
-	}
+  /* Shut down all interfaces we grabbed */
+  for (k = 0; k < gNumBundles; k++) {
+    if ((b = gBundles[k]) != NULL) {
+      IfaceClose(b);
+      BundNcpsClose(b);
     }
+  }
 }
 
 /*
@@ -330,52 +304,45 @@ DoExit(int code)
 {
     Bund	b;
     Rep		r;
-    Link	l;
-    PhysType	pt;
-    int		k;
+  int	k;
 
-    gShutdownInProgress=1;
-    /* Weak attempt to record what happened */
-    if (code == EX_ERRDEAD)
-	Log(LG_ERR, ("fatal error, exiting"));
+  gShutdownInProgress=1;
+  /* Weak attempt to record what happened */
+  if (code == EX_ERRDEAD)
+    Log(LG_ERR, ("fatal error, exiting"));
 
-    /* Shutdown stuff */
-    if (code != EX_TERMINATE)	/* kludge to avoid double shutdown */
-	CloseIfaces();
+  /* Shutdown stuff */
+  if (code != EX_TERMINATE)	/* kludge to avoid double shutdown */
+    CloseIfaces();
 
-    NgFuncShutdownGlobal();
+  /* Blow away all netgraph nodes */
+  for (k = 0; k < gNumBundles; k++) {
+    int global = 0;
 
-    /* Blow away all netgraph nodes */
-    for (k = 0; k < gNumBundles; k++) {
-	if ((b = gBundles[k]) != NULL)
-    	    BundShutdown(b);
+    if ((b = gBundles[k]) != NULL) {
+      if (global == 0) {
+	/*
+	 * XXX: We can't move NgFuncShutdownGlobal() out of cycle,
+	 * because we need active netgraph socket to perform shutdown.
+	 */
+        NgFuncShutdownGlobal(b);
+	global = 1;
+      }
+      BundShutdown(b);
     }
+  }
 
-    for (k = 0; k < gNumReps; k++) {
-	if ((r = gReps[k]) != NULL)
-    	    RepShutdown(r);
+  for (k = 0; k < gNumReps; k++) {
+    if ((r = gReps[k]) != NULL) {
+      RepShutdown(r);
     }
+  }
 
-    for (k = 0; k < gNumLinks; k++) {
-	if ((l = gLinks[k]) != NULL)
-    	    LinkShutdown(l);
-    }
-
-    /* Shutdown device types. */
-    for (k = 0; (pt = gPhysTypes[k]); k++) {
-	if (pt->tshutdown)
-	    (pt->tshutdown)();
-    }
-
-    EcpsShutdown();
-    CcpsShutdown();
-    LinksShutdown();
-
-    /* Remove our PID file and exit */
-    Log(LG_ALWAYS, ("process %d terminated", gPid));
-    LogClose();
-    (void) unlink(gPidFile);
-    exit(code == EX_TERMINATE ? EX_NORMAL : code);
+  /* Remove our PID file and exit */
+  Log(LG_ALWAYS, ("process %d terminated", gPid));
+  LogClose();
+  (void) unlink(gPidFile);
+  exit(code == EX_TERMINATE ? EX_NORMAL : code);
 }
 
 /*
@@ -389,9 +356,10 @@ DoExit(int code)
 void
 SendSignal(int sig)
 {
-    if (sig == SIGSEGV || sig == SIGBUS || sig == SIGABRT)
-	FatalSignal(sig);
-    write(gSignalPipe[1], &sig, 1);
+  if (sig == SIGSEGV || sig == SIGBUS || sig == SIGABRT) {
+    FatalSignal(sig);
+  }
+  write(gSignalPipe[1], &sig, 1);
 }
 
 /*
@@ -402,19 +370,20 @@ SendSignal(int sig)
 static void
 SignalHandler(int type, void *arg)
 {
-    u_char	sig;
+  u_char	sig;
 
-    read(gSignalPipe[0], &sig, sizeof(sig));
+  read(gSignalPipe[0], &sig, sizeof(sig));
 
-    switch(sig) {
-	case SIGUSR1:
-	case SIGUSR2:
-    	    OpenCloseSignal(sig);
-    	    break;
+  switch(sig) {
+    case SIGUSR1:
+    case SIGUSR2:
+      OpenCloseSignal(sig);
+      break;
 
-	default:
-    	    FatalSignal(sig);
-    }
+    default:
+      FatalSignal(sig);
+  }
+
 }
 
 /*
@@ -424,43 +393,43 @@ SignalHandler(int type, void *arg)
  */
 
 static void
-FatalSignal(int sig)
+FatalSignal(sig)
 {
     Bund 	b;
-    static struct pppTimer	gDeathTimer;
-    int				k;
-    int				upLinkCount;
+  static struct pppTimer	gDeathTimer;
+  int				k;
+  int				upLinkCount;
 
-    /* If a SIGTERM or SIGINT, gracefully shutdown; otherwise shutdown now */
-    Log(LG_ERR, ("caught fatal signal %s", sys_signame[sig]));
-    gShutdownInProgress=1;
-    for (k = 0; k < gNumBundles; k++) {
-	if ((b = gBundles[k])) {
-    	    if (sig != SIGTERM && sig != SIGINT)
-    		RecordLinkUpDownReason(b, NULL, 0, STR_FATAL_SHUTDOWN, NULL);
-    	    else
-    		RecordLinkUpDownReason(b, NULL, 0, STR_ADMIN_SHUTDOWN, NULL);
-	}
+  /* If a SIGTERM or SIGINT, gracefully shutdown; otherwise shutdown now */
+  Log(LG_ERR, ("caught fatal signal %s", sys_signame[sig]));
+  gShutdownInProgress=1;
+  for (k = 0; k < gNumBundles; k++) {
+    if ((b = gBundles[k])) {
+      if (sig != SIGTERM && sig != SIGINT)
+        RecordLinkUpDownReason(b, NULL, 0, STR_FATAL_SHUTDOWN, NULL);
+      else
+        RecordLinkUpDownReason(b, NULL, 0, STR_ADMIN_SHUTDOWN, NULL);
     }
-    upLinkCount = 0;
-    for (k = 0; k < gNumLinks; k++) {
-	if (gLinks[k] && (gLinks[k]->state!=PHYS_STATE_DOWN))
-	    upLinkCount++;
-    }
+  }
+  upLinkCount = 0;
+  for (k = 0; k < gNumPhyses; k++) {
+    if (gPhyses[k] && (gPhyses[k]->state!=PHYS_STATE_DOWN))
+	upLinkCount++;
+  }
 
-    /* We are going down. No more signals. */
-    signal(SIGINT, SIG_IGN);
-    signal(SIGTERM, SIG_IGN);
-    signal(SIGUSR1, SIG_IGN);
-    signal(SIGUSR2, SIG_IGN);
+  /* We are going down. No more signals. */
+  signal(SIGINT, SIG_IGN);
+  signal(SIGTERM, SIG_IGN);
+  signal(SIGUSR1, SIG_IGN);
+  signal(SIGUSR2, SIG_IGN);
 
-    if (sig != SIGTERM && sig != SIGINT)
-	DoExit(EX_ERRDEAD);
+  if (sig != SIGTERM && sig != SIGINT)
+    DoExit(EX_ERRDEAD);
 
-    CloseIfaces();
-    TimerInit(&gDeathTimer, "DeathTimer",
-	TERMINATE_DEATH_WAIT * (upLinkCount/100+1), (void (*)(void *)) DoExit, (void *) EX_TERMINATE);
-    TimerStart(&gDeathTimer);
+  CloseIfaces();
+  TimerInit(&gDeathTimer, "DeathTimer",
+    TERMINATE_DEATH_WAIT * (upLinkCount/100+1), (void (*)(void *)) DoExit, (void *) EX_TERMINATE);
+  TimerStart(&gDeathTimer);
 }
 
 /*
@@ -474,17 +443,17 @@ OpenCloseSignal(int sig)
     Link	l;
 
     for (k = 0;
-	k < gNumLinks && (gLinks[k] == NULL || gLinks[k]->tmpl);
+	k < gNumPhyses && (gPhyses[k] == NULL || gPhyses[k]->link == NULL);
 	k++);
-    if (k == gNumLinks) {
+    if (k == gNumPhyses) {
 	Log(LG_ALWAYS, ("rec'd signal %s, no link defined, ignored", sys_signame[sig]));
 	return;
     }
 
-    l = gLinks[k];
+    l = gPhyses[k]->link;
 
     /* Open/Close Link */
-    if (l && l->type) {
+    if (l && l->phys && l->phys->type) {
 	if (sig == SIGUSR1) {
 	    Log(LG_ALWAYS, ("[%s] rec'd signal %s, opening",
     		l->name, sys_signame[sig]));
@@ -500,18 +469,22 @@ OpenCloseSignal(int sig)
 	Log(LG_ALWAYS, ("rec'd signal %s, ignored", sys_signame[sig]));
 }
 
-void
-CheckOneShot(void)
+/*
+ * EventWarnx()
+ *
+ * Callback used by Event...() routines to report problems.
+ */
+
+static void
+EventWarnx(const char *fmt, ...)
 {
-    int	i;
-    if (!Enabled(&gGlobalConf.options, GLOBAL_CONF_ONESHOT))
-	return;
-    for (i = 0; i < gNumLinks; i++) {
-	if (gLinks[i] && !gLinks[i]->tmpl)
-	    return;
-    }
-    Log(LG_ALWAYS, ("One-shot mode enabled and no links found. Terminating daemon."));
-    SendSignal(SIGTERM);
+  va_list	args;
+  char		buf[100];
+
+  va_start(args, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, args);
+  Log(LG_ALWAYS, ("EVENT: %s", buf));
+  va_end(args);
 }
 
 /*
@@ -521,38 +494,38 @@ CheckOneShot(void)
 static void
 OptParse(int ac, char *av[])
 {
-    int	used, consumed;
+  int	used, consumed;
 
-    /* Get option flags */
-    for ( ; ac > 0 && **av == '-'; ac--, av++) {
-	if (*++(*av) == '-') {	/* Long form */
-    	    if (*++(*av) == 0) {	/* "--" forces end of options */
-		ac--; av++;
-		break;
-    	    } else {
-		used = OptApply(OptDecode(*av, TRUE), ac - 1, av + 1);
-		ac -= used; av += used;
-    	    }
-	} else {			/* Short form */
-    	    for (used = 0; **av; (*av)++, used += consumed) {
-		consumed = OptApply(OptDecode(*av, FALSE), ac - 1, av + 1);
-		if (used && consumed)
-		    Usage(EX_USAGE);
-    	    }
-    	    ac -= used; av += used;
-	}
+  /* Get option flags */
+  for ( ; ac > 0 && **av == '-'; ac--, av++) {
+    if (*++(*av) == '-') {	/* Long form */
+      if (*++(*av) == 0) {	/* "--" forces end of options */
+	ac--; av++;
+	break;
+      } else {
+	used = OptApply(OptDecode(*av, TRUE), ac - 1, av + 1);
+	ac -= used; av += used;
+      }
+    } else {			/* Short form */
+      for (used = 0; **av; (*av)++, used += consumed) {
+	consumed = OptApply(OptDecode(*av, FALSE), ac - 1, av + 1);
+	if (used && consumed)
+	  Usage(EX_USAGE);
+      }
+      ac -= used; av += used;
     }
+  }
 
-    /* Get system names */
-    switch (ac) {
-	case 0:
-    	    break;
-	case 1:
-    	    gPeerSystem = *av;
-    	    break;
-	default:
-    	    Usage(EX_USAGE);
-    }
+  /* Get system names */
+  switch (ac) {
+    case 0:
+      break;
+    case 1:
+      gPeerSystem = *av;
+      break;
+    default:
+      Usage(EX_USAGE);
+  }
 }
 
 /*
@@ -562,45 +535,42 @@ OptParse(int ac, char *av[])
 static int
 OptApply(Option opt, int ac, char *av[])
 {
-    memset(gSysLogIdent, 0, sizeof(gSysLogIdent));
+  memset(gSysLogIdent, 0, sizeof(gSysLogIdent));
 
-    if (opt == NULL)
-	Usage(EX_USAGE);
-    if (ac < opt->n_args)
-	Usage(EX_USAGE);
-    switch (opt->sflag) {
-	case 'b':
-    	    gBackground = TRUE;
-    	    return(0);
-	case 'd':
-    	    gConfDirectory = *av;
-    	    return(1);
-	case 'f':
-    	    gConfigFile = *av;
-    	    return(1);
-	case 'o':
-	    Enable(&gGlobalConf.options, GLOBAL_CONF_ONESHOT);
-    	    return(0);
-	case 'p':
-    	    gPidFile = *av;
-    	    return(1);
-	case 'k':
-    	    gKillProc = TRUE;
-    	    return(0);
+  if (opt == NULL)
+    Usage(EX_USAGE);
+  if (ac < opt->n_args)
+    Usage(EX_USAGE);
+  switch (opt->sflag) {
+    case 'b':
+      gBackground = TRUE;
+      return(0);
+    case 'd':
+      gConfDirectory = *av;
+      return(1);
+    case 'f':
+      gConfigFile = *av;
+      return(1);
+    case 'p':
+      gPidFile = *av;
+      return(1);
+    case 'k':
+      gKillProc = TRUE;
+      return(0);
 #ifdef SYSLOG_FACILITY
-	case 's':
-    	    strlcpy(gSysLogIdent, *av, sizeof(gSysLogIdent));
-    	    return(1);
+    case 's':
+      snprintf(gSysLogIdent, sizeof(gSysLogIdent), "%s", *av);
+      return(1);
 #endif
-	case 'v':
-    	    fprintf(stderr, "Version %s\n", gVersion);
-    	    exit(EX_NORMAL);
-	case 'h':
-    	    Usage(EX_NORMAL);
-	default:
-    	    assert(0);
-    }
-    return(0);
+    case 'v':
+      fprintf(stderr, "Version %s\n", gVersion);
+      exit(EX_NORMAL);
+    case 'h':
+      Usage(EX_NORMAL);
+    default:
+      assert(0);
+  }
+  return(0);
 }
 
 /*
@@ -610,16 +580,16 @@ OptApply(Option opt, int ac, char *av[])
 static Option
 OptDecode(char *arg, int longform)
 {
-    Option	opt;
-    int		k;
+  Option	opt;
+  int		k;
 
-    for (k = 0; k < OPTLIST_SIZE; k++) {
-	opt = OptList + k;
-	if (longform ?
-	    !strcmp(arg, opt->lflag) : (*arg == opt->sflag))
-        return(opt);
-    }
-    return(NULL);
+  for (k = 0; k < OPTLIST_SIZE; k++) {
+    opt = OptList + k;
+    if (longform ?
+	!strcmp(arg, opt->lflag) : (*arg == opt->sflag))
+      return(opt);
+  }
+  return(NULL);
 }
 
 /*
@@ -629,17 +599,17 @@ OptDecode(char *arg, int longform)
 static void
 Usage(int ex)
 {
-    Option		opt;
-    char		buf[100];
-    int			k;
+  Option	opt;
+  char		buf[100];
+  int		k;
 
-    fprintf(stderr, "Usage: mpd %s\n", UsageStr);
-    fprintf(stderr, "Options:\n");
-    for (k = 0; k < OPTLIST_SIZE; k++) {
-	opt = OptList + k;
-	snprintf(buf, sizeof(buf), "  -%c, --%-s %s",
-    	    opt->sflag, opt->lflag, opt->usage);
-	fprintf(stderr, "%-40s%s\n", buf, opt->desc);
-    }
-    exit(ex);
+  fprintf(stderr, "Usage: mpd %s\n", UsageStr);
+  fprintf(stderr, "Options:\n");
+  for (k = 0; k < OPTLIST_SIZE; k++) {
+    opt = OptList + k;
+    snprintf(buf, sizeof(buf), "  -%c, --%-s %s",
+      opt->sflag, opt->lflag, opt->usage);
+    fprintf(stderr, "%-40s%s\n", buf, opt->desc);
+  }
+  exit(ex);
 }

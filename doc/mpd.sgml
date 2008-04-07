@@ -20,19 +20,22 @@
 <!ENTITY cli SYSTEM "cli.sgml">
 
 <!ENTITY gencmd SYSTEM "gencmd.sgml">
-<!ENTITY links SYSTEM "links.sgml">
-<!ENTITY authentication SYSTEM "auth.sgml">
-<!ENTITY bundle SYSTEM "bundle.sgml">
-<!ENTITY ipcp SYSTEM "ipcp.sgml">
-<!ENTITY ipv6cp SYSTEM "ipv6cp.sgml">
-<!ENTITY compression SYSTEM "compression.sgml">
-<!ENTITY encryption SYSTEM "encryption.sgml">
-<!ENTITY interface SYSTEM "interface.sgml">
-<!ENTITY trafacct SYSTEM "trafacct.sgml">
-<!ENTITY nat SYSTEM "nat.sgml">
-<!ENTITY ippool SYSTEM "ippool.sgml">
+<!ENTITY global SYSTEM "global.sgml">
 <!ENTITY console SYSTEM "console.sgml">
 <!ENTITY web SYSTEM "web.sgml">
+<!ENTITY bundle SYSTEM "bundle.sgml">
+<!ENTITY repeater SYSTEM "repeater.sgml">
+<!ENTITY interface SYSTEM "interface.sgml">
+<!ENTITY netflow SYSTEM "netflow.sgml">
+<!ENTITY ipcp SYSTEM "ipcp.sgml">
+<!ENTITY links SYSTEM "links.sgml">
+<!ENTITY phys SYSTEM "phys.sgml">
+<!ENTITY compression SYSTEM "compression.sgml">
+<!ENTITY encryption SYSTEM "encryption.sgml">
+<!ENTITY authentication SYSTEM "auth.sgml">
+<!ENTITY radius SYSTEM "radius.sgml">
+<!ENTITY eap SYSTEM "eap.sgml">
+<!ENTITY nat SYSTEM "nat.sgml">
 
 <!ENTITY modem SYSTEM "modem.sgml">
 <!ENTITY netgraph SYSTEM "netgraph.sgml">
@@ -47,6 +50,8 @@
 <!ENTITY trouble SYSTEM "trouble.sgml">
 <!ENTITY todo SYSTEM "todo.sgml">
 <!ENTITY internalsauth SYSTEM "int-auth.sgml">
+<!ENTITY internalsextauth SYSTEM "int-extauth.sgml">
+<!ENTITY internalsradius SYSTEM "int-radius.sgml">
 <!ENTITY developer SYSTEM "developer.sgml">
 
 <!ENTITY refs SYSTEM "refs.sgml">
@@ -67,12 +72,17 @@
       <date>&date;</date>
 
 <abstract>
-This manual covers the use of <bf>mpd</bf> version <bf>&version;</bf>,
-a multi-link PPP daemon for FreeBSD based on <tt>netgraph(4)</tt>.
+This manual covers the use of <bf>mpd</bf>, a multi-link PPP daemon
+for FreeBSD based on <tt>netgraph(4)</tt>.  Mpd is highly configurable
+and extendable as well as being very fast. It supports many
+combination of drivers and protocols including asynchronous serial
+(e.g., modems), synchronous serial, Frame Relay, PPTP, and others.
 
-You must be running FreeBSD version 5.x or higher to use it, and
-it is advised to have the latest system version to get access to
-all mpd features.
+This manual documents mpd version <bf>&version;</bf>.
+This version relies on the Netgraph networking system to combine
+the advantages of user-level configuration and negotiation flexibility
+with kernel-level speed of data handling.
+You must be running FreeBSD version 4.x or higher.
 </abstract>
 
 <toc>
@@ -82,6 +92,7 @@ all mpd features.
     <chapt><heading>Introduction</heading>
 
 	&overview;
+	&layers;
 	&manorg;
 	&changes;
 
@@ -100,20 +111,22 @@ all mpd features.
     <chapt><heading>Configuring Mpd</heading>
 
 	&gencmd;
-	&layers;
-	&links;
-	&bundle;
-	&encryption;
-	&compression;
-	&ipcp;
-	&ipv6cp;
-	&interface;
-	&authentication;
-	&trafacct;
-	&ippool;
-	&nat;
+	&global;
 	&console;
 	&web;
+	&bundle;
+	&repeater;
+	&interface;
+	&ipcp;
+	&links;
+	&phys;
+	&compression;
+	&encryption;
+	&authentication;
+	&eap;
+	&radius;
+	&netflow;
+	&nat;
 
     <chapt><heading>Device Types</heading>
 
@@ -135,6 +148,8 @@ all mpd features.
 
 	&todo;
 	&internalsauth;
+	&internalsradius;
+	&internalsextauth;
 	&developer;
 
     <chapt><heading>References</heading>

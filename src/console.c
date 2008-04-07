@@ -34,9 +34,11 @@
   enum {
     SET_OPEN,
     SET_CLOSE,
-    SET_SELF,
+    SET_USER,
+    SET_PORT,
+    SET_IP,
     SET_DISABLE,
-    SET_ENABLE
+    SET_ENABLE,
   };
 
 
@@ -66,21 +68,23 @@
  */
 
   const struct cmdtab ConsoleSetCmds[] = {
-    { "open",			"Open the console" ,
-  	ConsoleSetCommand, NULL, 2, (void *) SET_OPEN },
-    { "close",			"Close the console" ,
-  	ConsoleSetCommand, NULL, 2, (void *) SET_CLOSE },
-    { "self {ip} [{port}]",	"Set console ip and port" ,
-  	ConsoleSetCommand, NULL, 2, (void *) SET_SELF },
+    { "open",		"Open the console" ,
+  	ConsoleSetCommand, NULL, (void *) SET_OPEN },
+    { "close",		"Close the console" ,
+  	ConsoleSetCommand, NULL, (void *) SET_CLOSE },
+    { "user <name> <password>", "Add a console user" ,
+      	ConsoleSetCommand, NULL, (void *) SET_USER },
+    { "port <port>",		"Set port" ,
+  	ConsoleSetCommand, NULL, (void *) SET_PORT },
+    { "ip <ip>",		"Set IP address" ,
+  	ConsoleSetCommand, NULL, (void *) SET_IP },
     { "enable [opt ...]",	"Enable this console option" ,
-  	ConsoleSetCommand, NULL, 0, (void *) SET_ENABLE },
+  	ConsoleSetCommand, NULL, (void *) SET_ENABLE },
     { "disable [opt ...]",	"Disable this console option" ,
-  	ConsoleSetCommand, NULL, 0, (void *) SET_DISABLE },
+  	ConsoleSetCommand, NULL, (void *) SET_DISABLE },
     { NULL },
   };
 
-  struct ghash		*gUsers;		/* allowed users */
-  pthread_rwlock_t	gUsersLock;
 
 /*
  * INTERNAL VARIABLES
@@ -109,14 +113,9 @@ ConsoleInit(Console c)
   c->port = DEFAULT_CONSOLE_PORT;
 
   SLIST_INIT(&c->sessions);
+  c->users = ghash_create(c, 0, 0, MB_CONS, ConsoleUserHash, ConsoleUserHashEqual, NULL, NULL);
   
   if ((ret = pthread_rwlock_init (&c->lock, NULL)) != 0) {
-    Log(LG_ERR, ("Could not create rwlock %d", ret));
-    return (-1);
-  }
-
-  gUsers = ghash_create(c, 0, 0, MB_CONS, ConsoleUserHash, ConsoleUserHashEqual, NULL, NULL);
-  if ((ret = pthread_rwlock_init (&gUsersLock, NULL)) != 0) {
     Log(LG_ERR, ("Could not create rwlock %d", ret));
     return (-1);
   }
@@ -177,8 +176,10 @@ int
 ConsoleStat(Context ctx, int ac, char *av[], void *arg)
 {
   Console		c = &gConsole;
+  ConsoleUser		u;
   ConsoleSession	s;
   ConsoleSession	cs = ctx->cs;
+  struct ghash_walk	walk;
   char       		addrstr[INET6_ADDRSTRLEN];
 
   Printf("Configuration:\r\n");
@@ -186,7 +187,12 @@ ConsoleStat(Context ctx, int ac, char *av[], void *arg)
   Printf("\tIP-Address    : %s\r\n", u_addrtoa(&c->addr,addrstr,sizeof(addrstr)));
   Printf("\tPort          : %d\r\n", c->port);
 
+  Printf("Configured users:\r\n");
   RWLOCK_RDLOCK(c->lock);
+  ghash_walk_init(c->users, &walk);
+  while ((u = ghash_walk_next(c->users, &walk)) !=  NULL)
+    Printf("\tUsername: %s\r\n", u->username);
+
   Printf("Active sessions:\r\n");
   SLIST_FOREACH(s, &c->sessions, next) {
     Printf("\tUsername: %s\tFrom: %s\r\n",
@@ -249,7 +255,7 @@ fail:
   close(cs->fd);
 
 cleanup:
-  Freee(cs);
+  Freee(MB_CONS, cs);
   return;
 
 }
@@ -282,14 +288,14 @@ StdConsoleConnect(Console c)
 
     if (fcntl(cs->fd, F_SETFL, O_NONBLOCK) < 0) {
       Perror("%s: fcntl", __FUNCTION__);
-      Freee(cs);
+      Freee(MB_CONS, cs);
       return(NULL);
     }
 
     /* Init stdout */
     if (fcntl(1, F_SETFL, O_NONBLOCK) < 0) {
       Perror("%s: fcntl", __FUNCTION__);
-      Freee(cs);
+      Freee(MB_CONS, cs);
       return(NULL);
     }
 
@@ -301,8 +307,7 @@ StdConsoleConnect(Console c)
     cs->prompt = ConsoleSessionShowPrompt;
     cs->state = STATE_AUTHENTIC;
     cs->context.cs = cs;
-    strcpy(cs->user.username, "root");
-    cs->context.priv = 2;
+    cs->user.username = (char *)"root";
     RWLOCK_WRLOCK(c->lock);
     SLIST_INSERT_HEAD(&c->sessions, cs, next);
     RWLOCK_UNLOCK(c->lock);
@@ -331,7 +336,9 @@ ConsoleSessionClose(ConsoleSession cs)
     RWLOCK_UNLOCK(cs->console->lock);
     EventUnRegister(&cs->readEvent);
     close(cs->fd);
-    Freee(cs);
+    if (cs->user.username)
+	FREE(MB_CONS, cs->user.username);
+    Freee(MB_CONS, cs);
     return;
 }
 
@@ -361,7 +368,7 @@ ConsoleSessionReadEvent(int type, void *cookie)
 {
   ConsoleSession	cs = cookie;
   CmdTab		cmd, tab;
-  int			n, ac, ac2, i;
+  int			n, ac, ac2, exitflag, i;
   u_char		c;
   char			compl[MAX_CONSOLE_LINE], line[MAX_CONSOLE_LINE];
   char			*av[MAX_CONSOLE_ARGS], *av2[MAX_CONSOLE_ARGS];
@@ -380,19 +387,6 @@ ConsoleSessionReadEvent(int type, void *cookie)
 	Log(LG_ERR, ("CONSOLE: Connection closed by peer"));
       }
       goto abort;
-    }
-    
-    if (cs->context.lnk && cs->context.lnk->dead) {
-	UNREF(cs->context.lnk);
-	cs->context.lnk = NULL;
-    }
-    if (cs->context.bund && cs->context.bund->dead) {
-	UNREF(cs->context.bund);
-	cs->context.bund = NULL;
-    }
-    if (cs->context.rep && cs->context.rep->dead) {
-	UNREF(cs->context.rep);
-	cs->context.rep = NULL;
     }
 
     /* deal with escapes, map cursors */
@@ -441,7 +435,7 @@ ConsoleSessionReadEvent(int type, void *cookie)
       tab = gCommands;
       for (i = 0; i < ac; i++) {
 
-        if (FindCommand(&cs->context, tab, av[i], &cmd)) {
+        if (FindCommand(tab, av[i], &cmd)) {
 	    cs->write(cs, "\a");
 	    goto notfound;
 	}
@@ -477,6 +471,7 @@ notfound:
       if (cs->telnet)
 	break;
       cs->write(cs, "\r\n");
+      Log(LG_CONSOLE, ("CONSOLE: CTRL-C"));
       memset(cs->cmd, 0, MAX_CONSOLE_LINE);
       cs->cmd_len = 0;
       cs->prompt(cs);
@@ -541,7 +536,7 @@ notfound:
       
       cs->telnet = FALSE;
       if (cs->state == STATE_USERNAME) {
-	strlcpy(cs->user.username, cs->cmd, sizeof(cs->user.username));
+	cs->user.username = typed_mem_strdup(MB_CONS, cs->cmd);
         memset(cs->cmd, 0, MAX_CONSOLE_LINE);
         cs->cmd_len = 0;
 	cs->state = STATE_PASSWORD;
@@ -550,9 +545,9 @@ notfound:
       } else if (cs->state == STATE_PASSWORD) {
 	ConsoleUser u;
 
-	RWLOCK_RDLOCK(gUsersLock);
-	u = ghash_get(gUsers, &cs->user);
-	RWLOCK_UNLOCK(gUsersLock);
+	RWLOCK_RDLOCK(cs->console->lock);
+	u = ghash_get(cs->console->users, &cs->user);
+	RWLOCK_UNLOCK(cs->console->lock);
 
 	if (!u) 
 	  goto failed;
@@ -561,8 +556,6 @@ notfound:
 	  goto failed;
 
 	cs->state = STATE_AUTHENTIC;
-	cs->user.priv = u->priv;
-	cs->context.priv = u->priv;
 	cs->write(cs, "\r\nWelcome!\r\nMpd pid %lu, version %s\r\n", 
 		(u_long) gPid, gVersion);
 	goto success;
@@ -571,7 +564,8 @@ failed:
 	cs->write(cs, "Login failed\r\n");
 	Log(LG_CONSOLE, ("CONSOLE: Failed login attempt from %s", 
 		u_addrtoa(&cs->peer_addr,addrstr,sizeof(addrstr))));
-	cs->user.username[0] = 0;
+	FREE(MB_CONS, cs->user.username);
+	cs->user.username=NULL;
 	cs->state = STATE_USERNAME;
 success:
 	memset(cs->cmd, 0, MAX_CONSOLE_LINE);
@@ -584,16 +578,18 @@ success:
       ac = ParseLine(line, av, sizeof(av) / sizeof(*av), 1);
       memcpy(av_copy, av, sizeof(av));
       if (c != '?') {
-        Log2(LG_CONSOLE, ("[%s] CONSOLE: %s: %s", 
-	    cs->context.lnk ? cs->context.lnk->name :
-		(cs->context.bund? cs->context.bund->name : ""), 
+        Log(LG_CONSOLE, ("[%s] CONSOLE: %s: %s", 
+	    cs->context.phys ? cs->context.phys->name : "", 
 	    cs->user.username, cs->cmd));
-        DoCommand(&cs->context, ac, av, NULL, 0);
+	cs->active = 1;
+        exitflag = DoCommand(&cs->context, ac, av, NULL, 0);
+	cs->active = 0;
       } else {
         HelpCommand(&cs->context, ac, av, NULL);
+	exitflag = 0;
       }
       FreeArgs(ac, av_copy);
-      if (cs->exit)
+      if (exitflag)
 	goto abort;
       cs->prompt(cs);
       if (c != '?') {
@@ -623,9 +619,6 @@ success:
         cs->write(cs, "\a");
         break;
       }
-      
-      if (c < 32)
-        break;
 
       if (cs->state != STATE_PASSWORD)
  	cs->write(cs, "%c", c);
@@ -635,12 +628,8 @@ success:
   }
 
 abort:
-    if (cs->close) {
-	RESETREF(cs->context.lnk, NULL);
-        RESETREF(cs->context.bund, NULL);
-        RESETREF(cs->context.rep, NULL);
-	cs->close(cs);
-    }
+  if (cs->close)
+    cs->close(cs);
 out:
   return;
 }
@@ -713,12 +702,8 @@ ConsoleSessionShowPrompt(ConsoleSession cs)
     cs->write(cs, "Password: ");
     break;
   case STATE_AUTHENTIC:
-    if (cs->context.lnk)
-	cs->write(cs, "[%s] ", cs->context.lnk->name);
-    else if (cs->context.bund)
-	cs->write(cs, "[%s] ", cs->context.bund->name);
-    else if (cs->context.rep)
-	cs->write(cs, "[%s] ", cs->context.rep->name);
+    if (cs->context.phys)
+	cs->write(cs, "[%s] ", cs->context.phys->name);
     else
 	cs->write(cs, "[] ");
     break;
@@ -778,6 +763,7 @@ ConsoleSetCommand(Context ctx, int ac, char *av[], void *arg)
 {
   Console	 	c = &gConsole;
   ConsoleSession	cs = ctx->cs;
+  ConsoleUser		u;
   int			port;
 
   switch ((intptr_t)arg) {
@@ -800,18 +786,38 @@ ConsoleSetCommand(Context ctx, int ac, char *av[], void *arg)
 	DisableCommand(ac, av, &cs->options, gConfList);
       break;
 
-    case SET_SELF:
-      if (ac < 1 || ac > 2)
+    case SET_USER:
+      if (ac != 2) 
 	return(-1);
 
-      if (!ParseAddr(av[0], &c->addr, ALLOW_IPV4|ALLOW_IPV6)) 
-	Error("CONSOLE: Bogus IP address given %s", av[0]);
+      u = Malloc(MB_CONS, sizeof(*u));
+      u->username = typed_mem_strdup(MB_CONS, av[0]);
+      u->password = typed_mem_strdup(MB_CONS, av[1]);
+      RWLOCK_WRLOCK(c->lock);
+      ghash_put(c->users, u);
+      RWLOCK_UNLOCK(c->lock);
+      break;
 
-      if (ac == 2) {
-        port =  strtol(av[1], NULL, 10);
-        if (port < 1 || port > 65535)
-	    Error("CONSOLE: Bogus port given %s", av[1]);
-        c->port=port;
+    case SET_PORT:
+      if (ac != 1)
+	return(-1);
+
+      port =  strtol(av[0], NULL, 10);
+      if (port < 1 || port > 65535) {
+	Log(LG_ERR, ("CONSOLE: Bogus port given %s", av[0]));
+	return(-1);
+      }
+      c->port=port;
+      break;
+
+    case SET_IP:
+      if (ac != 1)
+	return(-1);
+
+      if (!ParseAddr(av[0],&c->addr, ALLOW_IPV4|ALLOW_IPV6)) 
+      {
+	Log(LG_ERR, ("CONSOLE: Bogus IP address given %s", av[0]));
+	return(-1);
       }
       break;
 
@@ -821,60 +827,4 @@ ConsoleSetCommand(Context ctx, int ac, char *av[], void *arg)
   }
 
   return 0;
-}
-
-/*
- * UserCommand()
- */
-
-int
-UserCommand(Context ctx, int ac, char *av[], void *arg) 
-{
-    ConsoleUser		u;
-
-    if (ac < 2 || ac > 3) 
-	return(-1);
-
-    u = Malloc(MB_CONS, sizeof(*u));
-    strlcpy(u->username, av[0], sizeof(u->username));
-    strlcpy(u->password, av[1], sizeof(u->password));
-    if (ac == 3) {
-	if (!strcmp(av[2],"admin"))
-	    u->priv = 2;
-	else if (!strcmp(av[2],"operator"))
-	    u->priv = 1;
-	else if (!strcmp(av[2],"user"))
-	    u->priv = 0;
-	else {
-	    Freee(u);
-	    return (-1);
-	}
-    }
-    RWLOCK_WRLOCK(gUsersLock);
-    ghash_put(gUsers, u);
-    RWLOCK_UNLOCK(gUsersLock);
-
-    return (0);
-}
-
-/*
- * UserStat()
- */
-
-int
-UserStat(Context ctx, int ac, char *av[], void *arg)
-{
-    struct ghash_walk	walk;
-    ConsoleUser		u;
-
-    Printf("Configured users:\r\n");
-    RWLOCK_RDLOCK(gUsersLock);
-    ghash_walk_init(gUsers, &walk);
-    while ((u = ghash_walk_next(gUsers, &walk)) !=  NULL) {
-	Printf("\tUsername: %-15s Priv:%s\r\n", u->username,
-	    ((u->priv == 2)?"admin":((u->priv == 1)?"operator":"user")));
-    }
-    RWLOCK_UNLOCK(gUsersLock);
-
-    return 0;
 }

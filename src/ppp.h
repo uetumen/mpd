@@ -50,7 +50,6 @@
 #include <pdel/util/paction.h>
 #include <pdel/util/ghash.h>
 
-#include <netgraph/ng_message.h>
 #ifdef __DragonFly__
 #include <netgraph/ppp/ng_ppp.h>
 #else
@@ -89,21 +88,6 @@
 				} while (0)
 
   #define OVERLOAD()		(gOverload > (random() % 100))
-  
-  #define REF(p)		do {					\
-				    (p)->refs++;			\
-				} while (0)
-
-  #define UNREF(p)		do {					\
-				    if ((--(p)->refs) == 0)		\
-					Freee(p);			\
-				} while (0)
-
-  #define RESETREF(v, p)	do {					\
-				    if (v) UNREF(v);			\
-				    (v) = (p);				\
-				    if (v) REF(v);			\
-				} while (0)
 
   #define ADLG_WAN_AUTHORIZATION_FAILURE	0
   #define ADLG_WAN_CONNECTED			1
@@ -130,41 +114,6 @@
   };
 #endif
 
-  /* max. length of acl rule */
-  #define ACL_LEN	256
-  #define ACL_NAME_LEN	16
-  /* max. number of acl_filters */
-  #define ACL_FILTERS	16
-  /* There are two directions for acl_limits */
-  #define ACL_DIRS	2
-
-  struct svcssrc {
-    int				type;
-  #define SSSS_IN	1
-  #define SSSS_MATCH	2
-  #define SSSS_NOMATCH	3
-  #define SSSS_OUT	4
-    char			hook[NG_HOOKSIZ];
-    SLIST_ENTRY(svcssrc)	next;
-  };
-
-  struct svcs {
-    char 			name[ACL_NAME_LEN]; 	/* Name of ACL */
-    SLIST_HEAD(, svcssrc)	src;
-    SLIST_ENTRY(svcs)		next;
-  };
-
-  struct svcstatrec {
-    char			name[ACL_NAME_LEN]; 	/* Name of ACL */
-    u_int64_t			Packets;
-    u_int64_t			Octets;
-    SLIST_ENTRY(svcstatrec)	next;
-  };
-  
-  struct svcstat {
-    SLIST_HEAD(, svcstatrec)	stat[ACL_DIRS];
-  };
-
 #include "bund.h"
 #include "link.h"
 #include "rep.h"
@@ -175,12 +124,12 @@
  * VARIABLES
  */
 
+  extern PhysInfo	*gPhyses;		/* Physes */
   extern Rep		*gReps;			/* Repeaters */
-  extern Link		*gLinks;		/* Links */
   extern Bund		*gBundles;		/* Bundles */
 
+  extern int		gNumPhyses;		/* Total number of phys */
   extern int		gNumReps;		/* Total number of repeaters */
-  extern int		gNumLinks;		/* Total number of links */
   extern int		gNumBundles;		/* Total number of bundles */
   extern struct console	gConsole;
   extern struct web	gWeb;
@@ -189,13 +138,6 @@
   extern int		gOverload;
   extern pid_t		gPid;
   extern int		gRouteSeq;
-
-  extern int		gPPTPto;
-  extern int		gPPTPtunlimit;
-  extern int		gL2TPto;
-  extern int		gL2TPtunlimit;
-  extern int		gChildren;
-  extern int		gMaxChildren;
 
   extern struct globalconf	gGlobalConf;	/* Global config settings */
 
@@ -214,7 +156,6 @@
   extern void		SendSignal(int sig);
   extern void		DoExit(int code);
   extern void		DoAssert(const char *file, int line, const char *x);
-  extern void		CheckOneShot(void);
 
 #endif
 

@@ -55,7 +55,7 @@
     SET_ENABLE,
     SET_DISABLE,
     SET_YES,
-    SET_NO
+    SET_NO,
   };
 
 /*
@@ -76,28 +76,26 @@
   static EncType	EcpFindType(int type, int *indexp);
   static const char	*EcpTypeName(int type);
 
-  static void		EcpNgDataEvent(int type, void *cookie);
-
 /*
  * GLOBAL VARIABLES
  */
 
   const struct cmdtab EcpSetCmds[] =
   {
-    { "key {string}",			"Set encryption key",
-	EcpSetCommand, NULL, 2, (void *) SET_KEY },
+    { "key string",			"Set encryption key",
+	EcpSetCommand, NULL, (void *) SET_KEY },
     { "accept [opt ...]",		"Accept option",
-	EcpSetCommand, NULL, 2, (void *) SET_ACCEPT },
+	EcpSetCommand, NULL, (void *) SET_ACCEPT },
     { "deny [opt ...]",			"Deny option",
-	EcpSetCommand, NULL, 2, (void *) SET_DENY },
+	EcpSetCommand, NULL, (void *) SET_DENY },
     { "enable [opt ...]",		"Enable option",
-	EcpSetCommand, NULL, 2, (void *) SET_ENABLE },
+	EcpSetCommand, NULL, (void *) SET_ENABLE },
     { "disable [opt ...]",		"Disable option",
-	EcpSetCommand, NULL, 2, (void *) SET_DISABLE },
+	EcpSetCommand, NULL, (void *) SET_DISABLE },
     { "yes [opt ...]",			"Enable and accept option",
-	EcpSetCommand, NULL, 2, (void *) SET_YES },
+	EcpSetCommand, NULL, (void *) SET_YES },
     { "no [opt ...]",			"Disable and deny option",
-	EcpSetCommand, NULL, 2, (void *) SET_NO },
+	EcpSetCommand, NULL, (void *) SET_NO },
     { NULL },
   };
 
@@ -127,8 +125,8 @@
     "ECP",
     PROTO_ECP,
     ECP_KNOWN_CODES,
-    FALSE,
     LG_ECP, LG_ECP2,
+    FALSE,
     NULL,
     EcpLayerUp,
     EcpLayerDown,
@@ -163,42 +161,6 @@
     { 0,		NULL },
   };
 
-    int		gEcpCsock = -1;		/* Socket node control socket */
-    int		gEcpDsock = -1;		/* Socket node data socket */
-    EventRef	gEcpDataEvent;
-
-int
-EcpsInit(void)
-{
-    char	name[NG_NODESIZ];
-
-    /* Create a netgraph socket node */
-    snprintf(name, sizeof(name), "mpd%d-eso", gPid);
-    if (NgMkSockNode(name, &gEcpCsock, &gEcpDsock) < 0) {
-	Log(LG_ERR, ("EcpsInit(): can't create %s node: %s",
-    	    NG_SOCKET_NODE_TYPE, strerror(errno)));
-	return(-1);
-    }
-    (void) fcntl(gEcpCsock, F_SETFD, 1);
-    (void) fcntl(gEcpDsock, F_SETFD, 1);
-
-    /* Listen for happenings on our node */
-    EventRegister(&gEcpDataEvent, EVENT_READ,
-	gEcpDsock, EVENT_RECURRING, EcpNgDataEvent, NULL);
-	
-    return (0);
-}
-
-void
-EcpsShutdown(void)
-{
-    close(gEcpCsock);
-    gEcpCsock = -1;
-    EventUnRegister(&gEcpDataEvent);
-    close(gEcpDsock);
-    gEcpDsock = -1;
-}
-
 /*
  * EcpInit()
  */
@@ -231,20 +193,6 @@ EcpInit(Bund b)
     ci[k].name = NULL;
     gConfList = (const struct confinfo *) ci;
   }
-}
-
-/*
- * EcpInst()
- */
-
-void
-EcpInst(Bund b, Bund bt)
-{
-  EcpState	ecp = &b->ecp;
-
-/* Init ECP state for this bundle */
-  memcpy(ecp, &bt->ecp, sizeof(*ecp));
-  FsmInst(&ecp->fsm, &bt->ecp.fsm, b);
 }
 
 /*
@@ -296,75 +244,6 @@ EcpUnConfigure(Fsm fp)
 }
 
 /*
- * EcpNgDataEvent()
- */
-
-static void
-EcpNgDataEvent(int type, void *cookie)
-{
-    Bund		b;
-    struct sockaddr_ng	naddr;
-    socklen_t		nsize;
-    Mbuf		bp;
-    int			num = 0;
-    char                *bundname, *rest;
-    int                 id;
-		
-    while (1) {
-	/* Protect from bundle shutdown and DoS */
-	if (num > 100)
-	    return;
-    
-	bp = mballoc(4096);
-
-	/* Read data */
-	nsize = sizeof(naddr);
-	if ((bp->cnt = recvfrom(gEcpDsock, MBDATA(bp), MBSPACE(bp),
-    		MSG_DONTWAIT, (struct sockaddr *)&naddr, &nsize)) < 0) {
-	    mbfree(bp);
-	    if (errno == EAGAIN)
-    		return;
-	    Log(LG_BUND|LG_ERR, ("EcpNgDataEvent: socket read: %s", strerror(errno)));
-	    return;
-	}
-	num++;
-    
-	/* Debugging */
-	LogDumpBp(LG_FRAME, bp,
-	    "EcpNgDataEvent: rec'd %d bytes frame on %s hook", MBLEN(bp), naddr.sg_data);
-
-	bundname = ((struct sockaddr_ng *)&naddr)->sg_data;
-	if (bundname[0] != 'e' && bundname[0] != 'd') {
-    	    Log(LG_ERR, ("ECP: Packet from unknown hook \"%s\"",
-    	        bundname));
-	    mbfree(bp);
-    	    continue;
-	}
-	bundname++;
-	id = strtol(bundname, &rest, 10);
-	if (rest[0] != 0 || !gBundles[id] || gBundles[id]->dead) {
-    	    Log(LG_ERR, ("ECP: Packet from unexisting bundle \"%s\"",
-		bundname));
-	    mbfree(bp);
-	    continue;
-	}
-		
-	b = gBundles[id];
-
-	/* Packet requiring compression */
-	if (bundname[0] == 'e') {
-	    bp = EcpDataOutput(b, bp);
-	} else {
-	    /* Packet requiring decompression */
-	    bp = EcpDataInput(b, bp);
-	}
-	if (bp)
-	    NgFuncWriteFrame(gEcpDsock, naddr.sg_data, b->name, bp);
-    }
-}
-
-
-/*
  * EcpDataOutput()
  *
  * Encrypt a frame. Consumes the original packet.
@@ -376,18 +255,18 @@ EcpDataOutput(Bund b, Mbuf plain)
   EcpState	const ecp = &b->ecp;
   Mbuf		cypher;
 
-  LogDumpBp(LG_FRAME, plain, "[%s] %s: xmit plain", Pref(&ecp->fsm), Fsm(&ecp->fsm));
+  LogDumpBp(LG_ECP2, plain, "[%s] %s: xmit plain", Pref(&ecp->fsm), Fsm(&ecp->fsm));
 
 /* Encrypt packet */
 
   if ((!ecp->xmit) || (!ecp->xmit->Encrypt))
   {
     Log(LG_ERR, ("[%s] %s: no encryption for xmit", Pref(&ecp->fsm), Fsm(&ecp->fsm)));
-    mbfree(plain);
+    PFREE(plain);
     return(NULL);
   }
   cypher = (*ecp->xmit->Encrypt)(b, plain);
-  LogDumpBp(LG_FRAME, cypher, "[%s] %s: xmit cypher", Pref(&ecp->fsm), Fsm(&ecp->fsm));
+  LogDumpBp(LG_ECP2, cypher, "[%s] %s: xmit cypher", Pref(&ecp->fsm), Fsm(&ecp->fsm));
 
 /* Return result, with new protocol number */
 
@@ -407,14 +286,14 @@ EcpDataInput(Bund b, Mbuf cypher)
   EcpState	const ecp = &b->ecp;
   Mbuf		plain;
 
-  LogDumpBp(LG_FRAME, cypher, "[%s] %s: recv cypher", Pref(&ecp->fsm), Fsm(&ecp->fsm));
+  LogDumpBp(LG_ECP2, cypher, "[%s] %s: recv cypher", Pref(&ecp->fsm), Fsm(&ecp->fsm));
 
 /* Decrypt packet */
 
   if ((!ecp->recv) || (!ecp->recv->Decrypt))
   {
     Log(LG_ERR, ("[%s] %s: no encryption for recv", Pref(&ecp->fsm), Fsm(&ecp->fsm)));
-    mbfree(cypher);
+    PFREE(cypher);
     return(NULL);
   }
 
@@ -428,7 +307,7 @@ EcpDataInput(Bund b, Mbuf cypher)
     return(NULL);
   }
 
-  LogDumpBp(LG_FRAME, plain, "[%s] %s: recv plain", Pref(&ecp->fsm), Fsm(&ecp->fsm));
+  LogDumpBp(LG_ECP2, plain, "[%s] %s: recv plain", Pref(&ecp->fsm), Fsm(&ecp->fsm));
 /* Done */
 
   return(plain);
@@ -478,26 +357,20 @@ EcpClose(Bund b)
  * EcpOpenCmd()
  */
 
-int
+void
 EcpOpenCmd(Context ctx)
 {
-    if (ctx->bund->tmpl)
-	Error("impossible to open template");
-    FsmOpen(&ctx->bund->ecp.fsm);
-    return (0);
+  FsmOpen(&ctx->bund->ecp.fsm);
 }
 
 /*
  * EcpCloseCmd()
  */
 
-int
+void
 EcpCloseCmd(Context ctx)
 {
-    if (ctx->bund->tmpl)
-	Error("impossible to close template");
-    FsmClose(&ctx->bund->ecp.fsm);
-    return (0);
+  FsmClose(&ctx->bund->ecp.fsm);
 }
 
 /*
@@ -652,30 +525,30 @@ EcpLayerUp(Fsm fp)
   if (ecp->recv && ecp->recv->Decrypt) 
   {
     /* Connect a hook from the bpf node to our socket node */
-    snprintf(cn.path, sizeof(cn.path), "[%x]:", b->nodeID);
-    snprintf(cn.ourhook, sizeof(cn.ourhook), "d%d", b->id);
-    strcpy(cn.peerhook, NG_PPP_HOOK_DECRYPT);
-    if (NgSendMsg(gEcpCsock, ".:",
+    snprintf(cn.path, sizeof(cn.path), "%s", MPD_HOOK_PPP);
+    snprintf(cn.ourhook, sizeof(cn.ourhook), "%s", NG_PPP_HOOK_DECRYPT);
+    snprintf(cn.peerhook, sizeof(cn.peerhook), "%s", NG_PPP_HOOK_DECRYPT);
+    if (NgSendMsg(b->csock, ".",
 	    NGM_GENERIC_COOKIE, NGM_CONNECT, &cn, sizeof(cn)) < 0) {
 	Log(LG_ERR, ("[%s] can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
-        b->name, ".:", cn.ourhook, cn.path, cn.peerhook,  strerror(errno)));
+        b->name, ".", cn.ourhook, cn.path, cn.peerhook,  strerror(errno)));
     }
   }
   if (ecp->xmit && ecp->xmit->Encrypt)
   {
     /* Connect a hook from the bpf node to our socket node */
-    snprintf(cn.path, sizeof(cn.path), "[%x]:", b->nodeID);
-    snprintf(cn.ourhook, sizeof(cn.ourhook), "e%d", b->id);
-    strcpy(cn.peerhook, NG_PPP_HOOK_ENCRYPT);
-    if (NgSendMsg(gEcpCsock, ".:",
+    snprintf(cn.path, sizeof(cn.path), "%s", MPD_HOOK_PPP);
+    snprintf(cn.ourhook, sizeof(cn.ourhook), "%s", NG_PPP_HOOK_ENCRYPT);
+    snprintf(cn.peerhook, sizeof(cn.peerhook), "%s", NG_PPP_HOOK_ENCRYPT);
+    if (NgSendMsg(b->csock, ".",
 	    NGM_GENERIC_COOKIE, NGM_CONNECT, &cn, sizeof(cn)) < 0) {
 	Log(LG_ERR, ("[%s] can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
-        b->name, ".:", cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
+        b->name, ".", cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
     }
   }
 
-  Log(LG_ECP, ("[%s] ECP: Encrypt using: %s", b->name, !ecp->xmit ? "none" : ecp->xmit->name));
-  Log(LG_ECP, ("[%s] ECP: Decrypt using: %s", b->name, !ecp->recv ? "none" : ecp->recv->name));
+  Log(LG_ECP, ("  Encrypt using: %s", !ecp->xmit ? "none" : ecp->xmit->name));
+  Log(LG_ECP, ("  Decrypt using: %s", !ecp->recv ? "none" : ecp->recv->name));
 
   /* Update PPP node config */
   b->pppConfig.bund.enableEncryption = (ecp->xmit != NULL);
@@ -707,17 +580,13 @@ EcpLayerDown(Fsm fp)
   BundUpdateParams(b);
 
   if (ecp->xmit != NULL && ecp->xmit->Encrypt != NULL) {
-    char	hook[NG_HOOKSIZ];
     /* Disconnect hook. */
-    snprintf(hook, sizeof(hook), "e%d", b->id);
-    NgFuncDisconnect(gEcpCsock, b->name, ".:", hook);
+    NgFuncDisconnect(b->csock, b->name, ".:", NG_PPP_HOOK_ENCRYPT);
   }
   
   if (ecp->recv != NULL && ecp->recv->Decrypt != NULL) {
-    char	hook[NG_HOOKSIZ];
     /* Disconnect hook. */
-    snprintf(hook, sizeof(hook), "d%d", b->id);
-    NgFuncDisconnect(gEcpCsock, b->name, ".:", hook);
+    NgFuncDisconnect(b->csock, b->name, ".:", NG_PPP_HOOK_DECRYPT);
   }
 
   if (ecp->xmit && ecp->xmit->Cleanup)
@@ -753,12 +622,12 @@ EcpDecodeConfig(Fsm fp, FsmOption list, int num, int mode)
     int		index;
     EncType	et;
 
-    Log(LG_ECP, ("[%s] %s", b->name, EcpTypeName(opt->type)));
+    Log(LG_ECP, (" %s", EcpTypeName(opt->type)));
     if ((et = EcpFindType(opt->type, &index)) == NULL)
     {
       if (mode == MODE_REQ)
       {
-	Log(LG_ECP, ("[%s]   Not supported", b->name));
+	Log(LG_ECP, ("   Not supported"));
 	FsmRej(fp, opt);
       }
       continue;
@@ -843,7 +712,7 @@ EcpSetCommand(Context ctx, int ac, char *av[], void *arg)
     case SET_KEY:
       if (ac != 1)
 	return(-1);
-      strlcpy(ecp->key, av[0], sizeof(ecp->key));
+      snprintf(ecp->key, sizeof(ecp->key), "%s", av[0]);
       break;
 
     case SET_ACCEPT:

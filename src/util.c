@@ -14,9 +14,6 @@
 #include <netdb.h>
 #include <tcpd.h>
 #include <sys/wait.h>
-#include <sys/sysctl.h>
-#include <net/route.h>
-#include <netinet/if_ether.h>
 
 /*
  * DEFINITIONS
@@ -32,41 +29,7 @@
  * INTERNAL VARIABLES
  */
 
-static const u_int16_t Crc16Table[256] = {
-/* 00 */    0x0000, 0x1189, 0x2312, 0x329b, 0x4624, 0x57ad, 0x6536, 0x74bf,
-/* 08 */    0x8c48, 0x9dc1, 0xaf5a, 0xbed3, 0xca6c, 0xdbe5, 0xe97e, 0xf8f7,
-/* 10 */    0x1081, 0x0108, 0x3393, 0x221a, 0x56a5, 0x472c, 0x75b7, 0x643e,
-/* 18 */    0x9cc9, 0x8d40, 0xbfdb, 0xae52, 0xdaed, 0xcb64, 0xf9ff, 0xe876,
-/* 20 */    0x2102, 0x308b, 0x0210, 0x1399, 0x6726, 0x76af, 0x4434, 0x55bd,
-/* 28 */    0xad4a, 0xbcc3, 0x8e58, 0x9fd1, 0xeb6e, 0xfae7, 0xc87c, 0xd9f5,
-/* 30 */    0x3183, 0x200a, 0x1291, 0x0318, 0x77a7, 0x662e, 0x54b5, 0x453c,
-/* 38 */    0xbdcb, 0xac42, 0x9ed9, 0x8f50, 0xfbef, 0xea66, 0xd8fd, 0xc974,
-/* 40 */    0x4204, 0x538d, 0x6116, 0x709f, 0x0420, 0x15a9, 0x2732, 0x36bb,
-/* 48 */    0xce4c, 0xdfc5, 0xed5e, 0xfcd7, 0x8868, 0x99e1, 0xab7a, 0xbaf3,
-/* 50 */    0x5285, 0x430c, 0x7197, 0x601e, 0x14a1, 0x0528, 0x37b3, 0x263a,
-/* 58 */    0xdecd, 0xcf44, 0xfddf, 0xec56, 0x98e9, 0x8960, 0xbbfb, 0xaa72,
-/* 60 */    0x6306, 0x728f, 0x4014, 0x519d, 0x2522, 0x34ab, 0x0630, 0x17b9,
-/* 68 */    0xef4e, 0xfec7, 0xcc5c, 0xddd5, 0xa96a, 0xb8e3, 0x8a78, 0x9bf1,
-/* 70 */    0x7387, 0x620e, 0x5095, 0x411c, 0x35a3, 0x242a, 0x16b1, 0x0738,
-/* 78 */    0xffcf, 0xee46, 0xdcdd, 0xcd54, 0xb9eb, 0xa862, 0x9af9, 0x8b70,
-/* 80 */    0x8408, 0x9581, 0xa71a, 0xb693, 0xc22c, 0xd3a5, 0xe13e, 0xf0b7,
-/* 88 */    0x0840, 0x19c9, 0x2b52, 0x3adb, 0x4e64, 0x5fed, 0x6d76, 0x7cff,
-/* 90 */    0x9489, 0x8500, 0xb79b, 0xa612, 0xd2ad, 0xc324, 0xf1bf, 0xe036,
-/* 98 */    0x18c1, 0x0948, 0x3bd3, 0x2a5a, 0x5ee5, 0x4f6c, 0x7df7, 0x6c7e,
-/* a0 */    0xa50a, 0xb483, 0x8618, 0x9791, 0xe32e, 0xf2a7, 0xc03c, 0xd1b5,
-/* a8 */    0x2942, 0x38cb, 0x0a50, 0x1bd9, 0x6f66, 0x7eef, 0x4c74, 0x5dfd,
-/* b0 */    0xb58b, 0xa402, 0x9699, 0x8710, 0xf3af, 0xe226, 0xd0bd, 0xc134,
-/* b8 */    0x39c3, 0x284a, 0x1ad1, 0x0b58, 0x7fe7, 0x6e6e, 0x5cf5, 0x4d7c,
-/* c0 */    0xc60c, 0xd785, 0xe51e, 0xf497, 0x8028, 0x91a1, 0xa33a, 0xb2b3,
-/* c8 */    0x4a44, 0x5bcd, 0x6956, 0x78df, 0x0c60, 0x1de9, 0x2f72, 0x3efb,
-/* d0 */    0xd68d, 0xc704, 0xf59f, 0xe416, 0x90a9, 0x8120, 0xb3bb, 0xa232,
-/* d8 */    0x5ac5, 0x4b4c, 0x79d7, 0x685e, 0x1ce1, 0x0d68, 0x3ff3, 0x2e7a,
-/* e0 */    0xe70e, 0xf687, 0xc41c, 0xd595, 0xa12a, 0xb0a3, 0x8238, 0x93b1,
-/* e8 */    0x6b46, 0x7acf, 0x4854, 0x59dd, 0x2d62, 0x3ceb, 0x0e70, 0x1ff9,
-/* f0 */    0xf78f, 0xe606, 0xd49d, 0xc514, 0xb1ab, 0xa022, 0x92b9, 0x8330,
-/* f8 */    0x7bc7, 0x6a4e, 0x58d5, 0x495c, 0x3de3, 0x2c6a, 0x1ef1, 0x0f78
-};
-
+  static const u_int16_t	Crc16Table[];
   static FILE			*lockFp = NULL;
 
 /*
@@ -93,7 +56,7 @@ static const u_int16_t Crc16Table[256] = {
  */
 
 void
-LengthenArray(void *array, size_t esize, int *alenp, const char *type)
+LengthenArray(void *array, int esize, int *alenp, const char *type)
 {
   void **const arrayp = (void **)array;
   void *newa;
@@ -101,7 +64,7 @@ LengthenArray(void *array, size_t esize, int *alenp, const char *type)
   newa = Malloc(type, (*alenp + 1) * esize);
   if (*arrayp != NULL) {
     memcpy(newa, *arrayp, *alenp * esize);
-    Freee(*arrayp);
+    Freee(type, *arrayp);
   }
   *arrayp = newa;
   (*alenp)++;
@@ -323,7 +286,7 @@ void
 FreeArgs(int ac, char *av[])
 {
   while (ac > 0)
-    Freee(av[--ac]);
+    Freee(MB_CMD, av[--ac]);
 }
 
 /*
@@ -592,7 +555,7 @@ ReadFullLine(FILE *fp, int *lineNum, char *result, int resultsize)
 
   /* Append real line to what we've got so far */
 
-    strlcpy(resultline + linelen, real_line, resultlinesize - linelen);
+    snprintf(resultline + linelen, resultlinesize - linelen, "%s", real_line);
     linelen += len;
     if (linelen > sizeof(line) - 1)
 	linelen = sizeof(line) - 1;
@@ -898,6 +861,37 @@ UuUnlock(const char *ttyname)
 }
 
 /*
+ * WriteMbuf()
+ *
+ * Write an mbuf to a file descriptor which is character based.
+ * Leave whatever portion of the mbuf is remaining.
+ */
+
+int
+WriteMbuf(Mbuf *mp, int fd, const char *label)
+{
+  while (*mp)
+  {
+    Mbuf	const bp = *mp;
+    int		nw;
+
+    if ((nw = write(fd, MBDATAU(bp), MBLEN(bp))) < 0)
+    {
+      if (errno == EAGAIN)
+	return(0);
+      Log(LG_ERR, ("%s write: %s", label, strerror(errno)));
+      return(-1);
+    }
+    bp->offset += nw;
+    bp->cnt -= nw;
+    if (bp->cnt != 0)
+      break;
+    *mp = mbfree(bp);
+  }
+  return(0);
+}
+
+/*
  * GenerateMagic()
  *
  * Generate random number which will be used as magic number.
@@ -1026,7 +1020,7 @@ PIDCheck(const char *filename, int killem)
  */
 
 int
-GetInetSocket(int type, struct u_addr *addr, in_port_t port, int block, char *ebuf, size_t len)
+GetInetSocket(int type, struct u_addr *addr, in_port_t port, int block, char *ebuf, int len)
 {
   int			sock;
   static int		one = 1;
@@ -1159,7 +1153,7 @@ TcpAcceptConnection(int sock, struct sockaddr_storage *addr, int block)
  */
 
 void
-ShowMesg(int log, const char *pref, const char *buf, int len)
+ShowMesg(int log, const char *buf, int len)
 {
   char	*s, mesg[256];
 
@@ -1170,7 +1164,7 @@ ShowMesg(int log, const char *pref, const char *buf, int len)
     memcpy(mesg, buf, len);
     mesg[len] = 0;
     for (s = strtok(mesg, "\r\n"); s; s = strtok(NULL, "\r\n"))
-      Log(log, ("[%s]   MESG: %s", pref, s));
+      Log(log, (" MESG: %s", s));
   }
 }
 
@@ -1179,10 +1173,10 @@ ShowMesg(int log, const char *pref, const char *buf, int len)
  */
 
 char *
-Bin2Hex(const unsigned char *bin, size_t len)
+Bin2Hex(const unsigned char *bin, int len)
 {
   static char	hexconvtab[] = "0123456789abcdef";
-  size_t	i, j;
+  int		i, j;
   char		*buf;
   
   buf = Malloc(MB_UTIL, len * 2 + 1);
@@ -1242,6 +1236,41 @@ Crc16(u_short crc, u_char *cp, int len)
   return(crc);
 }
 
+static const u_int16_t Crc16Table[256] = {
+/* 00 */    0x0000, 0x1189, 0x2312, 0x329b, 0x4624, 0x57ad, 0x6536, 0x74bf,
+/* 08 */    0x8c48, 0x9dc1, 0xaf5a, 0xbed3, 0xca6c, 0xdbe5, 0xe97e, 0xf8f7,
+/* 10 */    0x1081, 0x0108, 0x3393, 0x221a, 0x56a5, 0x472c, 0x75b7, 0x643e,
+/* 18 */    0x9cc9, 0x8d40, 0xbfdb, 0xae52, 0xdaed, 0xcb64, 0xf9ff, 0xe876,
+/* 20 */    0x2102, 0x308b, 0x0210, 0x1399, 0x6726, 0x76af, 0x4434, 0x55bd,
+/* 28 */    0xad4a, 0xbcc3, 0x8e58, 0x9fd1, 0xeb6e, 0xfae7, 0xc87c, 0xd9f5,
+/* 30 */    0x3183, 0x200a, 0x1291, 0x0318, 0x77a7, 0x662e, 0x54b5, 0x453c,
+/* 38 */    0xbdcb, 0xac42, 0x9ed9, 0x8f50, 0xfbef, 0xea66, 0xd8fd, 0xc974,
+/* 40 */    0x4204, 0x538d, 0x6116, 0x709f, 0x0420, 0x15a9, 0x2732, 0x36bb,
+/* 48 */    0xce4c, 0xdfc5, 0xed5e, 0xfcd7, 0x8868, 0x99e1, 0xab7a, 0xbaf3,
+/* 50 */    0x5285, 0x430c, 0x7197, 0x601e, 0x14a1, 0x0528, 0x37b3, 0x263a,
+/* 58 */    0xdecd, 0xcf44, 0xfddf, 0xec56, 0x98e9, 0x8960, 0xbbfb, 0xaa72,
+/* 60 */    0x6306, 0x728f, 0x4014, 0x519d, 0x2522, 0x34ab, 0x0630, 0x17b9,
+/* 68 */    0xef4e, 0xfec7, 0xcc5c, 0xddd5, 0xa96a, 0xb8e3, 0x8a78, 0x9bf1,
+/* 70 */    0x7387, 0x620e, 0x5095, 0x411c, 0x35a3, 0x242a, 0x16b1, 0x0738,
+/* 78 */    0xffcf, 0xee46, 0xdcdd, 0xcd54, 0xb9eb, 0xa862, 0x9af9, 0x8b70,
+/* 80 */    0x8408, 0x9581, 0xa71a, 0xb693, 0xc22c, 0xd3a5, 0xe13e, 0xf0b7,
+/* 88 */    0x0840, 0x19c9, 0x2b52, 0x3adb, 0x4e64, 0x5fed, 0x6d76, 0x7cff,
+/* 90 */    0x9489, 0x8500, 0xb79b, 0xa612, 0xd2ad, 0xc324, 0xf1bf, 0xe036,
+/* 98 */    0x18c1, 0x0948, 0x3bd3, 0x2a5a, 0x5ee5, 0x4f6c, 0x7df7, 0x6c7e,
+/* a0 */    0xa50a, 0xb483, 0x8618, 0x9791, 0xe32e, 0xf2a7, 0xc03c, 0xd1b5,
+/* a8 */    0x2942, 0x38cb, 0x0a50, 0x1bd9, 0x6f66, 0x7eef, 0x4c74, 0x5dfd,
+/* b0 */    0xb58b, 0xa402, 0x9699, 0x8710, 0xf3af, 0xe226, 0xd0bd, 0xc134,
+/* b8 */    0x39c3, 0x284a, 0x1ad1, 0x0b58, 0x7fe7, 0x6e6e, 0x5cf5, 0x4d7c,
+/* c0 */    0xc60c, 0xd785, 0xe51e, 0xf497, 0x8028, 0x91a1, 0xa33a, 0xb2b3,
+/* c8 */    0x4a44, 0x5bcd, 0x6956, 0x78df, 0x0c60, 0x1de9, 0x2f72, 0x3efb,
+/* d0 */    0xd68d, 0xc704, 0xf59f, 0xe416, 0x90a9, 0x8120, 0xb3bb, 0xa232,
+/* d8 */    0x5ac5, 0x4b4c, 0x79d7, 0x685e, 0x1ce1, 0x0d68, 0x3ff3, 0x2e7a,
+/* e0 */    0xe70e, 0xf687, 0xc41c, 0xd595, 0xa12a, 0xb0a3, 0x8238, 0x93b1,
+/* e8 */    0x6b46, 0x7acf, 0x4854, 0x59dd, 0x2d62, 0x3ceb, 0x0e70, 0x1ff9,
+/* f0 */    0xf78f, 0xe606, 0xd49d, 0xc514, 0xb1ab, 0xa022, 0x92b9, 0x8330,
+/* f8 */    0x7bc7, 0x6a4e, 0x58d5, 0x495c, 0x3de3, 0x2c6a, 0x1ef1, 0x0f78
+};
+
 /*
  * GetAnyIpAddress()
  *
@@ -1274,7 +1303,7 @@ GetAnyIpAddress(struct u_addr *ipaddr, const char *ifname)
 
     /* Try simple call for the first IP on interface */
     if (ifname != NULL) {
-	strlcpy(ifreq.ifr_name, ifname, sizeof(ifreq.ifr_name));
+	strncpy(ifreq.ifr_name, ifname, sizeof(ifreq.ifr_name));
         if (ioctl(s, SIOCGIFADDR, &ifreq) < 0) {
 	    if (errno != ENXIO)
     		Perror("%s: ioctl(SIOCGIFADDR)", __FUNCTION__);
@@ -1292,7 +1321,7 @@ GetAnyIpAddress(struct u_addr *ipaddr, const char *ifname)
       ifc.ifc_len = sizeof(struct ifreq) * MAX_INTERFACES;
       ifc.ifc_req = ifs = Malloc(MB_UTIL, ifc.ifc_len);
       if (ioctl(s, SIOCGIFCONF, &ifc) < 0) {
-        Freee(ifs);
+        Freee(MB_UTIL, ifs);
 	if (errno != ENXIO)
     	    Perror("%s: ioctl(SIOCGIFCONF)", __FUNCTION__);
         close(s);
@@ -1310,7 +1339,7 @@ GetAnyIpAddress(struct u_addr *ipaddr, const char *ifname)
 	    continue;
 
           /* Check that the interface is up; prefer non-p2p and non-loopback */
-          strlcpy(ifreq.ifr_name, ifr->ifr_name, sizeof(ifreq.ifr_name));
+          strncpy(ifreq.ifr_name, ifr->ifr_name, sizeof(ifreq.ifr_name));
           if (ioctl(s, SIOCGIFFLAGS, &ifreq) < 0)
     	    continue;
           if ((ifreq.ifr_flags & IFF_UP) != IFF_UP)
@@ -1327,7 +1356,7 @@ GetAnyIpAddress(struct u_addr *ipaddr, const char *ifname)
           if (!p2p) break;
         }
       }
-      Freee(ifs);
+      Freee(MB_UTIL, ifs);
     }
     close(s);
 
@@ -1353,8 +1382,8 @@ int
 GetEther(struct u_addr *addr, struct sockaddr_dl *hwaddr)
 {
   int			s;
-  struct ifreq		*ifr, *bifr, *ifend, *ifp;
-  u_int32_t		ina, mask, bmask;
+  struct ifreq		*ifr, *ifend, *ifp;
+  u_int32_t		ina, mask;
   struct ifreq		ifreq;
   struct ifconf		ifc;
   struct ifreq 		*ifs;
@@ -1378,7 +1407,7 @@ GetEther(struct u_addr *addr, struct sockaddr_dl *hwaddr)
   ifc.ifc_len = sizeof(struct ifreq) * MAX_INTERFACES;
   ifc.ifc_req = ifs = Malloc(MB_UTIL, ifc.ifc_len);
   if (ioctl(s, SIOCGIFCONF, &ifc) < 0) {
-    Freee(ifs);
+    Freee(MB_UTIL, ifs);
     Perror("%s: ioctl(SIOCGIFCONF)", __FUNCTION__);
     close(s);
     return(-1);
@@ -1388,8 +1417,6 @@ GetEther(struct u_addr *addr, struct sockaddr_dl *hwaddr)
    * Scan through looking for an interface with an IP
    * address on same subnet as `addr'.
    */
-  bifr = NULL;
-  bmask = 0;
   for (ifend = (struct ifreq *)(void *)(ifc.ifc_buf + ifc.ifc_len),
 	ifr = ifc.ifc_req;
       ifr < ifend;
@@ -1399,7 +1426,7 @@ GetEther(struct u_addr *addr, struct sockaddr_dl *hwaddr)
 
       /* Save IP address and interface name */
       ina = ((struct sockaddr_in *)(void *)&ifr->ifr_addr)->sin_addr.s_addr;
-      strlcpy(ifreq.ifr_name, ifr->ifr_name, sizeof(ifreq.ifr_name));
+      strncpy(ifreq.ifr_name, ifr->ifr_name, sizeof(ifreq.ifr_name));
       ifreq.ifr_addr = ifr->ifr_addr;
 
       /* Check that the interface is up, and not point-to-point or loopback */
@@ -1410,36 +1437,27 @@ GetEther(struct u_addr *addr, struct sockaddr_dl *hwaddr)
 	  != (IFF_UP|IFF_BROADCAST))
 	continue;
 
-      if (addr) {
-        /* Get its netmask and check that it's on the right subnet */
-        if (ioctl(s, SIOCGIFNETMASK, &ifreq) < 0)
-	    continue;
-        mask = ((struct sockaddr_in *)(void *)&ifreq.ifr_addr)->sin_addr.s_addr;
-        if ((addr->u.ip4.s_addr & mask) != (ina & mask))
-	    continue;
-	/* Is this the best match? */
-	if (mask >= bmask) {
-	    bmask = mask;
-	    bifr = ifr;
-	}
+      /* Get its netmask and check that it's on the right subnet */
+      if (ioctl(s, SIOCGIFNETMASK, &ifreq) < 0)
 	continue;
-      }
+      mask = ((struct sockaddr_in *)(void *)&ifreq.ifr_addr)->sin_addr.s_addr;
+      if (addr && (addr->u.ip4.s_addr & mask) != (ina & mask))
+	continue;
 
       /* OK */
-      bifr = ifr;
       break;
     }
   }
   close(s);
 
   /* Found? */
-  if (bifr == NULL) {
-    Freee(ifs);
+  if (ifr >= ifend) {
+    Freee(MB_UTIL, ifs);
     return(-1);
   }
 
   /* Now scan again looking for a link-level address for this interface */
-  for (ifp = bifr, ifr = ifc.ifc_req; ifr < ifend; ) {
+  for (ifp = ifr, ifr = ifc.ifc_req; ifr < ifend; ) {
     if (strcmp(ifp->ifr_name, ifr->ifr_name) == 0
 	&& ifr->ifr_addr.sa_family == AF_LINK) {
       if (addr == NULL) {
@@ -1449,7 +1467,7 @@ GetEther(struct u_addr *addr, struct sockaddr_dl *hwaddr)
       }
       memcpy(hwaddr, (struct sockaddr_dl *)(void *)&ifr->ifr_addr,
 	sizeof(*hwaddr));
-      Freee(ifs);
+      Freee(MB_UTIL, ifs);
       return(0);
     }
     ifr = (struct ifreq *)(void *)((char *)&ifr->ifr_addr
@@ -1457,60 +1475,8 @@ GetEther(struct u_addr *addr, struct sockaddr_dl *hwaddr)
   }
 
   /* Not found! */
-  Freee(ifs);
+  Freee(MB_UTIL, ifs);
   return(-1);
-}
-
-int
-GetPeerEther(struct u_addr *addr, struct sockaddr_dl *hwaddr)
-{
-	int mib[6];
-	size_t needed;
-	char *lim, *buf, *next;
-	struct rt_msghdr *rtm;
-	struct sockaddr_inarp *sin2;
-	struct sockaddr_dl *sdl;
-	int st, found_entry = 0;
-
-	mib[0] = CTL_NET;
-	mib[1] = PF_ROUTE;
-	mib[2] = 0;
-	mib[3] = addr->family;
-	mib[4] = NET_RT_FLAGS;
-	mib[5] = RTF_LLINFO;
-	if (sysctl(mib, 6, NULL, &needed, NULL, 0) < 0) {
-		Log(LG_ERR, ("route-sysctl-estimate"));
-		return (0);
-	}
-	if (needed == 0)	/* empty table */
-		return 0;
-	buf = NULL;
-	for (;;) {
-		if (buf)
-		    Freee(buf);
-		buf = Malloc(MB_UTIL, needed);
-		st = sysctl(mib, 6, buf, &needed, NULL, 0);
-		if (st == 0 || errno != ENOMEM)
-			break;
-		needed += needed / 8;
-	}
-	if (st == -1) {
-		Log(LG_ERR, ("actual retrieval of routing table"));
-		return (0);
-	}
-	lim = buf + needed;
-	for (next = buf; next < lim; next += rtm->rtm_msglen) {
-		rtm = (struct rt_msghdr *)next;
-		sin2 = (struct sockaddr_inarp *)(rtm + 1);
-		if (addr->u.ip4.s_addr == sin2->sin_addr.s_addr) {
-			sdl = (struct sockaddr_dl *)((char *)sin2 + SA_SIZE(sin2));
-			memcpy(hwaddr, sdl, sdl->sdl_len);
-			found_entry = 1;
-			break;
-		}
-	}
-	Freee(buf);
-	return (found_entry);
 }
 
 /*

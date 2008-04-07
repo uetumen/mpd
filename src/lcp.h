@@ -30,45 +30,37 @@
 
   struct lcpauthproto {
     ushort		proto;
-    u_char		alg;
+    u_char		chap_alg;
     u_char		conf;
   };
   typedef struct lcpauthproto	*LcpAuthProto;
-
-    enum lcp_phase {
-	PHASE_DEAD = 0,
-	PHASE_ESTABLISH,
-	PHASE_AUTHENTICATE,
-	PHASE_NETWORK,
-	PHASE_TERMINATE
-    };
 
   /* Link state */
   struct lcpstate {
 
     /* LCP phase of this link */
-    enum lcp_phase	phase;		/* PPP phase */
+    u_short	phase;			/* PPP phase */
 
     /* Authorization info */
     struct auth	auth;			/* Used during authorization phase */
 
     /* Peers negotiated parameters */
-    LcpAuthProto	peer_protos[LCP_NUM_AUTH_PROTOS];	/* list of acceptable auth-protos */
     u_int32_t	peer_accmap;		/* Characters peer needs escaped */
     u_int32_t	peer_magic;		/* Peer's magic number */
     u_int16_t	peer_mru;		/* Peer's max reception packet size */
     u_int16_t	peer_auth;		/* Auth requested by peer, or zero */
     u_int16_t	peer_mrru;		/* MRRU set by peer, or zero */
-    u_char	peer_alg;		/* Peer's CHAP algorithm */
+    u_char	peer_chap_alg;		/* Peer's CHAP algorithm */
+    LcpAuthProto	peer_protos[LCP_NUM_AUTH_PROTOS];	/* list of acceptable auth-protos */
 
     /* My negotiated parameters */
-    u_char	want_alg;		/* My CHAP algorithm */
-    LcpAuthProto	want_protos[LCP_NUM_AUTH_PROTOS];	/* list of requestable auth-protos */
+    u_char	want_chap_alg;		/* My CHAP algorithm */
     u_int32_t	want_accmap;		/* Control chars I want escaped */
     u_int32_t	want_magic;		/* My magic number */
     u_int16_t	want_mru;		/* My MRU */
     u_int16_t	want_auth;		/* Auth I require of peer, or zero */
     u_int16_t	want_mrru;		/* My MRRU, or zero if no MP */
+    LcpAuthProto	want_protos[LCP_NUM_AUTH_PROTOS];	/* list of requestable auth-protos */
 
     /* More params */
     u_char	want_protocomp:1;	/* I want protocol compression */
@@ -81,12 +73,17 @@
     u_char	peer_shortseq:1;	/* Peer gets ML short seq numbers */
 
     /* Misc */
-    struct discrim	peer_discrim;	/* Peer's discriminator */
     char	peer_ident[64];		/* Peer's LCP ident string */
     uint32_t	peer_reject;		/* Request codes rejected by peer */
     struct fsm	fsm;			/* Finite state machine */
   };
   typedef struct lcpstate	*LcpState;
+
+  #define PHASE_DEAD		0
+  #define PHASE_ESTABLISH	1
+  #define PHASE_AUTHENTICATE	2
+  #define PHASE_NETWORK		3
+  #define PHASE_TERMINATE	4
 
   #define TY_VENDOR		0	/* Vendor specific */
   #define TY_MRU		1	/* Maximum-Receive-Unit */
@@ -124,8 +121,6 @@
  */
 
   extern void	LcpInit(Link l);
-  extern void	LcpInst(Link l, Link lt);
-  extern void	LcpShutdown(Link l);
   extern void	LcpInput(Link l, Mbuf bp);
   extern void	LcpUp(Link l);
   extern void	LcpOpen(Link l);

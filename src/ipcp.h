@@ -34,7 +34,7 @@
     IPCP_CONF_REQSECDNS,
     IPCP_CONF_REQPRINBNS,
     IPCP_CONF_REQSECNBNS,
-    IPCP_CONF_PRETENDIP
+    IPCP_CONF_PRETENDIP,
   };
 
 
@@ -48,8 +48,6 @@
     struct optinfo	options;	/* Configuraion options */
     struct u_range	self_allow;	/* My allowed IP addresses */
     struct u_range	peer_allow;	/* His allowed IP addresses */
-    char		self_ippool[LINK_MAX_NAME];
-    char		ippool[LINK_MAX_NAME];
     struct in_addr	peer_dns[2];	/* DNS servers for peer to use */
     struct in_addr	peer_nbns[2];	/* NBNS servers for peer to use */
   };
@@ -64,9 +62,6 @@
     struct u_range	self_allow;	/* My allowed IP addresses */
     struct u_range	peer_allow;	/* His allowed IP addresses */
 
-    u_char		self_ippool_used;
-    u_char		ippool_used;
-
     struct ipcpvjcomp	peer_comp;	/* Peer's IP compression config */
     struct ipcpvjcomp	want_comp;	/* My IP compression config */
 
@@ -76,6 +71,7 @@
     uint32_t		peer_reject;	/* Request codes rejected by peer */
 
     struct fsm		fsm;
+    u_char		ipDynamic:1;	/* Peer's IP was alloc dynamically */
   };
   typedef struct ipcpstate	*IpcpState;
 
@@ -90,13 +86,12 @@
  */
 
   extern void	IpcpInit(Bund b);
-  extern void	IpcpInst(Bund b, Bund bt);
   extern void	IpcpUp(Bund b);
   extern void	IpcpDown(Bund b);
   extern void	IpcpOpen(Bund b);
   extern void	IpcpClose(Bund b);
-  extern int	IpcpOpenCmd(Context ctx);
-  extern int	IpcpCloseCmd(Context ctx);
+  extern void	IpcpOpenCmd(Context ctx);
+  extern void	IpcpCloseCmd(Context ctx);
   extern void	IpcpInput(Bund b, Mbuf bp);
   extern void	IpcpDefAddress(void);
   extern int	IpcpStat(Context ctx, int ac, char *av[], void *arg);

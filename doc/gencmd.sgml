@@ -12,39 +12,6 @@
 
 <descrip>
 
-<tag><tt>create bundle [ template | static ] <em>name</em> [ <em>template</em> ] </tt>
-</tag>
-
-Create new bundle with specified name, optionally based on specified template.
-If 'template' option is specified bundle will not operate itself,
-but will be used to create new bundles on demand.
-If 'static' option is specified, it will be a permanent bundle which will not
-disapear after operation complete.
-Maximum name length is 10 characters for templates and 15 characters
-for the rest of bundles.
-
-<tag><tt>create link [ template | static ] <em>name</em> ( <em>type</em> | <em>template</em> ) </tt>
-</tag>
-
-Create new link with specified name and type, optionally based on
-specified template.
-If 'template' option is specified link will not operate itself,
-but will be used to create new links on demand.
-If 'static' option is specified, it will be a permanent link which will not
-disapear after operation complete.
-Maximum name length is 10 characters for templates and 15 characters
-for the rest of links.
-
-<tag><tt>
-<newline>destroy bundle [ <em>name</em> ]
-<newline>destroy link [ <em>name</em> ]
-</tt>
-</tag>
-
-Destroy existing link/bundle.
-Note, that if link is in use it may not disapear after command return,
-it may take some time to properly close it.
-
 <tag><tt>bundle [ <em>name</em> ] </tt>
 </tag>
 
@@ -76,11 +43,17 @@ changed, to the first phys of the repeater. If no
 of the defined repeaters and their constituent physes.
 The new phys will be reflected in the prompt.
 
-<tag><tt>iface [ <em>iface</em> ] </tt>
+<tag><tt>phys [ <em>name</em> ] </tt>
 </tag>
 
-This command changes the currenly active bundle to the bundle using
-interface <tt><em>iface</em></tt>.
+This command changes the currenly active phys to the phys named
+<tt><em>name</em></tt>. If this phys does not belong to
+the currently active bundle/repeater, then the currently active 
+bundle/repeater is changed to the bundle/repeater that owns 
+phys <tt><em>name</em></tt>. If no
+<tt><em>name</em></tt> is given, this command lists all
+of the defined physes and their bundles/repeaters.
+The new phys will be reflected in the prompt.
 
 <tag><tt>msession [ <em>msesid</em> ] </tt>
 </tag>
@@ -101,6 +74,7 @@ This command causes mpd to read the entry for
 <tt><em>configuration</em></tt> out of <tt>mpd.conf</tt> and
 execute the corresponding commands, just
 as if <tt><em>configuration</em></tt> had been specified on the command line.
+Execution stops at the first blank line.
 
 <tag><tt>show [ <em>item</em> ] </tt>
 </tag>
@@ -116,16 +90,19 @@ Show status information about the currently active bundle.
 Show status information about the currently active link.
 <tag>repeater</tag>
 Show status information about the currently active repeater.
+<tag>phys</tag>
+Show status information about the currently active physical device.
 <tag>iface</tag>
 Show status information about the interface layer associated
 with the currently active bundle.
 <tag>routes</tag>
 Show the current IP routing table.
+<tag>mp</tag>
+Show status information about the multi-link
+protocol associated with the currently active bundle.
 <tag>ipcp</tag>
 Show status information about the IP control
 protocol associated with the currently active bundle.
-<tag>ippool</tag>
-Show status information about configures IP pools.
 <tag>ccp</tag>
 Show status information about the compression control
 protocol associated with the currently active bundle.
@@ -147,29 +124,18 @@ Show the device types supported by this version of mpd.
 <tag>layers</tag>
 Show the names of the layers that are valid as arguments to the <tt>open</tt>
 and <tt>close</tt> commands.
-<tag>l2tp</tag>
-Show active L2TP tunnels.
-<tag>pptp</tag>
-Show active PPTP tunnels.
 <tag>events</tag>
 Show all pending events (for debugging mpd).
 <tag>mem</tag>
 Show distribution of dynamically allocated memory (for debugging mpd).
 <tag>version</tag>
 Show running mpd version and supported features.
-<tag>sessions [ <em>param</em> <em>value</em> ]</tag>
-Show active sessions conforming specified param/value.
-Available params: iface, ip, bundle, msession, link, session, user, peer.
-<tag>customer</tag>
-Show active customer details.
 <tag>summary</tag>
 Show status summary
 <tag>console</tag>
 Show console summary
 <tag>web</tag>
 Show web server summary
-<tag>user</tag>
-Show defined console users
 
 </descrip>
 
@@ -181,84 +147,6 @@ details are contained in later sections in this chapter.
 The valid completions for <tt>set</tt> are:
 
 <descrip>
-
-<tag><tt>
-set global startrule <em>num</em>
-<newline>set global startpipe <em>num</em>
-<newline>set global startqueue <em>num</em>
-<newline>set global starttable <em>num</em>
-</tt></tag>
-
-These commands define initial values for autonumeration of ipfw
-rules, pipes, queues and tables. 
-Defaults are 10000, 10000, 10000 and 32 accordingly.
-
-<tag><tt>
-set global pptptimeout <em>seconds</em>
-<newline>set global l2tptimeout <em>seconds</em>
-</tt></tag>
-
-Set PPTP/L2TP tunnels inactivity shutdown delay.
-
-Default is 10 seconds.
-
-<tag><tt>
-set global pptplimit <em>num</em>
-<newline>set global l2tplimit <em>num</em>
-</tt></tag>
-
-Limit maximum number of calls per PPTP/L2TP tunnel. When limit
-is reached new tunnel will be created for the next call.
-This option violates PPTP RFC which requires only one tunnel existing
-for the PAC/PNS pair, but it can increase busy tunnels stability.
-
-Defaults are 100 (10 for L2TP before FreeBSD 6.3-STABLE and 7.0-RELEASE).
-
-<tag><tt>
-set global max-children <em>num</em>
-</tt></tag>
-
-This option specifies global maximum number of links, created using
-template, that could exist at the same time.
-
-The default value is 10000.
-
-<tag><tt>
-set global enable <em>option ...</em>
-<newline>set global disable <em>option ...</em>
-</tt></tag>
-
-These commands configure various global options.
-
-<p>
-The <tt><bf>enable</bf></tt> and <tt><bf>disable</bf></tt> commands
-determine whether or not we want the corresponding option.
-
-The options available are:
-
-<tag><tt>one-shot</tt></tag>
-
-This option forces mpd terminate itself after the last link disappear.
-Link templates are not counted as links.
-
-The default is disable.
-
-<tag><tt>tcp-wrapper</tt></tag>
-
-With this option mpd uses <tt>/etc/hosts.allow</tt> everytime a
-connection is made from the client. This is useful if you would
-like to restrict access to mpd. This option affects all TCP
-connections, including PPTP and the TCP device layer.
-
-The default is disable.
-
-<tag><tt>
-set user <em>username</em> <em>password</em>
-[<em>admin</em>|<em>operator</em>|<em>user</em>]
-</tt></tag>
-
-This command configures which users are allowed to connect to the console.
-It may be invoked multiple times with different usernames.
 
 <tag><tt>set bundle ...</tt></tag>
 Set bundle layer configuration parameters for the currently active bundle.
@@ -307,6 +195,7 @@ for the currently active link, which must have type <bf>pppoe</bf>.
 Sets console specific configuration parameters
 <tag><tt>set web ...</tt></tag>
 Sets web server specific configuration parameters
+
 </descrip>
 
 <tag><tt>open [ <em>layer</em> ] </tt>
@@ -341,7 +230,7 @@ This is normally opened and closed automatically.
 Link control protocol FSM. This is default layer for open/close commands.
 Opening of this layer initiates outgoing call by this link.
 
-<tag>device</tag>
+<tag>phys</tag>
 
 Device layer.
 This is normally opened and closed automatically.
@@ -379,21 +268,27 @@ categories. Those with a * are turned on by default:
 <descrip>
 <tag>auth*</tag>	Link authentication events
 <tag>bund*</tag>	Bundle layer events
-<tag>ccp*</tag>		Compression events and negotiation
+<tag>ccp</tag>		Compression events and negotiation
+<tag>ccp2</tag>		Compression more verbosity
+<tag>ccp3</tag>		Compression even more verbosity
 <tag>chat*</tag>	Modem chat script
+<tag>chat2</tag>	Modem chat script more verbosity. Very useful when
+			debugging chat scripts.
 <tag>console*</tag>	Log to the console as well as the log file
 <tag>echo</tag>		Echo/reply packets for all FSM's
-<tag>ecp*</tag>		Encryption events and negotiation
 <tag>frame</tag>	Dump all frames transmitted and received
 <tag>fsm*</tag>		All FSM events (except echo and resets)
 <tag>iface*</tag>	Interface layer events
 <tag>ipcp*</tag>	IP control protocol events and negotiation
-<tag>ipv6cp*</tag>	IPv6 control protocol events and negotiation
 <tag>lcp*</tag>		Link control protocol events and negotiation
 <tag>link*</tag>	Link layer events
+<tag>mp</tag>		Multi-link events and negotiation
+<tag>mp2</tag>		Multi-link more verbosity
 <tag>phys*</tag>	Device layer events
+<tag>pptp*</tag>	PPTP device layer high level events
+<tag>pptp2</tag>	PPTP more verbosity
+<tag>pptp3</tag>	PPTP even more verbosity
 <tag>radius*</tag>	RADIUS authentication events
-<tag>rep*</tag>		Repeater layer events
 </descrip>
 
 <tag><tt>help [ <em>command</em> ] </tt>
@@ -401,6 +296,11 @@ categories. Those with a * are turned on by default:
 
 This gives a brief description of the supplied command, or if
 an incomplete command is given, lists the available alternatives.
+
+<tag><tt>null</tt>
+</tag>
+
+This command does nothing.
 
 <tag><tt>exit</tt>
 </tag>

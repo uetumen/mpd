@@ -221,7 +221,7 @@ __BEGIN_DECLS
  *	peer_id	Unique identifier for peer (used for tie-breakers)
  *	initiate Whether to send a SCCRQ or just wait for one
  *	nodep	Pointer to netgraph node ID variable
- *	hook	Buffer for hook on L2TP netgraph node (size >= NG_HOOKSIZ)
+ *	hook	Buffer for hook on L2TP netgraph node (size >= NG_HOOKLEN + 1)
  *	avps	List of AVP's to include in the associated
  *		Start-Control-Connection-Request or
  *		Start-Control-Connection-Reply control message.
@@ -279,15 +279,6 @@ extern void	ppp_l2tp_ctrl_shutdown(struct ppp_l2tp_ctrl *ctrl,
  *	ctrlp	Pointer to the control connection descriptor pointer
  */
 extern void	ppp_l2tp_ctrl_destroy(struct ppp_l2tp_ctrl **ctrlp);
-
-/*
- * Returns control connection status.
- *
- * Arguments:
- *	ctrlp	Pointer to the control connection descriptor pointer
- */
-extern char *	ppp_l2tp_ctrl_stats(struct ppp_l2tp_ctrl *ctrl,
-			char *buf, size_t buf_len);
 
 /*
  * This function initiates a new session, either an as an incoming or
@@ -395,11 +386,6 @@ extern void	ppp_l2tp_ctrl_get_hook(struct ppp_l2tp_ctrl *ctrl,
  */
 extern void	ppp_l2tp_sess_get_hook(struct ppp_l2tp_sess *sess,
 			ng_ID_t *nodep, const char **hookp);
-
-/*
- * Informs that hook has been connected and temporal tee can be shutted down.
- */
-extern void	ppp_l2tp_sess_hooked(struct ppp_l2tp_sess *sess);
 
 __END_DECLS
 

@@ -16,48 +16,18 @@
 /*
  * Malloc()
  *
- * Replacement for the usual malloc()
+ * Replacement for the ususal malloc()
  */
 
 void *
-Malloc(const char *type, size_t size)
+Malloc(const char *type, int size)
 {
-    const char	**memory;
+  Mbuf	bp;
 
-    if ((memory = MALLOC(type, sizeof(char *) + size)) == NULL) {
-	Perror("Malloc: malloc");
-	DoExit(EX_ERRDEAD);
-    }
-
-    memory[0] = type;
-    bzero(memory + 1, size);
-    return (memory + 1);
-}
-
-/*
- * Mdup()
- *
- * Malloc() + memcpy()
- */
-
-void *
-Mdup(const char *type, const void *src, size_t size)
-{
-    const char	**memory;
-    if ((memory = MALLOC(type, sizeof(char *) + size)) == NULL) {
-	Perror("Mdup: malloc");
-	DoExit(EX_ERRDEAD);
-    }
-
-    memory[0] = type;
-    memcpy(memory + 1, src, size);
-    return(memory + 1);
-}
-
-void *
-Mstrdup(const char *type, const void *src)
-{
-    return (Mdup(type, src, strlen(src) + 1));
+  if ((bp = mballoc(type, size)) == NULL)
+    return (NULL);
+  memset(MBDATAU(bp), 0, size);
+  return(MBDATAU(bp));
 }
 
 /*
@@ -67,13 +37,15 @@ Mstrdup(const char *type, const void *src)
  */
 
 void
-Freee(void *ptr)
+Freee(const char *type, const void *ptr)
 {
-    if (ptr) {
-	char	**memory = ptr;
-	memory--;
-	FREE(memory[0], memory);
-    }
+  Mbuf	bp;
+
+  if (ptr == NULL)
+    return;
+
+  bp = ((Mbuf) ptr - 1);
+  mbfree(bp);
 }
 
 /*
@@ -83,34 +55,47 @@ Freee(void *ptr)
  */
 
 Mbuf
-mballoc(int size)
+mballoc(const char *type, int size)
 {
-    u_char	*memory;
-    int		amount, osize;
-    Mbuf	bp;
+  u_char	*memory;
+  u_long	amount;
+  Mbuf		bp;
 
-    assert(size >= 0);
+  amount = sizeof(*bp) + size;
 
-    if (size == 0) {
-	osize = 64 - sizeof(*bp);
-    } else if (size < 512)
-	osize = ((size - 1) / 32 + 1) * 64 - sizeof(*bp);
-    else
-	osize = ((size - 1) / 64 + 1) * 64 + 512 - sizeof(*bp);
-    amount = sizeof(*bp) + osize;
+  if ((memory = MALLOC(type, amount)) == NULL)
+  {
+    Perror("mballoc: malloc");
+    DoExit(EX_ERRDEAD);
+  }
 
-    if ((memory = MALLOC(MB_MBUF, amount)) == NULL) {
-	Perror("mballoc: malloc");
-	DoExit(EX_ERRDEAD);
-    }
+  /* Put mbuf at front of memory region */
 
-    /* Put mbuf at front of memory region */
-    bp = (Mbuf)(void *)memory;
-    bp->size = osize;
-    bp->offset = (osize - size) / 2;
-    bp->cnt = 0;
+  bp = (Mbuf)(void *)memory;
+  bp->base = memory + sizeof(*bp);
+  bp->size = bp->cnt = size;
+  bp->offset = 0;
+  bp->type = type;
+  bp->next = NULL;
 
-    return (bp);
+  return(bp);
+}
+
+/*
+ * mbufyse()
+ *
+ * Cover buffer with mbuf header w/o data copying. Returns new Mbuf.
+ */
+
+Mbuf
+mbufise(const char *type, u_char *buf, int len)
+{
+  Mbuf	bp;
+
+  bp = mballoc(type, 0);
+  bp->base = buf;
+  bp->size = bp->cnt = len;
+  return(bp);
 }
 
 /*
@@ -119,11 +104,27 @@ mballoc(int size)
  * Free head of chain, return next
  */
 
-void
+Mbuf
 mbfree(Mbuf bp)
 {
-    if (bp)
-	FREE(MB_MBUF, bp);
+  Mbuf	next;
+
+  if (bp)
+  {
+
+   /* Sanity checks */
+
+    assert(bp->base);
+//    assert(bp == (Mbuf)(void *)(bp->base - sizeof(*bp)));
+
+   /* Free it */
+
+    next = bp->next;
+    bp->base = NULL;
+    FREE(bp->type, bp);
+    return(next);
+  }
+  return(NULL);
 }
 
 /*
@@ -137,146 +138,147 @@ mbfree(Mbuf bp)
  */
 
 Mbuf
-mbread(Mbuf bp, void *buf, int cnt)
+mbread(Mbuf bp, u_char *buf, int remain, int *nreadp)
 {
-    int nread;
+  int	nread, total;
 
-    assert(cnt >= 0);
-
-    if (!bp)
-	return (NULL);
-    if (cnt > bp->cnt)
-	nread = bp->cnt;
+  for (total = 0; bp && remain > 0; total += nread)
+  {
+    if (remain > bp->cnt)
+      nread = bp->cnt;
     else
-        nread = cnt;
+      nread = remain;
     memcpy(buf, MBDATAU(bp), nread);
+    buf += nread;
+    remain -= nread;
     bp->offset += nread;
     bp->cnt -= nread;
-    if (bp->cnt == 0) {
-    	mbfree(bp);
-	return (NULL);
-    }
-    return(bp);
+    while (bp != NULL && bp->cnt == 0)
+      bp = mbfree(bp);
+  }
+  if (nreadp != NULL)
+    *nreadp = total;
+  return(bp);
 }
 
 /*
  * mbcopy()
  *
- * Copy contents of an mbuf chain into buffer, up to "cnt" bytes.
+ * Copy contents of an mbuf chain into buffer, up to "remain" bytes.
  * This does not consume any of the mbuf chain. Returns number copied.
  */
 
 int
-mbcopy(Mbuf bp, int offset, void *buf, int cnt)
+mbcopy(Mbuf bp, u_char *buf, int remain)
 {
-    int nread;
+  int	nread, total;
 
-    assert(offset >= 0);
-    assert(cnt >= 0);
-
-    if (!bp)
-	return (0);
-    if (offset >= bp->cnt)
-	return (0);
-
-    if (cnt > bp->cnt - offset)
-	nread = bp->cnt - offset;
+  for (total = 0; bp && remain > 0; total += nread, bp = bp->next)
+  {
+    if (remain > bp->cnt)
+      nread = bp->cnt;
     else
-        nread = cnt;
-    memcpy(buf, MBDATAU(bp) + offset, nread);
-    return (nread);
+      nread = remain;
+    memcpy(buf, MBDATAU(bp), nread);
+    buf += nread;
+    remain -= nread;
+  }
+  return(total);
 }
 
 /*
- * mbcopyback()
+ * mbwrite()
  *
  * Write bytes from buffer into an mbuf chain. Returns first argument.
  */
 
 Mbuf
-mbcopyback(Mbuf bp, int offset, const void *buf, int cnt)
+mbwrite(Mbuf bp, const u_char *buf, int len)
 {
-    int		b, e;
+  Mbuf	wp;
+  int	chunk;
 
-    if (!bp) {
-	if (offset < 0)
-	    offset = 0;
-	bp = mballoc(offset + cnt);
-	memcpy(MBDATAU(bp) + offset, buf, cnt);
-	bp->cnt = offset + cnt;
-	return (bp);
-    }
-
-    b = (offset > 0) ? 0 : -offset;
-    e = (offset + cnt > bp->cnt) ? offset + cnt - bp->cnt : 0;
-    
-    if (b + bp->cnt + e > bp->size) {
-	Mbuf	nbp = mballoc(b + bp->cnt + e);
-	memcpy(MBDATAU(nbp) + b, MBDATAU(bp), bp->cnt);
-	nbp->cnt = bp->cnt;
-	mbfree(bp);
-	bp = nbp;
-    } else if ((b > bp->offset) || (bp->offset + bp->cnt + e > bp->size)) {
-	int	noff = (bp->size - (b + bp->cnt + e)) / 2;
-	memmove(MBDATAU(bp) - bp->offset + noff + b, MBDATAU(bp), bp->cnt);
-	bp->offset = noff;
-    } else {
-	bp->offset -= b;
-    }
-    bp->cnt = b + bp->cnt + e;
-    memcpy(MBDATAU(bp) + offset + b, buf, cnt);
-    return(bp);
+  for (wp = bp; wp && len > 0; wp = wp->next) {
+    chunk = (len > wp->cnt) ? wp->cnt : len;
+    memcpy(MBDATAU(wp), buf, chunk);
+    buf += chunk;
+    len -= chunk;
+  }
+  return(bp);
 }
 
 /*
  * mbtrunc()
  *
- * Truncate mbuf to total of "max" bytes. If max is zero
+ * Truncate mbuf chain to total of "max" bytes. If max is zero
  * then a zero length mbuf is returned (rather than a NULL mbuf).
  */
 
 Mbuf
 mbtrunc(Mbuf bp, int max)
 {
-    assert(max >= 0);
+  Mbuf	wp;
+  int	sum;
 
-    if (!bp)
-	return (NULL);
+/* Find mbuf in chain where truncation point happens */
 
-    if (bp->cnt > max)
-	bp->cnt = max;
+  for (sum = 0, wp = bp;
+    wp && sum + wp->cnt <= max;
+    sum += wp->cnt, wp = wp->next);
 
-    return (bp);
+/* Shorten this mbuf and nuke others after this one */
+
+  if (wp)
+  {
+    wp->cnt = max - sum;
+    PFREE(wp->next);
+  }
+
+/* Done */
+
+  return(bp);
 }
 
 /*
- * mbadj()
+ * mbunify()
  *
- * Truncate mbuf cutting "cnt" bytes from begin or end.
+ * Collect all of a chain into a single mbuf
+ *
+ * This should ALWAYS be called like this:
+ *	bp = mbunify(bp);
  */
 
 Mbuf
-mbadj(Mbuf bp, int cnt)
+mbunify(Mbuf bp)
 {
-    if (!bp)
-	return (NULL);
+  Mbuf	new;
+  int	len;
 
-    if (cnt >= 0) {
-	if (bp->cnt > cnt) {
-	    bp->cnt -= cnt;
-	    bp->offset += cnt;
-	} else {
-	    bp->cnt = 0;
-	}
-    } else {
-	if (bp->cnt > -cnt) {
-	    bp->cnt -= -cnt;
-	} else {
-	    bp->cnt = 0;
-	}
-    }
+  if (!bp || !bp->next)
+    return(bp);
+  new = mballoc(bp->type, len = plength(bp));
+  assert(mbread(bp, MBDATA(new), len, NULL) == NULL);
+  return(new);
+}
 
-    return (bp);
+/*
+ * mbclean()
+ *
+ * Remove zero (and negative!?) length mbufs from a chain
+ */
+
+Mbuf
+mbclean(Mbuf bp)
+{
+  Mbuf	*pp;
+
+  pp = &bp;
+  while (*pp)
+    if ((*pp)->cnt <= 0)
+      *pp = mbfree(*pp);
+    else
+      pp = &(*pp)->next;
+  return(bp);
 }
 
 /*
@@ -284,7 +286,7 @@ mbadj(Mbuf bp, int cnt)
  *
  * Break an mbuf chain after "cnt" bytes.
  * Return the newly created mbuf chain that
- * starts after "cnt" bytes. If MBLEN(bp) <= cnt,
+ * starts after "cnt" bytes. If plength(bp) <= cnt,
  * then returns NULL.  The first part of
  * the chain remains pointed to by "bp".
  */
@@ -292,22 +294,38 @@ mbadj(Mbuf bp, int cnt)
 Mbuf
 mbsplit(Mbuf bp, int cnt)
 {
-    Mbuf	nbp;
-    
-    assert(cnt >= 0);
+  int	seen, extra, tail;
+  Mbuf	mextra, next;
 
-    if (!bp)
+/* Find mbuf in chain containing the breakpoint */
+
+  for (seen = 0; bp && seen + bp->cnt < cnt; seen += bp->cnt, bp = bp->next);
+  if (bp == NULL)
+    return(NULL);
+
+/* "tail" is how much stays in first part, "extra" goes into second part */
+
+  tail = cnt - seen;
+  extra = bp->cnt - tail;
+
+/* Split in the middle of "bp" if necessary, creating "mextra" */
+
+  if (extra > 0)
+  {
+    if ((mextra = mballoc(bp->type, extra)) == NULL)
 	return (NULL);
 
-    if (MBLEN(bp) <= cnt)
-	return (NULL);
+    memcpy(MBDATAU(mextra), MBDATAU(bp) + tail, extra);
+    bp->cnt = tail;
+    mextra->next = bp->next;
+    bp->next = mextra;
+  }
 
-    nbp = mballoc(bp->cnt - cnt);
-    memcpy(MBDATAU(nbp), MBDATAU(bp) + cnt, bp->cnt - cnt);
-    nbp->cnt = bp->cnt - cnt;
-    bp->cnt = cnt;
+/* Now break point is just after "bp", so break the chain there */
 
-    return(nbp);
+  next = bp->next;
+  bp->next = NULL;
+  return(next);
 }
 
 /*
@@ -317,32 +335,7 @@ mbsplit(Mbuf bp, int cnt)
 int
 MemStat(Context ctx, int ac, char *av[], void *arg)
 {
-    struct typed_mem_stats stats;
-    int		i;
-    u_int	total_allocs = 0;
-    u_int	total_bytes = 0;
-
-    if (typed_mem_usage(&stats))
-	Error("typed_mem_usage() error");
-    
-    /* Print header */
-    Printf("   %-28s %10s %10s\r\n", "Type", "Count", "Total");
-    Printf("   %-28s %10s %10s\r\n", "----", "-----", "-----");
-
-    for (i = 0; i < stats.length; i++) {
-	struct typed_mem_typestats *type = &stats.elems[i];
-
-	Printf("   %-28s %10u %10lu\r\n",
-	    type->type, (int)type->allocs, (u_long)type->bytes);
-	total_allocs += type->allocs;
-	total_bytes += type->bytes;
-    }
-    /* Print totals */
-    Printf("   %-28s %10s %10s\r\n", "", "-----", "-----");
-    Printf("   %-28s %10lu %10lu\r\n",
-        "Totals", total_allocs, total_bytes);
-
-    structs_free(&typed_mem_stats_type, NULL, &stats);
-    return(0);
+  typed_mem_dump(stdout);
+  return(0);
 }
 

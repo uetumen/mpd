@@ -36,28 +36,27 @@
 #define PPPOE_MTU		1492	/* allow room for PPPoE overhead */
 #define PPPOE_MRU		1492
 
+#define PPPOE_REOPEN_PAUSE	5
 #define PPPOE_CONNECT_TIMEOUT	9
 
 #define ETHER_DEFAULT_HOOK	NG_ETHER_HOOK_ORPHAN
 
 #define PPPOE_MAXPARENTIFS	1024
 
-#define MAX_PATH		64	/* XXX should be NG_PATHSIZ */
+#define MAX_PATH		64	/* XXX should be NG_PATHLEN */
 #define MAX_SESSION		64	/* max length of PPPoE session name */
 
 /* Per link private info */
 struct pppoeinfo {
 	char		path[MAX_PATH];		/* PPPoE node path */
-	char		hook[NG_HOOKSIZ];	/* hook on that node */
+	char		hook[NG_HOOKLEN + 1];	/* hook on that node */
 	char		session[MAX_SESSION];	/* session name */
 	char		acname[PPPOE_SERVICE_NAME_SIZE];	/* AC name */
 	u_char		peeraddr[6];		/* Peer MAC address */
-	char		real_session[MAX_SESSION]; /* real session name */
 	u_char		incoming;		/* incoming vs. outgoing */
 	u_char		opened;			/* PPPoE opened by phys */
 	struct optinfo	options;
 	struct PppoeIf  *PIf;			/* pointer on parent ng_pppoe info */
-	struct PppoeList *list;
 	struct pppTimer	connectTimer;		/* connection timeout timer */
 };
 typedef struct pppoeinfo	*PppoeInfo;
@@ -68,7 +67,14 @@ static u_char gNgEtherLoaded = FALSE;
 enum {
 	SET_IFACE,
 	SET_SESSION,
-	SET_ACNAME
+	SET_ACNAME,
+	SET_ENABLE,
+	SET_DISABLE,
+};
+
+enum {
+	PPPOE_CONF_ORIGINATE,	/* allow originating connections to peer */
+	PPPOE_CONF_INCOMING,	/* allow accepting connections from peer */
 };
 
 /*
@@ -101,31 +107,21 @@ enum {
  * INTERNAL FUNCTIONS
  */
 
-static int	PppoeInit(Link l);
-static int	PppoeInst(Link l, Link lt);
-static void	PppoeOpen(Link l);
-static void	PppoeClose(Link l);
-static void	PppoeShutdown(Link l);
-static int	PppoePeerAddr(Link l, void *buf, size_t buf_len);
-static int	PppoePeerMacAddr(Link l, void *buf, size_t buf_len);
-static int	PppoePeerIface(Link l, void *buf, size_t buf_len);
-static int	PppoeCallingNum(Link l, void *buf, size_t buf_len);
-static int	PppoeCalledNum(Link l, void *buf, size_t buf_len);
+static int	PppoeInit(PhysInfo p);
+static void	PppoeOpen(PhysInfo p);
+static void	PppoeClose(PhysInfo p);
+static void	PppoeShutdown(PhysInfo p);
+static int	PppoePeerAddr(PhysInfo p, void *buf, int buf_len);
+static int	PppoeCallingNum(PhysInfo p, void *buf, int buf_len);
+static int	PppoeCalledNum(PhysInfo p, void *buf, int buf_len);
 static void	PppoeCtrlReadEvent(int type, void *arg);
 static void	PppoeConnectTimeout(void *arg);
 static void	PppoeStat(Context ctx);
 static int	PppoeSetCommand(Context ctx, int ac, char *av[], void *arg);
-static int	PppoeOriginated(Link l);
-static int	PppoeIsSync(Link l);
-static void	PppoeGetNode(Link l);
-static void	PppoeReleaseNode(Link l);
-static int 	PppoeListen(Link l);
-static int 	PppoeUnListen(Link l);
-static void	PppoeNodeUpdate(Link l);
-static void	PppoeListenEvent(int type, void *arg);
-static int 	CreatePppoeNode(struct PppoeIf *PIf, const char *path, const char *hook);
-
-static void	PppoeDoClose(Link l);
+static int	PppoeOriginated(PhysInfo p);
+static int	PppoeIsSync(PhysInfo p);
+static void	PppoeNodeUpdate(PhysInfo p);
+static void	PppoeListenUpdate(void *arg);
 
 /*
  * GLOBAL VARIABLES
@@ -133,33 +129,32 @@ static void	PppoeDoClose(Link l);
 
 const struct phystype gPppoePhysType = {
     .name		= "pppoe",
-    .descr		= "PPP over Ethernet",
+    .minReopenDelay 	= PPPOE_REOPEN_PAUSE,
     .mtu		= PPPOE_MTU,
     .mru		= PPPOE_MRU,
-    .tmpl		= 1,
     .init		= PppoeInit,
-    .inst		= PppoeInst,
     .open		= PppoeOpen,
     .close		= PppoeClose,
-    .update		= PppoeNodeUpdate,
     .shutdown		= PppoeShutdown,
     .showstat		= PppoeStat,
     .originate		= PppoeOriginated,
     .issync		= PppoeIsSync,
     .peeraddr		= PppoePeerAddr,
-    .peermacaddr	= PppoePeerMacAddr,
-    .peeriface		= PppoePeerIface,
     .callingnum		= PppoeCallingNum,
     .callednum		= PppoeCalledNum,
 };
 
 const struct cmdtab PppoeSetCmds[] = {
-      { "iface {name}",		"Set ethernet interface to use",
-	  PppoeSetCommand, NULL, 2, (void *)SET_IFACE },
-      { "service {name}",	"Set PPPoE session name",
-	  PppoeSetCommand, NULL, 2, (void *)SET_SESSION },
-      { "acname {name}",	"Set PPPoE access concentrator name",
-	  PppoeSetCommand, NULL, 2, (void *)SET_ACNAME },
+      { "iface ifacename",	"Set ethernet interface to use",
+	  PppoeSetCommand, NULL, (void *)SET_IFACE },
+      { "service string",	"Set PPPoE session name",
+	  PppoeSetCommand, NULL, (void *)SET_SESSION },
+      { "acname string",	"Set PPPoE access concentrator name",
+	  PppoeSetCommand, NULL, (void *)SET_ACNAME },
+      { "enable [opt ...]",		"Enable option",
+	  PppoeSetCommand, NULL, (void *)SET_ENABLE },
+      { "disable [opt ...]",		"Disable option",
+	  PppoeSetCommand, NULL, (void *)SET_DISABLE },
       { NULL },
 };
 
@@ -167,25 +162,26 @@ const struct cmdtab PppoeSetCmds[] = {
  * INTERNAL VARIABLES 
  */
 
-struct PppoeList {
-    char	session[MAX_SESSION];
-    int		refs;
-    SLIST_ENTRY(PppoeList)	next;
-};
-
 struct PppoeIf {
     char	ifnodepath[MAX_PATH];
-    ng_ID_t	node_id;		/* pppoe node id */
-    int		refs;
+    char	session[MAX_SESSION];
+    int 	listen;
     int		csock;                  /* netgraph Control socket */
     int		dsock;                  /* netgraph Data socket */
     EventRef	ctrlEvent;		/* listen for ctrl messages */
     EventRef	dataEvent;		/* listen for data messages */
-    SLIST_HEAD(, PppoeList) list;
 };
-
 int PppoeIfCount=0;
 struct PppoeIf PppoeIfs[PPPOE_MAXPARENTIFS];
+
+int PppoeListenUpdateSheduled=0;
+struct pppTimer PppoeListenUpdateTimer;
+
+static struct confinfo	gConfList[] = {
+    { 0,	PPPOE_CONF_ORIGINATE,	"originate"	},
+    { 0,	PPPOE_CONF_INCOMING,	"incoming"	},
+    { 0,	0,			NULL		},
+};
 
 /*
  * PppoeInit()
@@ -193,40 +189,19 @@ struct PppoeIf PppoeIfs[PPPOE_MAXPARENTIFS];
  * Initialize device-specific data in physical layer info
  */
 static int
-PppoeInit(Link l)
+PppoeInit(PhysInfo p)
 {
 	PppoeInfo pe;
 
 	/* Allocate private struct */
-	pe = (PppoeInfo)(l->info = Malloc(MB_PHYS, sizeof(*pe)));
+	pe = (PppoeInfo)(p->info = Malloc(MB_PHYS, sizeof(*pe)));
 	pe->incoming = 0;
 	pe->opened = 0;
 	snprintf(pe->path, sizeof(pe->path), "undefined:");
 	snprintf(pe->hook, sizeof(pe->hook), "undefined");
 	snprintf(pe->session, sizeof(pe->session), "*");
 	memset(pe->peeraddr, 0x00, ETHER_ADDR_LEN);
-	strlcpy(pe->real_session, pe->session, sizeof(pe->real_session));
 	pe->PIf = NULL;
-
-	/* Done */
-	return(0);
-}
-
-/*
- * PppoeInst()
- *
- * Instantiate device
- */
-static int
-PppoeInst(Link l, Link lt)
-{
-	PppoeInfo pi;
-	l->info = Mdup(MB_PHYS, lt->info, sizeof(struct pppoeinfo));
-	pi = (PppoeInfo)l->info;
-	if (pi->PIf)
-	    pi->PIf->refs++;
-	if (pi->list)
-	    pi->list->refs++;
 
 	/* Done */
 	return(0);
@@ -236,121 +211,127 @@ PppoeInst(Link l, Link lt)
  * PppoeOpen()
  */
 static void
-PppoeOpen(Link l)
+PppoeOpen(PhysInfo p)
 {
-	PppoeInfo pe = (PppoeInfo)l->info;
+	PppoeInfo pe = (PppoeInfo)p->info;
 	struct ngm_connect	cn;
 	union {
 	    u_char buf[sizeof(struct ngpppoe_init_data) + MAX_SESSION];
 	    struct ngpppoe_init_data	poeid;
 	} u;
 	struct ngpppoe_init_data *const idata = &u.poeid;
-	char path[NG_PATHSIZ];
-	char session_hook[NG_HOOKSIZ];
+	char path[NG_PATHLEN + 1];
+	char session_hook[NG_HOOKLEN + 1];
 
 	pe->opened=1;
 
-	Disable(&l->conf.options, LINK_CONF_ACFCOMP);	/* RFC 2516 */
-	Deny(&l->conf.options, LINK_CONF_ACFCOMP);	/* RFC 2516 */
+	if (p->link) {
+	    Disable(&p->link->conf.options, LINK_CONF_ACFCOMP);	/* RFC 2516 */
+	    Deny(&p->link->conf.options, LINK_CONF_ACFCOMP);	/* RFC 2516 */
+	}
 
-	snprintf(session_hook, sizeof(session_hook), "mpd%d-%d", 
-	    gPid, l->id);
+	snprintf(session_hook, sizeof(session_hook), "mpd%d-%s", 
+	    gPid, p->name);
 	
 	if (pe->incoming == 1) {
-		Log(LG_PHYS2, ("[%s] PppoeOpen() on incoming call", l->name));
+		Log(LG_PHYS2, ("[%s] PppoeOpen() on incoming call", p->name));
 
 		/* Path to the ng_tee node */
-		snprintf(path, sizeof(path), "[%x]:%s", 
-		    pe->PIf->node_id, session_hook);
+		snprintf(path, sizeof(path), "%s%s.%s", 
+		    pe->path, pe->hook, session_hook);
 		    
 		/* Connect ng_tee(4) node to the ng_ppp(4) node. */
-		if (!PhysGetUpperHook(l, cn.path, cn.peerhook)) {
-		    Log(LG_PHYS, ("[%s] PPPoE: can't get upper hook", l->name));
-		    goto fail3;
+		if (!PhysGetUpperHook(p, cn.path, cn.peerhook)) {
+		    Log(LG_PHYS, ("[%s] PPPoE: can't get upper hook", p->name));
+		    goto fail2;
 		}
 		snprintf(cn.ourhook, sizeof(cn.ourhook), "right");
 		if (NgSendMsg(pe->PIf->csock, path, NGM_GENERIC_COOKIE, NGM_CONNECT, 
 		    &cn, sizeof(cn)) < 0) {
 			Log(LG_ERR, ("[%s] PPPoE: can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
-	    		    l->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
-			goto fail3;
+	    		    p->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
+			goto fail2;
 		}
 
 		/* Shutdown ng_tee node */
-		if (NgFuncShutdownNode(pe->PIf->csock, l->name, path) < 0) {
+		if (NgFuncShutdownNode(pe->PIf->csock, p->name, path) < 0) {
 			Log(LG_ERR, ("[%s] PPPoE: Shutdown ng_tee node %s error: %s",
-			    l->name, path, strerror(errno)));
+			    p->name, path, strerror(errno)));
 		}
 
-		if (l->state==PHYS_STATE_READY) {
+		if (p->state==PHYS_STATE_READY) {
 		    TimerStop(&pe->connectTimer);
-		    l->state = PHYS_STATE_UP;
-		    PhysUp(l);
+		    p->state = PHYS_STATE_UP;
+		    PhysUp(p);
 		}
 		return;
 	}
 
 	/* Sanity check. */
-	if (l->state != PHYS_STATE_DOWN) {
-		Log(LG_PHYS, ("[%s] PPPoE allready active", l->name));
+	if (p->state != PHYS_STATE_DOWN) {
+		Log(LG_PHYS, ("[%s] PPPoE allready active", p->name));
+		return;
+	};
+
+	if (!Enabled(&pe->options, PPPOE_CONF_ORIGINATE)) {
+		Log(LG_ERR, ("[%s] PPPoE originate option is not enabled",
+		    p->name));
+		PhysDown(p, STR_DEV_NOT_READY, NULL);
 		return;
 	};
 
 	/* Create PPPoE node if necessary. */
-	PppoeGetNode(l);
+	PppoeNodeUpdate(p);
 
 	if (!pe->PIf) {
 	    Log(LG_ERR, ("[%s] PPPoE node for link is not initialized",
-	        l->name));
+	        p->name));
 	    goto fail;
 	}
 
 	/* Connect our ng_ppp(4) node link hook to the ng_pppoe(4) node. */
-	strlcpy(cn.ourhook, session_hook, sizeof(cn.ourhook));
-	snprintf(path, sizeof(path), "[%x]:", pe->PIf->node_id);
+	snprintf(cn.ourhook, sizeof(cn.ourhook), "%s", session_hook);
+	snprintf(path, sizeof(path), "%s%s", pe->path, pe->hook);
 
-	if (!PhysGetUpperHook(l, cn.path, cn.peerhook)) {
-	    Log(LG_PHYS, ("[%s] PPPoE: can't get upper hook", l->name));
+	if (!PhysGetUpperHook(p, cn.path, cn.peerhook)) {
+	    Log(LG_PHYS, ("[%s] PPPoE: can't get upper hook", p->name));
 	    goto fail2;
 	}
 	
 	if (NgSendMsg(pe->PIf->csock, path, NGM_GENERIC_COOKIE, NGM_CONNECT, 
 	    &cn, sizeof(cn)) < 0) {
 		Log(LG_ERR, ("[%s] PPPoE: can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
-    		    l->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
+    		    p->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
 		goto fail2;
 	}
 
-	Log(LG_PHYS, ("[%s] PPPoE: Connecting to '%s'", l->name, pe->session));
+	Log(LG_PHYS, ("[%s] PPPoE: Connecting to '%s'", p->name, pe->session));
 	
 	/* Tell the PPPoE node to try to connect to a server. */
 	memset(idata, 0, sizeof(idata));
-	strlcpy(idata->hook, session_hook, sizeof(idata->hook));
+	snprintf(idata->hook, sizeof(idata->hook), "%s", session_hook);
 	idata->data_len = strlen(pe->session);
 	strncpy(idata->data, pe->session, MAX_SESSION);
 	if (NgSendMsg(pe->PIf->csock, path, NGM_PPPOE_COOKIE, NGM_PPPOE_CONNECT,
 	    idata, sizeof(*idata) + idata->data_len) < 0) {
 		Log(LG_ERR, ("[%s] PPPoE can't request connection to server: "
-		    "%s", l->name, strerror(errno)));
+		    "%s", p->name, strerror(errno)));
 		goto fail2;
 	}
 
 	/* Set a timer to limit connection time. */
 	TimerInit(&pe->connectTimer, "PPPoE-connect",
-	    PPPOE_CONNECT_TIMEOUT * SECONDS, PppoeConnectTimeout, l);
+	    PPPOE_CONNECT_TIMEOUT * SECONDS, PppoeConnectTimeout, p);
 	TimerStart(&pe->connectTimer);
 
 	/* OK */
-	l->state = PHYS_STATE_CONNECTING;
-	strlcpy(pe->real_session, pe->session, sizeof(pe->real_session));
+	p->state = PHYS_STATE_CONNECTING;
 	return;
 
-fail3:
-	snprintf(path, sizeof(path), "[%x]:", pe->PIf->node_id);
 fail2:
-	NgFuncDisconnect(pe->PIf->csock, l->name, path, session_hook);
+	NgFuncDisconnect(pe->PIf->csock, p->name, path, session_hook);
 fail:	
-	PhysDown(l, STR_ERROR, NULL);
+	PhysDown(p, STR_CON_FAILED0, NULL);
 	return;
 }
 
@@ -360,28 +341,28 @@ fail:
 static void
 PppoeConnectTimeout(void *arg)
 {
-	const Link l = (Link)arg;
+	const PhysInfo p = (PhysInfo)arg;
 
 	/* Cancel connection. */
 	Log(LG_PHYS, ("[%s] PPPoE connection timeout after %d seconds",
-	    l->name, PPPOE_CONNECT_TIMEOUT));
-	PppoeDoClose(l);
-	PhysDown(l, STR_CON_FAILED0, NULL);
+	    p->name, PPPOE_CONNECT_TIMEOUT));
+	PhysDown(p, STR_CON_FAILED0, NULL);
+	PppoeShutdown(p);
 }
 
 /*
  * PppoeClose()
  */
 static void
-PppoeClose(Link l)
+PppoeClose(PhysInfo p)
 {
-	const PppoeInfo pe = (PppoeInfo)l->info;
+	const PppoeInfo pe = (PppoeInfo)p->info;
 
 	pe->opened = 0;
-	if (l->state == PHYS_STATE_DOWN)
+	if (p->state == PHYS_STATE_DOWN)
 		return;
-	PppoeDoClose(l);
-	PhysDown(l, STR_MANUALLY, NULL);
+	PhysDown(p, 0, NULL);
+	PppoeShutdown(p);
 }
 
 /*
@@ -390,39 +371,24 @@ PppoeClose(Link l)
  * Shut everything down and go to the PHYS_STATE_DOWN state.
  */
 static void
-PppoeShutdown(Link l)
+PppoeShutdown(PhysInfo p)
 {
-	PppoeDoClose(l);
-	PppoeUnListen(l);
-	PppoeReleaseNode(l);
-	Freee(l->info);
-}
+	const PppoeInfo pi = (PppoeInfo)p->info;
+	char path[NG_PATHLEN + 1];
+	char session_hook[NG_HOOKLEN + 1];
 
-/*
- * PppoeDoClose()
- *
- * Shut everything down and go to the PHYS_STATE_DOWN state.
- */
-static void
-PppoeDoClose(Link l)
-{
-	const PppoeInfo pi = (PppoeInfo)l->info;
-	char path[NG_PATHSIZ];
-	char session_hook[NG_HOOKSIZ];
-
-	if (l->state == PHYS_STATE_DOWN)
+	if (p->state == PHYS_STATE_DOWN)
 		return;
 
-	snprintf(path, sizeof(path), "[%x]:", pi->PIf->node_id);
-	snprintf(session_hook, sizeof(session_hook), "mpd%d-%d",
-	    gPid, l->id);
-	NgFuncDisconnect(pi->PIf->csock, l->name, path, session_hook);
+	snprintf(path, sizeof(path), "%s%s", pi->path, pi->hook);
+	snprintf(session_hook, sizeof(session_hook), "mpd%d-%s",
+	    gPid, p->name);
+	NgFuncDisconnect(pi->PIf->csock, p->name, path, session_hook);
 
 	TimerStop(&pi->connectTimer);
-	l->state = PHYS_STATE_DOWN;
+	p->state = PHYS_STATE_DOWN;
 	pi->incoming = 0;
 	memset(pi->peeraddr, 0x00, ETHER_ADDR_LEN);
-	pi->real_session[0] = 0;
 }
 
 /*
@@ -437,11 +403,13 @@ PppoeCtrlReadEvent(int type, void *arg)
 	    u_char buf[sizeof(struct ng_mesg) + sizeof(struct ngpppoe_sts)];
 	    struct ng_mesg resp;
 	} u;
-	char path[NG_PATHSIZ];
-	Link l = NULL;
+	char path[NG_PATHLEN + 1];
+	PhysInfo p = NULL;
 	PppoeInfo pi = NULL;
+	int k;
+	char ppphook[NG_HOOKLEN + 1];
 	
-	struct PppoeIf  *PIf = (struct PppoeIf*)arg;
+	struct PppoeIf  *PIf=(struct PppoeIf*)arg;
 	
 	/* Read control message. */
 	if (NgRecvMsg(PIf->csock, &u.resp, sizeof(u), path) < 0) {
@@ -459,43 +427,33 @@ PppoeCtrlReadEvent(int type, void *arg)
 	    case NGM_PPPOE_SUCCESS:
 	    case NGM_PPPOE_FAIL:
 	    case NGM_PPPOE_CLOSE:
-	    {
-		char	ppphook[NG_HOOKSIZ];
-		char	*linkname, *rest;
-		int	id;
+		/* Restore context. */
+		for (k = 0; k < gNumPhyses; k++) {
 
-		/* Check hook name prefix */
-		linkname = ((struct ngpppoe_sts *)u.resp.data)->hook;
-		if (strncmp(linkname, "listen-", 7) == 0)
-		    return;	/* We do not need them */
-		snprintf(ppphook, NG_HOOKSIZ, "mpd%d-", gPid);
-		if (strncmp(linkname, ppphook, strlen(ppphook))) {
-		    Log(LG_ERR, ("PPPoE: message %d from unknown hook \"%s\"",
-			u.resp.header.cmd, ((struct ngpppoe_sts *)u.resp.data)->hook));
-		    return;
-		}
-		linkname += strlen(ppphook);
-		id = strtol(linkname, &rest, 10);
-		if (rest[0] != 0 ||
-		  !gLinks[id] ||
-		  gLinks[id]->type != &gPppoePhysType ||
-		  PIf != ((PppoeInfo)gLinks[id]->info)->PIf) {
-		    Log((u.resp.header.cmd == NGM_PPPOE_SUCCESS)?LG_ERR:LG_PHYS,
-			("PPPoE: message %d from unexisting link \"%s\"",
-			    u.resp.header.cmd, linkname));
-		    return;
-		}
+		    if (!gPhyses[k] || gPhyses[k]->type != &gPppoePhysType)
+			continue;
+
+		    p = gPhyses[k];
+		    pi = (PppoeInfo)p->info;
+		    
+		    snprintf(ppphook, NG_HOOKLEN, "mpd%d-%s", gPid, p->name);
 		
-		l = gLinks[id];
-		pi = (PppoeInfo)l->info;
+		    if ((PIf==pi->PIf) &&
+			(strcmp(ppphook, ((struct ngpppoe_sts *)u.resp.data)->hook) == 0))
+			    break;
+		}
+		if (k == gNumPhyses) {
+		    Log(LG_ERR, ("PPPoE: message from unknown hook \"%s\"",
+			((struct ngpppoe_sts *)u.resp.data)->hook));
+		    return;
+		}
 
-		if (l->state == PHYS_STATE_DOWN) {
+		if (p->state == PHYS_STATE_DOWN) {
 		    if (u.resp.header.cmd != NGM_PPPOE_CLOSE) 
 			Log(LG_PHYS, ("[%s] PPPoE: message %d in DOWN state",
-			    l->name, u.resp.header.cmd));
+			    p->name, u.resp.header.cmd));
 		    return;
 		}
-	    }
 	}
 
 	/* Decode message. */
@@ -503,24 +461,24 @@ PppoeCtrlReadEvent(int type, void *arg)
 	    case NGM_PPPOE_SESSIONID: /* XXX: I do not know what to do with this? */
 		break;
 	    case NGM_PPPOE_SUCCESS:
-		Log(LG_PHYS, ("[%s] PPPoE: connection successful", l->name));
+		Log(LG_PHYS, ("[%s] PPPoE: connection successful", p->name));
 		if (pi->opened) {
 		    TimerStop(&pi->connectTimer);
-		    l->state = PHYS_STATE_UP;
-		    PhysUp(l);
+		    p->state = PHYS_STATE_UP;
+		    PhysUp(p);
 		} else {
-		    l->state = PHYS_STATE_READY;
+		    p->state = PHYS_STATE_READY;
 		}
 		break;
 	    case NGM_PPPOE_FAIL:
-		Log(LG_PHYS, ("[%s] PPPoE: connection failed", l->name));
-		PppoeDoClose(l);
-		PhysDown(l, STR_CON_FAILED0, NULL);
+		Log(LG_PHYS, ("[%s] PPPoE: connection failed", p->name));
+		PhysDown(p, STR_CON_FAILED0, NULL);
+		PppoeShutdown(p);
 		break;
 	    case NGM_PPPOE_CLOSE:
-		Log(LG_PHYS, ("[%s] PPPoE: connection closed", l->name));
-		PppoeDoClose(l);
-		PhysDown(l, STR_DROPPED, NULL);
+		Log(LG_PHYS, ("[%s] PPPoE: connection closed", p->name));
+		PhysDown(p, STR_DROPPED, NULL);
+		PppoeShutdown(p);
 		break;
 	    case NGM_PPPOE_ACNAME:
 		Log(LG_PHYS, ("PPPoE: rec'd ACNAME \"%s\"",
@@ -539,20 +497,22 @@ PppoeCtrlReadEvent(int type, void *arg)
 void
 PppoeStat(Context ctx)
 {
-	const PppoeInfo pe = (PppoeInfo)ctx->lnk->info;
+	const PppoeInfo pe = (PppoeInfo)ctx->phys->info;
 	char	buf[64];
 
 	Printf("PPPoE configuration:\r\n");
 	Printf("\tIface Node   : %s\r\n", pe->path);
 	Printf("\tIface Hook   : %s\r\n", pe->hook);
 	Printf("\tSession      : %s\r\n", pe->session);
+	Printf("PPPoE options:\r\n");
+	OptStat(ctx, &pe->options, gConfList);
 	Printf("PPPoE status:\r\n");
-	if (ctx->lnk->state != PHYS_STATE_DOWN) {
+	Printf("\tState        : %s\r\n", gPhysStateNames[ctx->phys->state]);
+	if (ctx->phys->state != PHYS_STATE_DOWN) {
 	    Printf("\tOpened       : %s\r\n", (pe->opened?"YES":"NO"));
 	    Printf("\tIncoming     : %s\r\n", (pe->incoming?"YES":"NO"));
-	    PppoePeerAddr(ctx->lnk, buf, sizeof(buf));
+	    PppoePeerAddr(ctx->phys, buf, sizeof(buf));
 	    Printf("\tCurrent peer : %s\r\n", buf);
-	    Printf("\tSession      : %s\r\n", pe->real_session);
 	}
 }
 
@@ -560,9 +520,9 @@ PppoeStat(Context ctx)
  * PppoeOriginated()
  */
 static int
-PppoeOriginated(Link l)
+PppoeOriginated(PhysInfo p)
 {
-	PppoeInfo      const pppoe = (PppoeInfo)l->info;
+	PppoeInfo      const pppoe = (PppoeInfo)p->info;
 
 	return (pppoe->incoming ? LINK_ORIGINATE_REMOTE : LINK_ORIGINATE_LOCAL);
 }
@@ -571,15 +531,15 @@ PppoeOriginated(Link l)
  * PppoeIsSync()
  */
 static int
-PppoeIsSync(Link l)
+PppoeIsSync(PhysInfo p)
 {
 	return (1);
 }
 
 static int
-PppoePeerAddr(Link l, void *buf, size_t buf_len)
+PppoePeerAddr(PhysInfo p, void *buf, int buf_len)
 {
-	PppoeInfo	const pppoe = (PppoeInfo)l->info;
+	PppoeInfo	const pppoe = (PppoeInfo)p->info;
 
 	snprintf(buf, buf_len, "%02x%02x%02x%02x%02x%02x",
 	    pppoe->peeraddr[0], pppoe->peeraddr[1], pppoe->peeraddr[2], 
@@ -589,87 +549,62 @@ PppoePeerAddr(Link l, void *buf, size_t buf_len)
 }
 
 static int
-PppoePeerMacAddr(Link l, void *buf, size_t buf_len)
+PppoeCallingNum(PhysInfo p, void *buf, int buf_len)
 {
-	PppoeInfo	const pppoe = (PppoeInfo)l->info;
-
-	snprintf(buf, buf_len, "%02x:%02x:%02x:%02x:%02x:%02x",
-	    pppoe->peeraddr[0], pppoe->peeraddr[1], pppoe->peeraddr[2], 
-	    pppoe->peeraddr[3], pppoe->peeraddr[4], pppoe->peeraddr[5]);
-
-	return (0);
-}
-
-static int
-PppoePeerIface(Link l, void *buf, size_t buf_len)
-{
-	PppoeInfo	const pppoe = (PppoeInfo)l->info;
-	char iface[IFNAMSIZ];
-
-	strlcpy(iface, pppoe->path, sizeof(iface));
-	if (iface[strlen(iface) - 1] == ':')
-		iface[strlen(iface) - 1] = '\0';
-	strlcpy(buf, iface, buf_len);
-	return (0);
-}
-
-static int
-PppoeCallingNum(Link l, void *buf, size_t buf_len)
-{
-	PppoeInfo	const pppoe = (PppoeInfo)l->info;
+	PppoeInfo	const pppoe = (PppoeInfo)p->info;
 
 	if (pppoe->incoming) {
 	    snprintf(buf, buf_len, "%02x%02x%02x%02x%02x%02x",
 		pppoe->peeraddr[0], pppoe->peeraddr[1], pppoe->peeraddr[2], 
 		pppoe->peeraddr[3], pppoe->peeraddr[4], pppoe->peeraddr[5]);
 	} else {
-	    strlcpy(buf, pppoe->real_session, buf_len);
+	    ((char*)buf)[0] = 0;
 	}
 
 	return (0);
 }
 
 static int
-PppoeCalledNum(Link l, void *buf, size_t buf_len)
+PppoeCalledNum(PhysInfo p, void *buf, int buf_len)
 {
-	PppoeInfo	const pppoe = (PppoeInfo)l->info;
+	PppoeInfo	const pppoe = (PppoeInfo)p->info;
 
 	if (!pppoe->incoming) {
 	    snprintf(buf, buf_len, "%02x%02x%02x%02x%02x%02x",
 		pppoe->peeraddr[0], pppoe->peeraddr[1], pppoe->peeraddr[2], 
 		pppoe->peeraddr[3], pppoe->peeraddr[4], pppoe->peeraddr[5]);
 	} else {
-	    strlcpy(buf, pppoe->real_session, buf_len);
+	    strlcpy(buf, pppoe->session, buf_len);
 	}
 
 	return (0);
 }
 
 static int 
-CreatePppoeNode(struct PppoeIf *PIf, const char *path, const char *hook)
+CreatePppoeNode(PhysInfo p, const char *path, const char *hook, struct PppoeIf *PIf)
 {
-	u_char	rbuf[2048];
+	u_char rbuf[2048];
 	struct ng_mesg *resp;
 	const struct hooklist *hlist;
 	const struct nodeinfo *ninfo;
 	int f;
 
 	/* Make sure interface is up. */
-	char iface[IFNAMSIZ];
+	char iface[IFNAMSIZ + 1];
 
-	strlcpy(iface, path, sizeof(iface));
+	snprintf(iface, sizeof(iface), "%s", path);
 	if (iface[strlen(iface) - 1] == ':')
 		iface[strlen(iface) - 1] = '\0';
-	if (ExecCmdNosh(LG_PHYS2, iface, "%s %s up", PATH_IFCONFIG, iface) != 0) {
-		Log(LG_ERR, ("PPPoE: can't bring up interface %s",
-		    iface));
+	if (ExecCmdNosh(LG_PHYS2, p->name, "%s %s up", PATH_IFCONFIG, iface) != 0) {
+		Log(LG_ERR, ("[%s] can't bring up interface %s",
+		    p->name, iface));
 		return (0);
 	}
 
 	/* Create a new netgraph node */
 	if (NgMkSockNode(NULL, &PIf->csock, &PIf->dsock) < 0) {
 		Log(LG_ERR, ("[%s] PPPoE: can't create ctrl socket: %s",
-		    iface, strerror(errno)));
+		    p->name, strerror(errno)));
 		return(0);
 	}
 	(void)fcntl(PIf->csock, F_SETFD, 1);
@@ -682,8 +617,8 @@ CreatePppoeNode(struct PppoeIf *PIf, const char *path, const char *hook)
 		/* Ask for a list of available node types. */
 		if (NgSendMsg(PIf->csock, "", NGM_GENERIC_COOKIE, NGM_LISTTYPES,
 		    NULL, 0) < 0) {
-			Log(LG_ERR, ("[%s] PPPoE: Cannot send a netgraph message: %s",
-			    iface, strerror(errno)));
+			Log(LG_ERR, ("[%s] Cannot send a netgraph message: %s",
+			    p->name, strerror(errno)));
 			close(PIf->csock);
 			close(PIf->dsock);
 			return (0);
@@ -692,8 +627,8 @@ CreatePppoeNode(struct PppoeIf *PIf, const char *path, const char *hook)
 		/* Get response. */
 		resp = (struct ng_mesg *)rbuf;
 		if (NgRecvMsg(PIf->csock, resp, sizeof(rbuf), NULL) <= 0) {
-			Log(LG_ERR, ("[%s] PPPoE: Cannot get netgraph response: %s",
-			    iface, strerror(errno)));
+			Log(LG_ERR, ("[%s] Cannot get netgraph response: %s",
+			    p->name, strerror(errno)));
 			close(PIf->csock);
 			close(PIf->dsock);
 			return (0);
@@ -726,7 +661,7 @@ CreatePppoeNode(struct PppoeIf *PIf, const char *path, const char *hook)
 	if (NgSendMsg(PIf->csock, path, NGM_GENERIC_COOKIE, NGM_LISTHOOKS,
 	    NULL, 0) < 0) {
 		Log(LG_ERR, ("[%s] Cannot send a netgraph message: %s:%s",
-                    iface, path, strerror(errno)));
+                    p->name, path, strerror(errno)));
 		close(PIf->csock);
 		close(PIf->dsock);
 		return (0);
@@ -736,7 +671,7 @@ CreatePppoeNode(struct PppoeIf *PIf, const char *path, const char *hook)
 	resp = (struct ng_mesg *)rbuf;
 	if (NgRecvMsg(PIf->csock, resp, sizeof(rbuf), NULL) <= 0) {
 		Log(LG_ERR, ("[%s] Cannot get netgraph response: %s",
-		    iface, strerror(errno)));
+		    p->name, strerror(errno)));
 		close(PIf->csock);
 		close(PIf->dsock);
 		return (0);
@@ -750,7 +685,7 @@ CreatePppoeNode(struct PppoeIf *PIf, const char *path, const char *hook)
 	    sizeof(NG_ETHER_NODE_TYPE) - 1)) {
 		Log(LG_ERR, ("[%s] Unexpected node type ``%s'' (wanted ``"
 		    NG_ETHER_NODE_TYPE "'') on %s",
-		    iface, ninfo->type, path));
+		    p->name, ninfo->type, path));
 		close(PIf->csock);
 		close(PIf->dsock);
 		return (0);
@@ -778,100 +713,51 @@ CreatePppoeNode(struct PppoeIf *PIf, const char *path, const char *hook)
 			close(PIf->dsock);
 			return (0);
 		}
-		PIf->node_id = nlink->nodeinfo.id;
 		break;
 	}
 
 	if (f == ninfo->hooks) {
 		struct ngm_mkpeer mp;
-		char	path2[NG_PATHSIZ];
 
 		/* Create new PPPoE node. */
-		strcpy(mp.type, NG_PPPOE_NODE_TYPE);
-		strlcpy(mp.ourhook, hook, sizeof(mp.ourhook));
-		strcpy(mp.peerhook, NG_PPPOE_HOOK_ETHERNET);
+		snprintf(mp.type, sizeof(mp.type), "%s", NG_PPPOE_NODE_TYPE);
+		snprintf(mp.ourhook, sizeof(mp.ourhook), "%s", hook);
+		snprintf(mp.peerhook, sizeof(mp.peerhook), "%s",
+		    NG_PPPOE_HOOK_ETHERNET);
 		if (NgSendMsg(PIf->csock, path, NGM_GENERIC_COOKIE, NGM_MKPEER, &mp,
 		    sizeof(mp)) < 0) {
 			Log(LG_ERR, ("[%s] can't create %s peer to %s,%s: %s",
-			    iface, NG_PPPOE_NODE_TYPE,
+			    p->name, NG_PPPOE_NODE_TYPE,
 			    path, hook, strerror(errno)));
 			    close(PIf->csock);
 			    close(PIf->dsock);
 			    return (0);
 		}
-
-		snprintf(path2, sizeof(path2), "%s%s", path, hook);
-		/* Get pppoe node ID */
-		if ((PIf->node_id = NgGetNodeID(PIf->csock, path2)) == 0) {
-			Log(LG_ERR, ("[%s] Cannot get pppoe node id: %s",
-			    iface, strerror(errno)));
-			close(PIf->csock);
-			close(PIf->dsock);
-			return (0);
-		};
 	};
 
-	/* Register an event listening to the control and data sockets. */
+	/* Register an event listening to the control socket. */
 	EventRegister(&(PIf->ctrlEvent), EVENT_READ, PIf->csock,
 	    EVENT_RECURRING, PppoeCtrlReadEvent, PIf);
-	EventRegister(&(PIf->dataEvent), EVENT_READ, PIf->dsock,
-	    EVENT_RECURRING, PppoeListenEvent, PIf);
 
 	return (1);
-}
-
-/*
- * Look for a tag of a specific type.
- * Don't trust any length the other end says,
- * but assume we already sanity checked ph->length.
- */
-static const struct pppoe_tag*
-get_tag(const struct pppoe_hdr* ph, uint16_t idx)
-{
-	const char *const end = ((const char*)&ph->tag[0])
-	            + ntohs(ph->length);
-	const struct pppoe_tag *pt = &ph->tag[0];
-	const char *ptn;
-
-	/*
-	 * Keep processing tags while a tag header will still fit.
-	 */
-	while((const char*)(pt + 1) <= end) {
-		/*
-		 * If the tag data would go past the end of the packet, abort.
-		 */
-		ptn = (((const char *)(pt + 1)) + ntohs(pt->tag_len));
-		if (ptn > end)
-			return (NULL);
-		if (pt->tag_type == idx)
-			return (pt);
-
-		pt = (const struct pppoe_tag*)ptn;
-	}
-
-	return (NULL);
-}
+};
 
 static void
 PppoeListenEvent(int type, void *arg)
 {
-	int			k, sz;
-	struct PppoeIf		*PIf = (struct PppoeIf *)(arg);
-	char			rhook[NG_HOOKSIZ];
-	unsigned char		response[1024];
+	int i,k,sz;
+	struct PppoeIf *PIf=(struct PppoeIf *)(arg);
+	char rhook[NG_HOOKLEN + 1];
+	unsigned char response[1024];
 
-	char			path[NG_PATHSIZ];
-	char			path1[NG_PATHSIZ];
-	char			session_hook[NG_HOOKSIZ];
-	char			*session;
-	char			real_session[MAX_SESSION];
+	char path[NG_PATHLEN + 1];
+	char path1[NG_PATHLEN + 1];
+	char session_hook[NG_HOOKLEN + 1];
 	struct ngm_connect      cn;
 	struct ngm_mkpeer 	mp;
-	Link 			l = NULL;
-	PppoeInfo		pi = NULL;
-	const struct pppoe_full_hdr	*wh;
-	const struct pppoe_hdr	*ph;
-	const struct pppoe_tag  *tag;
+	u_char *macaddr;
+	time_t	const now = time(NULL);
+	int	retry = 10;
 
 	union {
 	    u_char buf[sizeof(struct ngpppoe_init_data) + MAX_SESSION];
@@ -888,33 +774,16 @@ PppoeListenEvent(int type, void *arg)
             return;
         }
 
-	if (strncmp(rhook, "listen-", 7)) {
-		Log(LG_ERR, ("PPPoE: data from unknown hook \"%s\"", rhook));
-		return;
-	}
-
-	session = rhook + 7;
-
-	if (sz < sizeof(struct pppoe_full_hdr)) {
-		Log(LG_PHYS, ("Incoming truncated PPPoE connection request via %s for "
-		    "service \"%s\"", PIf->ifnodepath, session));
-		return;
-	}
-
-	wh = (struct pppoe_full_hdr *)response;
-	ph = &wh->ph;
-	if ((tag = get_tag(ph, PTT_SRV_NAME))) {
-	    int len = ntohs(tag->tag_len);
-	    if (len >= sizeof(real_session))
-		len = sizeof(real_session)-1;
-	    memcpy(real_session, tag->tag_data, len);
-	    real_session[len] = 0;
+	if (sz >= sizeof(struct ether_header)) {
+		macaddr = ((struct ether_header *)response)->ether_shost;
+		Log(LG_PHYS, ("Incoming PPPoE connection request via %s for "
+		    "service \"%s\" from %s", PIf->ifnodepath, PIf->session,
+		    ether_ntoa((const struct ether_addr *)macaddr)));
 	} else {
-	    strlcpy(real_session, session, sizeof(real_session));
+		macaddr = NULL;
+		Log(LG_PHYS, ("Incoming PPPoE connection request via %s for "
+		    "service \"%s\"", PIf->ifnodepath, PIf->session));
 	}
-	Log(LG_PHYS, ("Incoming PPPoE connection request via %s for "
-	    "service \"%s\" from %s", PIf->ifnodepath, real_session,
-	    ether_ntoa((struct  ether_addr *)&wh->eh.ether_shost)));
 
 	if (gShutdownInProgress) {
 		Log(LG_PHYS, ("Shutdown sequence in progress, ignoring request."));
@@ -927,270 +796,178 @@ PppoeListenEvent(int type, void *arg)
 	}
 
 	/* Examine all PPPoE links. */
-	for (k = 0; k < gNumLinks; k++) {
-		Link l2;
-	        PppoeInfo pi2;
+	for (k = 0; k < gNumPhyses; k++) {
+		PhysInfo p;
+	        PppoeInfo pi;
 
-		if (!gLinks[k] || gLinks[k]->type != &gPppoePhysType)
+		if (!gPhyses[k] || gPhyses[k]->type != &gPppoePhysType)
 			continue;
 
-		l2 = gLinks[k];
-		pi2 = (PppoeInfo)l2->info;
+		p = gPhyses[k];
+		pi = (PppoeInfo)p->info;
 
-		if ((!PhysIsBusy(l2)) &&
-		    (pi2->PIf == PIf) &&
-		    (strcmp(pi2->session, session) == 0) &&
-		    Enabled(&l2->conf.options, LINK_CONF_INCOMING)) {
-			l = l2;
-			pi = pi2;
-			break;
-		}
-	}
-	
-	if (l != NULL && l->tmpl)
-	    l = LinkInst(l, NULL, 0, 0);
+		if ((PIf!=pi->PIf) ||
+		    (p->state != PHYS_STATE_DOWN) ||
+		    (now-p->lastClose < PPPOE_REOPEN_PAUSE) ||
+		    !Enabled(&pi->options, PPPOE_CONF_INCOMING))
+			continue;
 
-	if (l == NULL) {
-		Log(LG_PHYS, ("No free PPPoE link with requested parameters "
-		    "was found"));
-		return;
-	}
-	pi = (PppoeInfo)l->info;
-	
-	Log(LG_PHYS, ("[%s] Accepting PPPoE connection", l->name));
+		Log(LG_PHYS, ("[%s] Accepting PPPoE connection", p->name));
 
-	/* Path to the ng_pppoe */
-	snprintf(path, sizeof(path), "[%x]:", PIf->node_id);
+		/* Path to the ng_pppoe */
+		snprintf(path, sizeof(path), "%s%s", pi->path, pi->hook);
 
-	/* Name of ng_pppoe session hook */
-	snprintf(session_hook, sizeof(session_hook), "mpd%d-%d",
-	    gPid, l->id);
+		/* Name of ng_pppoe session hook */
+		snprintf(session_hook, sizeof(session_hook), "mpd%d-%s",
+		    gPid, p->name);
 		
-	/* Create ng_tee(4) node and connect it to ng_pppoe(4). */
-	strcpy(mp.type, NG_TEE_NODE_TYPE);
-	snprintf(mp.ourhook, sizeof(mp.ourhook), session_hook);
-	snprintf(mp.peerhook, sizeof(mp.peerhook), "left");
-	if (NgSendMsg(pi->PIf->csock, path, NGM_GENERIC_COOKIE, NGM_MKPEER,
-	    &mp, sizeof(mp)) < 0) {
-		Log(LG_ERR, ("[%s] PPPoE: can't create %s peer to %s,%s: %s",
-		    l->name, NG_TEE_NODE_TYPE,
-		    path, "left", strerror(errno)));
-		goto close_socket;
-	}
-
-	/* Path to the ng_tee */
-	snprintf(path1, sizeof(path), "%s%s", path, session_hook);
-
-	/* Connect our socket node link hook to the ng_tee(4) node. */
-	strlcpy(cn.ourhook, l->name, sizeof(cn.ourhook));
-	strlcpy(cn.path, path1, sizeof(cn.path));
-	strcpy(cn.peerhook, "left2right");
-	if (NgSendMsg(pi->PIf->csock, ".:", NGM_GENERIC_COOKIE, NGM_CONNECT,
-	    &cn, sizeof(cn)) < 0) {
-		Log(LG_ERR, ("[%s] PPPoE: can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
-		    l->name, ".:", cn.ourhook, cn.path,
-		    cn.peerhook, strerror(errno)));
-		goto shutdown_tee;
-	}
-
-	/* Put the PPPoE node into OFFER mode. */
-	memset(idata, 0, sizeof(idata));
-	strlcpy(idata->hook, session_hook, sizeof(idata->hook));
-	if (pi->acname[0] != 0) {
-		strlcpy(idata->data, pi->acname, MAX_SESSION);
-	} else {
-		if (gethostname(idata->data, MAX_SESSION) == -1) {
-			Log(LG_ERR, ("[%s] PPPoE: gethostname() failed",
-			    l->name));
-			idata->data[0] = 0;
+		/* Create ng_tee(4) node and connect it to ng_pppoe(4). */
+		snprintf(mp.type, sizeof(mp.type), "%s", NG_TEE_NODE_TYPE);
+		snprintf(mp.ourhook, sizeof(mp.ourhook), session_hook);
+		snprintf(mp.peerhook, sizeof(mp.peerhook), "left");
+		if (NgSendMsg(pi->PIf->csock, path, NGM_GENERIC_COOKIE, NGM_MKPEER,
+		    &mp, sizeof(mp)) < 0) {
+			Log(LG_ERR, ("[%s] PPPoE: can't create %s peer to %s,%s: %s",
+			    p->name, NG_TEE_NODE_TYPE,
+			    path, "left", strerror(errno)));
+			goto close_socket;
 		}
-		if (idata->data[0] == 0)
-			strlcpy(idata->data, "NONAME", MAX_SESSION);
-	}
-	idata->data_len=strlen(idata->data);
 
-	if (NgSendMsg(pi->PIf->csock, path, NGM_PPPOE_COOKIE, NGM_PPPOE_OFFER,
-	    idata, sizeof(*idata) + idata->data_len) < 0) {
-		Log(LG_ERR, ("[%s] PPPoE: can't send NGM_PPPOE_OFFER to %s,%s "
-		    ": %s",
-		    l->name, path, idata->hook, strerror(errno)));
-		goto shutdown_tee;
-	}
+		/* Path to the ng_tee */
+		snprintf(path1, sizeof(path), "%s.%s", path, session_hook);
 
-	memset(idata, 0, sizeof(idata));
-	strlcpy(idata->hook, session_hook, sizeof(idata->hook));
-	idata->data_len = strlen(pi->session);
-	strncpy(idata->data, pi->session, MAX_SESSION);
+		/* Connect our socket node link hook to the ng_tee(4) node. */
+		snprintf(cn.ourhook, sizeof(cn.ourhook), p->name);
+		snprintf(cn.path, sizeof(cn.path), "%s", path1);
+		snprintf(cn.peerhook, sizeof(cn.peerhook), "left2right");
+		if (NgSendMsg(pi->PIf->csock, ".:", NGM_GENERIC_COOKIE, NGM_CONNECT,
+		    &cn, sizeof(cn)) < 0) {
+			Log(LG_ERR, ("[%s] PPPoE: can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
+			    p->name, ".:", cn.ourhook, cn.path,
+			    cn.peerhook, strerror(errno)));
+			goto shutdown_tee;
+		}
 
-	if (NgSendMsg(pi->PIf->csock, path, NGM_PPPOE_COOKIE,
-	    NGM_PPPOE_SERVICE, idata,
-	    sizeof(*idata) + idata->data_len) < 0) {
-		Log(LG_ERR, ("[%s] PPPoE: can't send NGM_PPPOE_SERVICE to %s,"
-		    "%s : %s",
-		    l->name, path, idata->hook, strerror(errno)));
-		goto shutdown_tee;
-	}
+		/* Put the PPPoE node into OFFER mode. */
+		memset(idata, 0, sizeof(idata));
+		snprintf(idata->hook, sizeof(idata->hook), "%s", session_hook);
+		if (pi->acname[0] != 0) {
+			strlcpy(idata->data, pi->acname, MAX_SESSION);
+		} else {
+			if (gethostname(idata->data, MAX_SESSION) == -1) {
+				Log(LG_ERR, ("[%s] PPPoE: gethostname() failed",
+				    p->name));
+				idata->data[0] = 0;
+			}
+			if (idata->data[0] == 0)
+				strlcpy(idata->data, "NONAME", MAX_SESSION);
+		}
+		idata->data_len=strlen(idata->data);
 
-	/* And send our request data to the waiting node. */
-	if (NgSendData(pi->PIf->dsock, l->name, response, sz) == -1) {
-		Log(LG_ERR, ("[%s] PPPoE: Cannot send original request: %s",
-		    l->name, strerror(errno)));
-		goto shutdown_tee;
-	}
+		if (NgSendMsg(pi->PIf->csock, path, NGM_PPPOE_COOKIE, NGM_PPPOE_OFFER,
+		    idata, sizeof(*idata) + idata->data_len) < 0) {
+			Log(LG_ERR, ("[%s] PPPoE: can't send NGM_PPPOE_OFFER to %s,%s "
+			    ": %s",
+			    p->name, path, idata->hook, strerror(errno)));
+			goto shutdown_tee;
+		}
+
+		memset(idata, 0, sizeof(idata));
+		snprintf(idata->hook, sizeof(idata->hook), "%s", session_hook);
+		idata->data_len = strlen(pi->session);
+		strncpy(idata->data, pi->session, MAX_SESSION);
+
+		if (NgSendMsg(pi->PIf->csock, path, NGM_PPPOE_COOKIE,
+		    NGM_PPPOE_SERVICE, idata,
+		    sizeof(*idata) + idata->data_len) < 0) {
+			Log(LG_ERR, ("[%s] PPPoE: can't send NGM_PPPOE_SERVICE to %s,"
+			    "%s : %s",
+			    p->name, path, idata->hook, strerror(errno)));
+			goto shutdown_tee;
+		}
+
+		/* And send our request data to the waiting node. */
+		if (NgSendData(pi->PIf->dsock, p->name, response, sz) == -1) {
+			Log(LG_ERR, ("[%s] PPPoE: Cannot send original request: %s",
+			    p->name, strerror(errno)));
+			goto shutdown_tee;
+		}
 		
-	if (NgFuncDisconnect(pi->PIf->csock, l->name, ".:", l->name) < 0) {
-		Log(LG_ERR, ("[%s] PPPoE: can't remove hook %s: %s", 
-	    	    l->name, l->name, strerror(errno)));
-		goto shutdown_tee;
-    	}
-	l->state = PHYS_STATE_CONNECTING;
-	pi->incoming = 1;
-	/* Record the peer's MAC address */
-	memcpy(pi->peeraddr, wh->eh.ether_shost, 6);
-	strlcpy(pi->real_session, real_session, sizeof(pi->real_session));
+	        if (NgFuncDisconnect(pi->PIf->csock, p->name, ".:", p->name) < 0) {
+			Log(LG_ERR, ("[%s] PPPoE: can't remove hook %s: %s", 
+			    p->name, p->name, strerror(errno)));
+			goto shutdown_tee;
+    		}
 
-	Log(LG_PHYS2, ("[%s] PPPoE response sent", l->name));
+		p->state = PHYS_STATE_CONNECTING;
+		pi->incoming = 1;
+		/* Record the peer's MAC address */
+		if (macaddr)
+			for (i = 0; i < 6; i++)
+				pi->peeraddr[i] = macaddr[i];
 
-	/* Set a timer to limit connection time. */
-	TimerInit(&pi->connectTimer, "PPPoE-connect",
-	    PPPOE_CONNECT_TIMEOUT * SECONDS, PppoeConnectTimeout, l);
-	TimerStart(&pi->connectTimer);
+		Log(LG_PHYS2, ("[%s] PPPoE response sent", p->name));
 
-	PhysIncoming(l);
-	return;
+		/* Set a timer to limit connection time. */
+		TimerInit(&pi->connectTimer, "PPPoE-connect",
+		    PPPOE_CONNECT_TIMEOUT * SECONDS, PppoeConnectTimeout, p);
+		TimerStart(&pi->connectTimer);
+
+		PhysIncoming(p);
+
+		/* Done. */
+		break;
 
 shutdown_tee:
-	if (NgFuncShutdownNode(pi->PIf->csock, l->name, path1) < 0) {
-		Log(LG_ERR, ("[%s] Shutdown ng_tee node %s error: %s",
-		    l->name, path1, strerror(errno)));
-	};
+		if (NgFuncShutdownNode(pi->PIf->csock, p->name, path1) < 0) {
+			Log(LG_ERR, ("[%s] Shutdown ng_tee node %s error: %s",
+			    p->name, path1, strerror(errno)));
+		};
 
 close_socket:
-	Log(LG_PHYS, ("[%s] PPPoE connection not accepted due to error",
-	    l->name));
+		Log(LG_PHYS, ("[%s] PPPoE connection not accepted due to error",
+			p->name));
 
-	/* If link is not static - shutdown it. */
-	if (!l->stay)
-	    LinkShutdown(l);
-}
+		if ((retry--) <= 0) {
+		    Log(LG_PHYS, ("[%s] Too many errors. Drop request.",
+			p->name));
+		    break;
+		}
+	};
 
-/*
- * PppoeGetNode()
- */
-
-static void
-PppoeGetNode(Link l)
-{
-    int i, j = -1, free = -1;
-    PppoeInfo pi = (PppoeInfo)l->info;
-
-    if (pi->PIf) // Do this only once for interface
-	return;
-
-    if (!strcmp(pi->path, "undefined:")) {
-    	    Log(LG_ERR, ("[%s] PPPoE: Skipping link \"%s\" with undefined "
-	        "interface", l->name, l->name));
-	    return;
-    }
-
-    for (i = 0; i < PPPOE_MAXPARENTIFS; i++) {
-	if (PppoeIfs[i].ifnodepath[0] == 0) {
-	    free = i;
-	} else if (strcmp(PppoeIfs[i].ifnodepath, pi->path) == 0) {
-    	    j = i;
-	    break;
-	}
-    }
-    if (j == -1) {
-	if (free == -1) {
-		Log(LG_ERR, ("[%s] PPPoE: Too many different parent interfaces! ", 
-		    l->name));
-		return;
-	}
-	if (CreatePppoeNode(&PppoeIfs[free], pi->path, pi->hook)) {
-		strlcpy(PppoeIfs[free].ifnodepath,
-		    pi->path,
-		    sizeof(PppoeIfs[free].ifnodepath));
-		PppoeIfs[free].refs = 1;
-		pi->PIf = &PppoeIfs[free];
-	} else {
-		Log(LG_ERR, ("[%s] PPPoE: Error creating ng_pppoe "
-		    "node on %s", l->name, pi->path));
-		return;
-	}
-    } else {
-	PppoeIfs[j].refs++;
-        pi->PIf = &PppoeIfs[j];
-    }
-}
-
-/*
- * PppoeReleaseNode()
- */
-
-static void
-PppoeReleaseNode(Link l)
-{
-    PppoeInfo pi = (PppoeInfo)l->info;
-
-    if (!pi->PIf) // Do this only once for interface
-	return;
-
-    pi->PIf->refs--;
-    if (pi->PIf->refs == 0) {
-	pi->PIf->ifnodepath[0] = 0;
-	pi->PIf->node_id = 0;
-	EventUnRegister(&pi->PIf->ctrlEvent);
-	EventUnRegister(&pi->PIf->dataEvent);
-	close(pi->PIf->csock);
-	pi->PIf->csock = -1;
-	close(pi->PIf->dsock);
-	pi->PIf->dsock = -1;
-    }
-
-    pi->PIf = NULL;
-}
+	if (k == gNumPhyses)
+		Log(LG_PHYS, ("No free PPPoE link with requested parameters "
+		    "was found"));
+};
 
 static int 
-PppoeListen(Link l)
+ListenPppoeNode(const char *path, const char *hook, struct PppoeIf *PIf,
+	const char *session, int n)
 {
-	PppoeInfo pi = (PppoeInfo)l->info;
-	struct PppoeIf *PIf = pi->PIf;
-	struct PppoeList *pl;
 	union {
 	    u_char buf[sizeof(struct ngpppoe_init_data) + MAX_SESSION];
 	    struct ngpppoe_init_data	poeid;
 	} u;
 	struct ngpppoe_init_data *const idata = &u.poeid;
-	char path[NG_PATHSIZ];
+	char pat[NG_PATHLEN + 1];
 	struct ngm_connect	cn;
-
-	if (pi->list || !pi->PIf)
-	    return(1);	/* Do this only once */
-
-	SLIST_FOREACH(pl, &pi->PIf->list, next) {
-	    if (strcmp(pl->session, pi->session) == 0)
-		break;
-	}
-	if (pl) {
-	    pl->refs++;
-	    pi->list = pl;
-	    return (1);
-	}
 	
-	pl = Malloc(MB_PHYS, sizeof(*pl));
-	strlcpy(pl->session, pi->session, sizeof(pl->session));
-	pl->refs = 1;
-	pi->list = pl;
-	SLIST_INSERT_HEAD(&pi->PIf->list, pl, next);
+	if (n) {
+	    /* Create a new netgraph node */
+	    if (NgMkSockNode(NULL, &PIf->csock, &PIf->dsock) < 0) {
+		Log(LG_ERR, ("PPPoE: Can't create listening ctrl socket: %s",
+		    strerror(errno)));
+		return(0);
+	    }
+	    (void)fcntl(PIf->csock, F_SETFD, 1);
+	    (void)fcntl(PIf->dsock, F_SETFD, 1);
+	}
 
-	snprintf(path, sizeof(path), "[%x]:", PIf->node_id);
-	
 	/* Connect our socket node link hook to the ng_pppoe(4) node. */
-	strcpy(cn.path, path);
-	snprintf(cn.ourhook, sizeof(cn.peerhook), "listen-%s", pi->session);
-	strcpy(cn.peerhook, cn.ourhook);
-
+	snprintf(cn.path, sizeof(cn.path), "%s%s", path, hook);
+	snprintf(cn.ourhook, sizeof(cn.ourhook), "listen-hook");
+	snprintf(cn.peerhook, sizeof(cn.peerhook), "listen-%s", session);
+  
 	if (NgSendMsg(PIf->csock, ".:", NGM_GENERIC_COOKIE, NGM_CONNECT, &cn,
 	    sizeof(cn)) < 0) {
 		Log(LG_ERR, ("PPPoE: Can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
@@ -1200,74 +977,163 @@ PppoeListen(Link l)
 	}
 
 	/* Tell the PPPoE node to be a server. */
-	memset(idata, 0, sizeof(idata));
-	snprintf(idata->hook, sizeof(idata->hook), "listen-%s", pi->session);
-	idata->data_len = strlen(pi->session);
-	strncpy(idata->data, pi->session, MAX_SESSION);
+	snprintf(pat, sizeof(pat), "%s%s", path, hook);
 
-	if (NgSendMsg(PIf->csock, path, NGM_PPPOE_COOKIE, NGM_PPPOE_LISTEN,
+	memset(idata, 0, sizeof(idata));
+	snprintf(idata->hook, sizeof(idata->hook), "listen-%s", session);
+	idata->data_len = strlen(session);
+	strncpy(idata->data, session, MAX_SESSION);
+
+	if (NgSendMsg(PIf->csock, pat, NGM_PPPOE_COOKIE, NGM_PPPOE_LISTEN,
 	    idata, sizeof(*idata) + idata->data_len) < 0) {
 		Log(LG_ERR, ("PPPoE: Can't send NGM_PPPOE_LISTEN to %s hook "
-		    "%s : %s", path, idata->hook, strerror(errno)));
+		    "%s : %s", pat, idata->hook, strerror(errno)));
 		return (0);
 	}
 
 	Log(LG_PHYS, ("PPPoE: waiting for connection on %s, service \"%s\"",
-		PIf->ifnodepath, idata->data));
-	    
-	return (1);
-}
+		path, idata->data));
 
-static int 
-PppoeUnListen(Link l)
-{
-	PppoeInfo pi = (PppoeInfo)l->info;
-	struct PppoeIf *PIf = pi->PIf;
-	char path[NG_PATHSIZ];
-	char session_hook[NG_HOOKSIZ];
-
-	if (!pi->list)
-	    return(1);	/* Do this only once */
-
-	pi->list->refs--;
+	/* Register an event listening to the data socket. */
+	EventRegister(&(PIf->dataEvent), EVENT_READ, PIf->dsock,
+	    EVENT_RECURRING, PppoeListenEvent, PIf);
 	
-	if (pi->list->refs == 0) {
-	
-	    snprintf(path, sizeof(path), "[%x]:", pi->PIf->node_id);
-	    snprintf(session_hook, sizeof(session_hook), "listen-%s", pi->list->session);
-	    NgFuncDisconnect(pi->PIf->csock, l->name, path, session_hook);
-
-	    Log(LG_PHYS, ("PPPoE: stop waiting for connection on %s, service \"%s\"",
-		PIf->ifnodepath, pi->list->session));
-		
-	    SLIST_REMOVE(&PIf->list, pi->list, PppoeList, next);
-	    Freee(pi->list);
+	if (n) {
+	    /* Register an event listening to the control socket. */
+	    EventRegister(&(PIf->ctrlEvent), EVENT_READ, PIf->csock,
+		EVENT_RECURRING, PppoeCtrlReadEvent, PIf);
 	}
 	    
-	pi->list = NULL;
 	return (1);
-}
+};
 
 /*
  * PppoeNodeUpdate()
  */
 
 static void
-PppoeNodeUpdate(Link l)
+PppoeNodeUpdate(PhysInfo p)
 {
-    PppoeInfo pi = (PppoeInfo)l->info;
-    if (!pi->list) {
-	if (Enabled(&l->conf.options, LINK_CONF_INCOMING)) {
-	    PppoeGetNode(l);
-	    PppoeListen(l);
+  int i, j = -1;
+  PppoeInfo pi = (PppoeInfo)p->info;
+
+  if (!pi->PIf) { // Do this only once for interface
+
+    if (!(strcmp(pi->path, "undefined:")
+        &&strcmp(pi->session, "undefined:"))) {
+    	    Log(LG_ERR, ("[%s] PPPoE: Skipping link %s with undefined "
+	        "interface or session", p->name, p->name));
+	    return;
+    }
+
+    for (i = 0; i < PppoeIfCount ; i++)
+	if (strcmp(PppoeIfs[i].ifnodepath, pi->path) == 0) {
+    	    j = i;
+	    break;
+	}
+    if (j == -1) {
+	if (PppoeIfCount>=PPPOE_MAXPARENTIFS) {
+		Log(LG_ERR, ("[%s] PPPoE: Too many different parent interfaces! ", 
+		    p->name));
+		return;
+	}
+	if (CreatePppoeNode(p, pi->path, pi->hook, &PppoeIfs[PppoeIfCount])) {
+		strlcpy(PppoeIfs[PppoeIfCount].ifnodepath,
+		    pi->path,
+		    sizeof(PppoeIfs[PppoeIfCount].ifnodepath));
+		strlcpy(PppoeIfs[PppoeIfCount].session,
+		    pi->session,
+		    sizeof(PppoeIfs[PppoeIfCount].session));
+		PppoeIfs[PppoeIfCount].listen = 0;
+		pi->PIf=&PppoeIfs[PppoeIfCount];
+		PppoeIfCount++;
+	} else {
+		Log(LG_ERR, ("[%s] PPPoE: Error creating ng_pppoe "
+		    "node on %s", p->name, pi->path));
+		return;
 	}
     } else {
-	if (!Enabled(&l->conf.options, LINK_CONF_INCOMING)) {
-	    PppoeUnListen(l);
-	    if (l->state == PHYS_STATE_DOWN)
-		PppoeReleaseNode(l);
-	}
+        pi->PIf=&PppoeIfs[j];
     }
+  }
+  
+  if (Enabled(&pi->options, PPPOE_CONF_INCOMING) &&
+        (!PppoeListenUpdateSheduled)) {
+    	    /* Set a timer to run PppoeListenUpdate(). */
+	    TimerInit(&PppoeListenUpdateTimer, "PppoeListenUpdate",
+		0, PppoeListenUpdate, NULL);
+	    TimerStart(&PppoeListenUpdateTimer);
+	    PppoeListenUpdateSheduled = 1;
+  }
+}
+
+/*
+ * PppoeListenUpdate()
+ */
+
+static void
+PppoeListenUpdate(void *arg)
+{
+	int k;
+
+	PppoeListenUpdateSheduled = 0;
+
+	/* Examine all PPPoE links. */
+	for (k = 0; k < gNumPhyses; k++) {
+        	PppoeInfo pi;
+        	PhysInfo p;
+		int i, j = -1;
+
+		if (!gPhyses[k] || gPhyses[k]->type != &gPppoePhysType)
+			continue;
+
+		p = gPhyses[k];
+		pi = (PppoeInfo)p->info;
+
+		if (!(strcmp(pi->path, "undefined:")
+		    &&strcmp(pi->session, "undefined:"))) {
+			Log(LG_ERR, ("PPPoE: Skipping link %s with undefined "
+			    "interface or session", p->name));
+			continue;
+		}
+
+		if (!Enabled(&pi->options, PPPOE_CONF_INCOMING))
+			continue;
+
+		for (i = 0; i < PppoeIfCount; i++)
+			if ((strcmp(PppoeIfs[i].ifnodepath, pi->path) == 0) &&
+			    (strcmp(PppoeIfs[i].session, pi->session) == 0)) {
+				j = i;
+				break;
+			}
+
+		if (j == -1) {
+			if (PppoeIfCount>=PPPOE_MAXPARENTIFS) {
+			    Log(LG_ERR, ("[%s] PPPoE: Too many different parent interfaces! ", 
+				p->name));
+			    continue;
+			}
+			if (ListenPppoeNode(pi->path, pi->hook,
+			    &(PppoeIfs[PppoeIfCount]), pi->session, 1)) {
+				strlcpy(PppoeIfs[PppoeIfCount].ifnodepath,
+				    pi->path,
+				    sizeof(PppoeIfs[PppoeIfCount].ifnodepath));
+				strlcpy(PppoeIfs[PppoeIfCount].session,
+				    pi->session,
+				    sizeof(PppoeIfs[PppoeIfCount].session));
+				PppoeIfs[PppoeIfCount].listen = 1;
+				pi->PIf=&PppoeIfs[PppoeIfCount];
+				PppoeIfCount++;
+			}
+		} else {
+			if ((PppoeIfs[j].listen == 0) &&
+			    (ListenPppoeNode(pi->path, pi->hook, &(PppoeIfs[j]),
+			    pi->session, 0))) {
+				PppoeIfs[j].listen=1;
+			}
+			pi->PIf=&PppoeIfs[j];
+		}
+	}
 }
 
 /*
@@ -1277,7 +1143,7 @@ PppoeNodeUpdate(Link l)
 static int
 PppoeSetCommand(Context ctx, int ac, char *av[], void *arg)
 {
-	const PppoeInfo pi = (PppoeInfo) ctx->lnk->info;
+	const PppoeInfo pi = (PppoeInfo) ctx->phys->info;
 	const char *hookname = ETHER_DEFAULT_HOOK;
 	const char *colon;
 
@@ -1291,32 +1157,30 @@ PppoeSetCommand(Context ctx, int ac, char *av[], void *arg)
 			colon = (av[0][strlen(av[0]) - 1] == ':') ? "" : ":";
 			snprintf(pi->path, sizeof(pi->path),
 			    "%s%s", av[0], colon);
-			strlcpy(pi->hook, hookname, sizeof(pi->hook));
+			snprintf(pi->hook, sizeof(pi->hook),
+			    "%s", hookname);
 			break;
 		default:
 			return(-1);
-		}
-		if (pi->list) {
-		    PppoeUnListen(ctx->lnk);
-		    PppoeReleaseNode(ctx->lnk);
-		    PppoeGetNode(ctx->lnk);
-		    PppoeListen(ctx->lnk);
 		}
 		break;
 	case SET_SESSION:
 		if (ac != 1)
 			return(-1);
-		strlcpy(pi->session, av[0], sizeof(pi->session));
-		if (pi->list) {
-		    PppoeUnListen(ctx->lnk);
-		    PppoeListen(ctx->lnk);
-		}
+		snprintf(pi->session, sizeof(pi->session), "%s", av[0]);
 		break;
 	case SET_ACNAME:
 		if (ac != 1)
 			return(-1);
-		strlcpy(pi->acname, av[0], sizeof(pi->acname));
+		snprintf(pi->acname, sizeof(pi->acname), "%s", av[0]);
 		break;
+	case SET_ENABLE:
+          EnableCommand(ac, av, &pi->options, gConfList);
+    	  PppoeNodeUpdate(ctx->phys);
+          break;
+        case SET_DISABLE:
+          DisableCommand(ac, av, &pi->options, gConfList);
+          break;
 	default:
 		assert(0);
 	}

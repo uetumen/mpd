@@ -22,7 +22,6 @@
   {
     LG_I_ALWAYS = 0,
     LG_I_BUND,
-    LG_I_BUND2,
     LG_I_LINK,
     LG_I_REP,
     LG_I_CHAT,
@@ -32,13 +31,13 @@
     LG_I_LCP,
     LG_I_LCP2,
     LG_I_AUTH,
-    LG_I_AUTH2,
     LG_I_IPCP,
     LG_I_IPCP2,
     LG_I_IPV6CP,
     LG_I_IPV6CP2,
     LG_I_CCP,
     LG_I_CCP2,
+    LG_I_CCP3,
     LG_I_ECP,
     LG_I_ECP2,
     LG_I_FSM,
@@ -47,16 +46,17 @@
     LG_I_PHYS2,
     LG_I_PHYS3,
     LG_I_FRAME,
+    LG_I_PPTP,
+    LG_I_PPTP2,
+    LG_I_PPTP3,
     LG_I_RADIUS,
     LG_I_RADIUS2,
-    LG_I_CONSOLE,
-    LG_I_EVENTS
+    LG_I_CONSOLE
   };
 
 /* Definition of log options */
 
   #define LG_BUND		(1 << LG_I_BUND)
-  #define LG_BUND2		(1 << LG_I_BUND2)
   #define LG_LINK		(1 << LG_I_LINK)
   #define LG_REP		(1 << LG_I_REP)
   #define LG_CHAT		(1 << LG_I_CHAT)
@@ -66,13 +66,13 @@
   #define LG_LCP		(1 << LG_I_LCP)
   #define LG_LCP2		(1 << LG_I_LCP2)
   #define LG_AUTH		(1 << LG_I_AUTH)
-  #define LG_AUTH2		(1 << LG_I_AUTH2)
   #define LG_IPCP		(1 << LG_I_IPCP)
   #define LG_IPCP2		(1 << LG_I_IPCP2)
   #define LG_IPV6CP		(1 << LG_I_IPV6CP)
   #define LG_IPV6CP2		(1 << LG_I_IPV6CP2)
   #define LG_CCP		(1 << LG_I_CCP)
   #define LG_CCP2		(1 << LG_I_CCP2)
+  #define LG_CCP3		(1 << LG_I_CCP3)
   #define LG_ECP		(1 << LG_I_ECP)
   #define LG_ECP2		(1 << LG_I_ECP2)
   #define LG_FSM		(1 << LG_I_FSM)
@@ -81,11 +81,13 @@
   #define LG_PHYS2		(1 << LG_I_PHYS2)
   #define LG_PHYS3		(1 << LG_I_PHYS3)
   #define LG_FRAME		(1 << LG_I_FRAME)
+  #define LG_PPTP		(1 << LG_I_PPTP)
+  #define LG_PPTP2		(1 << LG_I_PPTP2)
+  #define LG_PPTP3		(1 << LG_I_PPTP3)
   #define LG_RADIUS		(1 << LG_I_RADIUS)
   #define LG_RADIUS2		(1 << LG_I_RADIUS2)
   #define LG_CONSOLE		(1 << LG_I_CONSOLE)
   #define LG_ALWAYS		(1 << LG_I_ALWAYS)
-  #define LG_EVENTS		(1 << LG_I_EVENTS)
 
   #define LG_ERR		(LG_ALWAYS)
 
@@ -107,28 +109,16 @@
 			        | LG_RADIUS		\
 			        | LG_FSM		\
 			        | LG_PHYS		\
+			        | LG_PPTP		\
 				)
 
   #define Log(lev, args)	do {				\
 				  if (gLogOptions & (lev))	\
 				    LogPrintf args;		\
-				} while (0)
+				} while (0)			\
 
-  #define Log2(lev, args)	do {				\
-				  if (gLogOptions & (lev))	\
-				    LogPrintf2 args;		\
-				} while (0)
-
-  #define LogDumpBuf(lev, buf, len, fmt, args...) do {		\
-				  if (gLogOptions & (lev))	\
-				    LogDumpBuf2(buf, len, fmt, ##args);	\
-				} while (0)
-
-  #define LogDumpBp(lev, bp, fmt, args...) do {			\
-				  if (gLogOptions & (lev))	\
-				    LogDumpBp2(bp, fmt, ##args);\
-				} while (0)
-
+  #define LogDepr(name, old, new) \
+    Log(LG_ERR, ("[%s] '%s' is deprecated, use '%s' instead", name, old, new));
 /*
  * VARIABLES
  */
@@ -137,7 +127,6 @@
 #ifdef SYSLOG_FACILITY
   extern char	gSysLogIdent[32];
 #endif
-  extern int	gLogInfo;
 
 /*
  * FUNCTIONS
@@ -147,13 +136,11 @@
   extern void	LogClose(void);
   extern void	LogPrintf(const char *fmt, ...) __printflike(1, 2);
   extern void	vLogPrintf(const char *fmt, va_list args);
-  extern void	LogPrintf2(const char *fmt, ...) __printflike(1, 2);
-  extern void	vLogPrintf2(const char *fmt, va_list args);
   extern int	LogCommand(Context ctx, int ac, char *av[], void *arg);
-  extern void	LogDumpBuf2(const u_char *buf, int len,
-			const char *fmt, ...) __printflike(3, 4);
-  extern void	LogDumpBp2(Mbuf bp, const char *fmt, ...)
-			__printflike(2, 3);
+  extern void	LogDumpBuf(int lev, const u_char *buf,
+		  int len, const char *fmt, ...) __printflike(4, 5);
+  extern void	LogDumpBp(int lev, Mbuf bp, const char *fmt, ...)
+			__printflike(3, 4);
   extern void	Perror(const char *fmt, ...) __printflike(1, 2);
 
 #endif

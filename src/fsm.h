@@ -23,19 +23,17 @@
  * DEFINITIONS
  */
 
-    /* States: don't change these! */
-    enum fsm_state {
-	ST_INITIAL = 0,
-	ST_STARTING,
-	ST_CLOSED,
-	ST_STOPPED,
-	ST_CLOSING,
-	ST_STOPPING,
-	ST_REQSENT,
-	ST_ACKRCVD,
-	ST_ACKSENT,
-	ST_OPENED
-    };
+  /* States: don't change these! */
+  #define ST_INITIAL	0
+  #define ST_STARTING	1
+  #define ST_CLOSED	2
+  #define ST_STOPPED	3
+  #define ST_CLOSING	4
+  #define ST_STOPPING	5
+  #define ST_REQSENT	6
+  #define ST_ACKRCVD	7
+  #define ST_ACKSENT	8
+  #define ST_OPENED	9
 
   #define OPEN_STATE(s)		((s) > ST_CLOSING || ((s) & 1))
 
@@ -73,7 +71,7 @@
     FAIL_RECD_PROTREJ,		/* rec'd fatal protocol reject */
     FAIL_WAS_PROTREJ,		/* protocol was rejected */
     FAIL_ECHO_TIMEOUT,		/* peer not responding to echo requests */
-    FAIL_CANT_ENCRYPT		/* failed to negotiate required encryption */
+    FAIL_CANT_ENCRYPT,		/* failed to negotiate required encryption */
   };
 
   /* FSM descriptor */
@@ -90,19 +88,19 @@
     short	maxfailure;	/* "Max-Failure" initial value */
     short	echo_int;	/* LCP echo interval (zero disables) */
     short	echo_max;	/* LCP max quiet timeout */
-    u_char	check_magic;	/* Validate any magic numbers seen */
-    u_char	passive;	/* Passive option (see rfc 1661) */
+    u_char	check_magic:1;	/* Validate any magic numbers seen */
+    u_char	passive:1;	/* Passive option (see rfc 1661) */
   };
   typedef struct fsmconf	*FsmConf;
 
   struct fsmtype {
     const char		*name;		/* Name of protocol */
-    uint16_t		proto;		/* Protocol number */
-    uint16_t		known_codes;	/* Accepted FSM codes */
-    u_char		link_layer;	/* Link level FSM */
+    u_short		proto;		/* Protocol number */
+    u_long		known_codes;	/* Accepted FSM codes */
     int			log, log2;	/* Log levels for FSM events */
+    u_char		link_layer:1;	/* One FSM for each link */
 
-    void		(*NewState)(Fsm f, enum fsm_state old, enum fsm_state new);
+    void		(*NewState)(Fsm f, int old, int new);
     void		(*LayerUp)(Fsm f);
     void		(*LayerDown)(Fsm f);
     void		(*LayerStart)(Fsm f);
@@ -131,7 +129,7 @@
     int			log;		/* Current log level */
     int			log2;		/* Current log2 level */
     struct fsmconf	conf;		/* FSM parameters */
-    enum fsm_state	state;		/* State of the machine */
+    short		state;		/* State of the machine */
     u_char		reqid;		/* Next request id */
     u_char		rejid;		/* Next reject id */
     u_char		echoid;		/* Next echo request id */
@@ -180,7 +178,6 @@
  */
 
   extern void		FsmInit(Fsm f, FsmType t, void *arg);
-  extern void		FsmInst(Fsm fp, Fsm fpt, void *arg);
   extern void		FsmOpen(Fsm f);
   extern void		FsmClose(Fsm f);
   extern void		FsmUp(Fsm f);
@@ -190,7 +187,6 @@
   extern void		FsmOutputMbuf(Fsm, u_int, u_int, Mbuf);
   extern void		FsmSendEchoReq(Fsm fp, Mbuf payload);
   extern void		FsmSendIdent(Fsm fp, const char *ident);
-  extern void		FsmSendTimeRemaining(Fsm fp, u_int seconds);
   extern u_char		*FsmConfValue(u_char *cp, int ty,
 				int len, const void *data);
   extern void		FsmFailure(Fsm fp, enum fsmfail reason);
@@ -201,7 +197,7 @@
   extern void		FsmRej(Fsm fp, const struct fsmoption *opt);
 
   extern FsmOptInfo	FsmFindOptInfo(FsmOptInfo list, u_char type);
-  extern const char	*FsmStateName(enum fsm_state state);
+  extern const char	*FsmStateName(int state);
   extern const char	*FsmCodeName(int code);
 
 #define Pref(fp)	 ( (fp)->type->link_layer ? ((Link)((fp)->arg))->name : ((Bund)((fp)->arg))->name )

@@ -6,325 +6,70 @@
   <sect><heading>Change history<label id="changes"></heading>
 
   <p>
-    Changes since version 5.0:
+    Changes since version 4.4:
     <itemize>
-	<item> New features:
-	<itemize>
-	  <item> Added support for NS-related RADIUS attributes from RFC 2548.
-	  </item>
-	  <item> Added global max-children option.
-	  </item>
-	  <item> Added link, bundle, iface and iface-index RADIUS VSA.
-	  </item>
-	  <item> Added 'set link mrru ...' command.
-		 Set default MRRU to 2048 and maximum to 4096 bytes.
-	  </item>
-	  <item> Added USER_NT_HASH and USER_LM_HASH ext-auth attributes
-		 for MS-CHAP authentication.
-	  </item>
-	  <item> Added mpd-input-acct/mpd-output-acct RADIUS attributes
-		 to allow sending typed traffic accounting using standard
-		 RADIUS attributes.
-	  </item>
-	  <item> Added support for local side IP management using IP pools.
-	  </item>
-	  <item> Added support for auth/acct-only RADIUS servers.
-		 It allows to specify different servers for authentication
-		 and accounting in mpd configuration file.
-	  </item>
-	  <item> Added support for the new ng_pptpgre node design, supporting
-		 multiple calls per node. It improves performance, when multiple
-		 calls active between two IPs.
-	  </item>
-	</itemize>
-	</item>
-	<item> Changes:
-	<itemize>
-	  <item> peer-as-calling and report-mac options moved from radius
-		 to link to improve LAC operation.
-	  </item>
-	</itemize>
-	</item>
 	<item> Bugfixes:
 	<itemize>
-	  <item> Fixed incorrect link creation error handeling.
-	  </item>
-	  <item> Added workaround for some incorrect PAP implementations.
-	  </item>
-	  <item> Changed processing of NAK on multilink options.
-		 NAK enables rejected options back.
-	  </item>
-	  <item> Added missing multilink parameters check in BundJoin().
-	  </item>
-	  <item> Fixed sending of incoming traffic typed accounting on accounting stop.
-	  </item>
-	  <item> Fixed using correct proxy-arp MAC when more then one interface matches.
-	  </item>
-	  <item> Fixed some L2TP and PPPoE errors processing.
-	  </item>
-	  <item> Fixed TCP and UDP link type nodes naming.
-	  </item>
-	</itemize>
-	</item>
-    </itemize>
-  </p>
-  <p>
-    Changes since version 5.0rc2:
-    <itemize>
-	<item> New features:
-	<itemize>
-	  <item> Sending LCP Time-Remaining packet implemented.
-	  </item>
-	</itemize>
-	</item>
-	<item> Bugfixes:
-	<itemize>
-	  <item> Fixed MPPC options loss on link disconnect.
-	  </item>
-	  <item> Fixed crash on PPTP CDN sending error.
-	  </item>
-	  <item> Fixed incorrect IPCP options reject processing.
-	  </item>
-	  <item> Fixed MP SHORTSEQ option.
+	  <item> Fixed LCP Time-Remaining packet processing.
 	  </item>
 	  <item> Fixed packet order on accepting outgoing PPTP call.
 	  </item>
+	  <item> Changed NAK on multilink options processing.
+		 NAK enables rejected options back.
+	  </item>
+	  <item> Fixed TCP and UDP link type nodes naming bugs.
+	  </item>
 	</itemize>
-	</item>
     </itemize>
   </p>
   <p>
-    Changes since version 5.0rc1:
+    Changes since version 4.3:
     <itemize>
 	<item> New features:
 	<itemize>
-	  <item> 'auth2' log level added.
+	  <item> Added new 'ext-acct' accounting  backend as full-featured
+		 alternative to 'radius-acct'.
 	  </item>
-	</itemize>
-	</item>
-	<item> Changes:
-	<itemize>
-	  <item> Always prefer MS-CHAP to others to get encryption keys.
-	  </item>
-	</itemize>
-	</item>
-	<item> Bugfixes:
-	<itemize>
-	  <item> Fixed bug in tcpmssfix when compression or encryption is used.
-	  </item>
-	  <item> Fixed build on FreeBSD 5.x.
-	  </item>
-	  <item> Fixed build without PPTP or L2TP support.
-	  </item>
-	  <item> Fixed netflow node creation.
-	  </item>
-	</itemize>
-	</item>
-    </itemize>
-  </p>
-  <p>
-    Changes since version 5.0b4:
-    <itemize>
-	<item> New features:
-	<itemize>
-	  <item> 'show pptp' and 'show l2tp' commands added.
-	  </item>
-	</itemize>
-	</item>
-	<item> Bugfixes:
-	<itemize>
-	  <item> Rewritten ippool to avoid races on IPCP renegotiation.
-	  </item>
-	</itemize>
-	</item>
-	<item> Changes:
-	<itemize>
-	  <item> Rewritten message engine using internal circular queue
-		 instead of system pipe.
-	  </item>
-	  <item> L2TP/PPTP tunnel shutdown is now delayed for better
-		 LAC/PAC interoperation.
-	  </item>
-	</itemize>
-	</item>
-    </itemize>
-  </p>
-  <p>
-    Changes since version 5.0b3:
-    <itemize>
-	<item> New features:
-	<itemize>
 	  <item> If Framed-Netmask RADIUS attribute != 255.255.255.255
 		 mpd will create Framed-IP-Address/Framed-Netmask route
 		 to the client side.
 	  </item>
-	  <item> Added reporting peer MAC address and interface to AAA.
-		 Added NAS-Port-Id RADIUS attribute support.
-	  </item>
-	  <item> New 'iface' command added.
-	  </item>
-	  <item> Added IPv6 support for Tee and DialOnDemand.
-	  </item>
-	  <item> 'set iface addrs' now able to set IPv6 addresses.
-	  </item>
-	  <item> ACCT_INTERIM_LIM_RECV and ACCT_INTERIM_LIM_XMIT
-		 attributes added to ext-auth.
-	  </item>
 	</itemize>
-	</item>
-	<item> Bugfixes:
-	<itemize>
-	  <item> Fixed /32 routes processing.
-	  </item>
-	  <item> Fixed crash on repeater shutdown.
-	  </item>
-	  <item> Fixed 'create link ' command syntax check.
-	  </item>
-	  <item> Fixed redial delay.
-	  </item>
-	  <item> Many small tunings and fixes.
-	  </item>
-	</itemize>
-	</item>
-	<item> Performance improvements:
-	<itemize>
-	  <item> Netgraph management completely rewritten.
-		 Now 6 sockets per daemon used to communicate with netgraph
-		 instead of 4 sockets per link before. This gives significant
-		 performance benefit due to reduced pevent engine overhead.
-	  </item>
-	  <item> Internal memory management rewritten.
-	  </item>
-	</itemize>
-	</item>
-    </itemize>
-  </p>
-  <p>
-    Changes since version 5.0b1:
-    <itemize>
-	<item> New features:
-	<itemize>
-	  <item> Implemented type-differentiated traffic accounting
-		 based on mpd-limit traffic filters.
-	  </item>
-	  <item> Added 'set link max-children ...' command for DoS protection.
-	  </item>
-	  <item> Implemented user privilege levels "admin"/"operator"/"user".
-	  </item>
-	  <item> Web console rewritten and allows now execute any commands
-		 allowed by privileges. Added plain-text command interface.
-	  </item>
-	  <item> New 'show sessions' and 'show customer' commands added.
-	  </item>
-	  <item> Implemented one-shot operation mode to allow mpd to be used
-		 in complicated dial setups.
-	  </item>
-	  <item> Acct-Session-Id attribute now present in auth request.
-	  </item>
-	  <item> Show to auth real PPPoE session name received from peer.
-	  </item>
-	</itemize>
-	</item>
 	<item> Changes:
 	<itemize>
-	  <item> Rewritten PPPoE, L2TP, TCP and UDP link types to fulfill new
-		 dynamic design.
-	  </item>
-	  <item> MPPC related options moved from 'set ccp' to the new 'set mppc' command.
-	  </item>
-	  <item> 'set bundle retry' commend renamed to 'set bundle fsm-timeout'.
-	  </item>
-	  <item> Number of auth retries increased to 5.
+	  <item> Added addresses arguments to the down-script call.
 	  </item>
 	  <item> PPTP windowing is disabled by default.
 	  </item>
-	  <item> Improved unified command error reporting.
-	  </item>
-	  <item> Users list is now global and the same for console and web.
-	  </item>
 	</itemize>
-	</item>
 	<item> Bugfixes:
 	<itemize>
-	  <item> Fixed memory leak on link/bundle shutdown.
+	  <item> Added check for INT_MAX / 1000 timeouts limit.
 	  </item>
-	  <item> Fixed reference (memory) leak on console close.
+	  <item> Fixed MPPE with CHAP-MSv1 auth.
 	  </item>
 	  <item> Fixed netflow setup errors handeling.
-	  </item>
-	  <item> Improved IfaceIp[v6]IfaceUp() errors handeling.
 	  </item>
 	  <item> Restore link MRU to default after use.
 		 Should help with some EAP-TLS cases.
 	  </item>
-	  <item> MPPC now automaically disables unusable subprotocols.
-		 For example, it is impossible to use MPPE encryption
-		 without MSCHAP.
-	  </item>
-	  <item> Fixed FSM instantiation to fix LCP keep-alives.
+	  <item> Restored LCP-Ident logging.
 	  </item>
 	  <item> Fixed 'set eap ...' context.
 	  </item>
-	  <item> Implemented PAP-ACK packet retransmit.
+	  <item> Fixed /32 routes processing.
 	  </item>
-	  <item> 'show mem' command now returns output to console instead of stdout.
+	  <item> Fixed originating of multiple PPTP calls via the same tunnel.
 	  </item>
-	  <item> Many small fixes.
+	  <item> Fixed bug in web command syntax check.
+	  </item>
+	  <item> Fixed bug in tcpmssfix when compression or exncriotion is used.
+	  </item>
+	  <item> Fixed incorrect IPCP options reject processing.
 	  </item>
 	</itemize>
-	</item>
     </itemize>
   </p>
-  <p>
-    Changes since version 4:
-    <itemize>
-	<item> Design changes:
-	<itemize>
-	  <item> Removed static link - bundle relations.
-		 Links now choose their bundles using negotiated parameters
-		 when they reach NETWORK phase.
-		 
-		 The benefit of it is simple and complete client
-		 and server multilink operation. Also it gives
-		 ability to implement more complicated LAC, PAC and TSA
-		 setups then it was possible before.
-	  </item>
-	  <item> Implemented template based dynamic link/bundle creation.
-	         It allows significantly reduce amount of configuration
-		 required to operate big access servers.
-
-		 Link may be autocreated by incoming call request from device
-		 or by DoD/BoD request from bundle. Bundle may be autocreated
-		 by the link reached NETWORK phase.
-	  </item>
-	  <item> To simplify configuration link and phys layers separated
-		 since version 4.2 are now rejoined again into a single link layer.
-	  </item>
-	</itemize>
-	</item>
-	<item> New features:
-	<itemize>
-	  <item> Added PAM authentication and accounting.
-	  </item>
-	  <item> Added dynamic IP addresses pools support.
-	  </item>
-	  <item> Added new 'ext-acct' accounting  backend as full-featured
-		 alternative to 'radius-acct'.
-	  </item>
-	</itemize>
-	</item>
-	<item> Changes:
-	<itemize>
-	  <item> Massive changes in configuration commands. You should read
-		 the manual and examples for the new configuration techniques.
-	  </item>
-	  <item> FreeBSD 4.x and old DragonFly releases are not supported anymore.
-	  </item>
-	</itemize>
-	</item>
-    </itemize>
-  </p>
-
   <p>
     Changes since version 4.2.2:
     <itemize>
@@ -851,7 +596,7 @@
 	some internal structs as interface.
         </item>
 	<item>
-        The <tt>mpd.secret</tt> file is now used as one authentication backends of many, it 
+        The <tt>mpd.secrets</tt> file is now used as one authentication backends of many, it 
 	has no special role anymore, i.e. it could be disabled.
         </item>
 	<item>
@@ -926,7 +671,7 @@
 	attribute to the RADIUS request.
 	</item>
 	<item>
-	auth: <tt>internal</tt>, controles the usage of the <tt>mpd.secret</tt> file 
+	auth: <tt>internal</tt>, controles the usage of the <tt>mpd.secrets</tt> file 
 	(internal authentication backend).
         </item>
 	<item>

@@ -30,6 +30,7 @@
 
 #define TCP_MTU		2048
 #define TCP_MRU		2048
+#define TCP_REOPEN_PAUSE	5
 #define LISTENHOOK		"listen"
 
 #define TCP_MAXPARENTIFS	256
@@ -45,7 +46,7 @@ struct tcpinfo {
 	} conf;
 
 	/* State */
-	u_char		incoming;		/* incoming vs. outgoing */
+	u_char		incoming:1;		/* incoming vs. outgoing */
 	struct TcpIf 	*If;
 	int		csock;
 	struct u_addr	peer_addr;
@@ -60,34 +61,37 @@ typedef struct tcpinfo	*TcpInfo;
 /* Set menu options */
 enum {
 	SET_PEERADDR,
-	SET_SELFADDR
+	SET_SELFADDR,
+	SET_ENABLE,
+	SET_DISABLE,
+};
+
+enum {
+	TCP_CONF_ORIGINATE,	/* allow originating connections to peer */
+	TCP_CONF_INCOMING,	/* allow accepting connections from peer */
 };
 
 /*
  * INTERNAL FUNCTIONS
  */
 
-static int	TcpInit(Link l);
-static int	TcpInst(Link l, Link lt);
-static void	TcpOpen(Link l);
-static void	TcpClose(Link l);
-static void	TcpShutdown(Link l);
+static int	TcpInit(PhysInfo p);
+static void	TcpOpen(PhysInfo p);
+static void	TcpClose(PhysInfo p);
+static void	TcpShutdown(PhysInfo p);
 static void	TcpStat(Context ctx);
-static int	TcpOriginate(Link l);
-static int	TcpIsSync(Link l);
-static int	TcpPeerAddr(Link l, void *buf, size_t buf_len);
-static int	TcpPeerPort(Link l, void *buf, size_t buf_len);
-static int	TcpCallingNum(Link l, void *buf, size_t buf_len);
-static int	TcpCalledNum(Link l, void *buf, size_t buf_len);
+static int	TcpOriginate(PhysInfo p);
+static int	TcpIsSync(PhysInfo p);
+static int	TcpPeerAddr(PhysInfo p, void *buf, int buf_len);
+static int	TcpPeerPort(PhysInfo p, void *buf, int buf_len);
+static int	TcpCallingNum(PhysInfo p, void *buf, int buf_len);
+static int	TcpCalledNum(PhysInfo p, void *buf, int buf_len);
 
-static void	TcpDoClose(Link l);
+static void	TcpDoClose(PhysInfo p);
 static void	TcpAcceptEvent(int type, void *cookie);
 static void	TcpConnectEvent(int type, void *cookie);
 
 static int	TcpSetCommand(Context ctx, int ac, char *av[], void *arg);
-static void	TcpNodeUpdate(Link l);
-static int 	TcpListen(Link l);
-static void	TcpUnListen(Link l);
 
 /*
  * GLOBAL VARIABLES
@@ -95,15 +99,12 @@ static void	TcpUnListen(Link l);
 
 const struct phystype gTcpPhysType = {
 	.name		= "tcp",
-	.descr		= "PPP over TCP",
+	.minReopenDelay	= TCP_REOPEN_PAUSE,
 	.mtu		= TCP_MTU,
 	.mru		= TCP_MRU,
-	.tmpl		= 1,
 	.init		= TcpInit,
-	.inst		= TcpInst,
 	.open		= TcpOpen,
 	.close		= TcpClose,
-	.update		= TcpNodeUpdate,
 	.shutdown	= TcpShutdown,
 	.showstat	= TcpStat,
 	.originate	= TcpOriginate,
@@ -115,32 +116,45 @@ const struct phystype gTcpPhysType = {
 };
 
 const struct cmdtab TcpSetCmds[] = {
-    { "self {ip} [{port}]",		"Set local IP address",
-	TcpSetCommand, NULL, 2, (void *) SET_SELFADDR },
-    { "peer {ip} [{port}]",		"Set remote IP address",
-	TcpSetCommand, NULL, 2, (void *) SET_PEERADDR },
+    { "self ip [port]",			"Set local IP address",
+	TcpSetCommand, NULL, (void *) SET_SELFADDR },
+    { "peer ip [port]",			"Set remote IP address",
+	TcpSetCommand, NULL, (void *) SET_PEERADDR },
+    { "enable [opt ...]",		"Enable option",
+	TcpSetCommand, NULL, (void *) SET_ENABLE },
+    { "disable [opt ...]",		"Disable option",
+	TcpSetCommand, NULL, (void *) SET_DISABLE },
     { NULL },
+};
+
+static struct confinfo	gConfList[] = {
+    { 0,	TCP_CONF_ORIGINATE,	"originate"	},
+    { 0,	TCP_CONF_INCOMING,	"incoming"	},
+    { 0,	0,			NULL		},
 };
 
 struct TcpIf {
     struct u_addr	self_addr;
     in_port_t	self_port;
-    int		refs;
     int		csock;                  /* netgraph Control socket */
     EventRef	ctrlEvent;		/* listen for ctrl messages */
 };
+int TcpIfCount=0;
 struct TcpIf TcpIfs[TCP_MAXPARENTIFS];
+
+int TcpListenUpdateSheduled=0;
+struct pppTimer TcpListenUpdateTimer;
 
 /*
  * TcpInit()
  */
 
 static int
-TcpInit(Link l)
+TcpInit(PhysInfo p)
 {
 	TcpInfo pi;
 
-	pi = (TcpInfo) (l->info = Malloc(MB_PHYS, sizeof(*pi)));
+	pi = (TcpInfo) (p->info = Malloc(MB_PHYS, sizeof(*pi)));
 
 	u_addrclear(&pi->conf.self_addr);
 	u_rangeclear(&pi->conf.peer_addr);
@@ -158,78 +172,72 @@ TcpInit(Link l)
 }
 
 /*
- * TcpInst()
- */
-
-static int
-TcpInst(Link l, Link lt)
-{
-	TcpInfo pi;
-	l->info = Mdup(MB_PHYS, lt->info, sizeof(struct tcpinfo));
-	pi = (TcpInfo) l->info;
-    
-	if (pi->If)
-	    pi->If->refs++;
-
-	return (0);
-}
-
-/*
  * TcpOpen()
  */
 
 static void
-TcpOpen(Link l)
+TcpOpen(PhysInfo p)
 {
-	TcpInfo	const 		pi = (TcpInfo) l->info;
+	TcpInfo	const 		pi = (TcpInfo) p->info;
 	struct ngm_mkpeer	mkp;
 	struct ngm_connect	cn;
 	struct ngm_name		nm;
-	char 			path[NG_PATHSIZ];
-	char 			hook[NG_HOOKSIZ];
+	char 			path[NG_PATHLEN + 1];
+	char 			hook[NG_HOOKLEN + 1];
 	struct sockaddr_storage addr;
 	struct ng_async_cfg	acfg;
 	int 			rval;
 	char 			buf[64];
 
+	if ((!pi->incoming) && (!Enabled(&pi->conf.options, TCP_CONF_ORIGINATE))) {
+		Log(LG_ERR, ("[%s] Originate option is not enabled",
+		    p->name));
+		p->state = PHYS_STATE_DOWN;
+		TcpDoClose(p);
+		PhysDown(p, STR_DEV_NOT_READY, NULL);
+		return;
+	};
+
 	/* Create a new netgraph node to control TCP ksocket node. */
 	if (NgMkSockNode(NULL, &pi->csock, NULL) < 0) {
 		Log(LG_ERR, ("[%s] TCP can't create control socket: %s",
-		    l->name, strerror(errno)));
+		    p->name, strerror(errno)));
 		goto fail;
 	}
 	(void)fcntl(pi->csock, F_SETFD, 1);
 
-        if (!PhysGetUpperHook(l, path, hook)) {
-		Log(LG_PHYS, ("[%s] TCP: can't get upper hook", l->name));
+        if (!PhysGetUpperHook(p, path, hook)) {
+		Log(LG_PHYS, ("[%s] TCP: can't get upper hook", p->name));
     		goto fail;
         }
     
-	strcpy(mkp.type, NG_ASYNC_NODE_TYPE);
-	strlcpy(mkp.ourhook, hook, sizeof(mkp.ourhook));
-	strcpy(mkp.peerhook, NG_ASYNC_HOOK_SYNC);
+	snprintf(mkp.type, sizeof(mkp.type), "%s", NG_ASYNC_NODE_TYPE);
+	snprintf(mkp.ourhook, sizeof(mkp.ourhook), "%s", hook);
+	snprintf(mkp.peerhook, sizeof(mkp.peerhook), NG_ASYNC_HOOK_SYNC);
 	if (NgSendMsg(pi->csock, path, NGM_GENERIC_COOKIE,
 	    NGM_MKPEER, &mkp, sizeof(mkp)) < 0) {
 		Log(LG_ERR, ("[%s] can't attach %s %s node: %s",
-		    l->name, NG_ASYNC_NODE_TYPE, mkp.ourhook, strerror(errno)));
+		    p->name, NG_ASYNC_NODE_TYPE, mkp.ourhook, strerror(errno)));
 		goto fail;
 	}
 	
 	strlcat(path, ".", sizeof(path));
 	strlcat(path, hook, sizeof(path));
 	
+#if NG_NODESIZ>=32
 	/* Give it a name */
-	snprintf(nm.name, sizeof(nm.name), "mpd%d-%s-as", gPid, l->name);
+	snprintf(nm.name, sizeof(nm.name), "mpd%d-%s-as", gPid, p->name);
 	if (NgSendMsg(pi->csock, path,
 	    NGM_GENERIC_COOKIE, NGM_NAME, &nm, sizeof(nm)) < 0) {
 		Log(LG_ERR, ("[%s] can't name %s node: %s",
-		    l->name, NG_ASYNC_NODE_TYPE, strerror(errno)));
+		    p->name, NG_ASYNC_NODE_TYPE, strerror(errno)));
 	}
+#endif
 
 	/* Get async node ID */
 	if ((pi->async_node_id = NgGetNodeID(pi->csock, path)) == 0) {
 	    Log(LG_ERR, ("[%s] Cannot get %s node id: %s",
-		l->name, NG_ASYNC_NODE_TYPE, strerror(errno)));
+		p->name, NG_ASYNC_NODE_TYPE, strerror(errno)));
 	    goto fail;
 	};
 
@@ -241,12 +249,12 @@ TcpOpen(Link l)
 	acfg.smru = TCP_MTU;
 	if (NgSendMsg(pi->csock, path, NGM_ASYNC_COOKIE,
 	    NGM_ASYNC_CMD_SET_CONFIG, &acfg, sizeof(acfg)) < 0) {
-		Log(LG_ERR, ("[%s] can't config %s", l->name, path));
+		Log(LG_ERR, ("[%s] can't config %s", p->name, path));
 		goto fail;
 	}
 
 	if (pi->incoming) {
-		Log(LG_PHYS2, ("[%s] %s() on incoming call", l->name,
+		Log(LG_PHYS2, ("[%s] %s() on incoming call", p->name,
 		    __func__));
 
 		/* Connect new born ksocket to our link. */
@@ -256,12 +264,12 @@ TcpOpen(Link l)
 		if (NgSendMsg(pi->csock, path, NGM_GENERIC_COOKIE, NGM_CONNECT,
 		    &cn, sizeof(cn)) < 0) {
 			Log(LG_ERR, ("[%s] can't connect new born ksocket: %s",
-			    l->name, strerror(errno)));
+			    p->name, strerror(errno)));
 			goto fail;
 	  	}
 
-		l->state = PHYS_STATE_UP;
-		PhysUp(l);
+		p->state = PHYS_STATE_UP;
+		PhysUp(p);
 		return;
 	}
 
@@ -271,8 +279,8 @@ TcpOpen(Link l)
 	/*
 	 * Attach fresh ksocket node next to async node.
 	 */
-	strcpy(mkp.type, NG_KSOCKET_NODE_TYPE);
-	strcpy(mkp.ourhook, NG_ASYNC_HOOK_ASYNC);
+	snprintf(mkp.type, sizeof(mkp.type), "%s", NG_KSOCKET_NODE_TYPE);
+	snprintf(mkp.ourhook, sizeof(mkp.ourhook), NG_ASYNC_HOOK_ASYNC);
 	if ((pi->conf.self_addr.family==AF_INET6) || 
 	    (pi->conf.self_addr.family==AF_UNSPEC && pi->conf.peer_addr.addr.family==AF_INET6)) {
 	    snprintf(mkp.peerhook, sizeof(mkp.peerhook), "%d/%d/%d", PF_INET6, SOCK_STREAM, IPPROTO_TCP);
@@ -281,7 +289,7 @@ TcpOpen(Link l)
 	}
 	if (NgSendMsg(pi->csock, path, NGM_GENERIC_COOKIE, NGM_MKPEER, &mkp,
 	    sizeof(mkp)) < 0) {
-		Log(LG_ERR, ("[%s] can't attach %s node: %s", l->name,
+		Log(LG_ERR, ("[%s] can't attach %s node: %s", p->name,
 		    NG_KSOCKET_NODE_TYPE, strerror(errno)));
 		goto fail;
 	}
@@ -289,41 +297,43 @@ TcpOpen(Link l)
 	strlcat(path, ".", sizeof(path));
 	strlcat(path, NG_ASYNC_HOOK_ASYNC, sizeof(path));
 
+#if NG_NODESIZ>=32
 	/* Give it a name */
-	snprintf(nm.name, sizeof(nm.name), "mpd%d-%s-kso", gPid, l->name);
+	snprintf(nm.name, sizeof(nm.name), "mpd%d-%s-kso", gPid, p->name);
 	if (NgSendMsg(pi->csock, path,
 	    NGM_GENERIC_COOKIE, NGM_NAME, &nm, sizeof(nm)) < 0) {
 		Log(LG_ERR, ("[%s] can't name %s node: %s",
-		    l->name, NG_KSOCKET_NODE_TYPE, strerror(errno)));
+		    p->name, NG_KSOCKET_NODE_TYPE, strerror(errno)));
 	}
+#endif
 
 	/* Start connecting to peer. */
 	u_addrtosockaddr(&pi->peer_addr, pi->peer_port, &addr);
 	rval = NgSendMsg(pi->csock, path, NGM_KSOCKET_COOKIE,
 	    NGM_KSOCKET_CONNECT, &addr, addr.ss_len);
 	if (rval < 0 && errno != EINPROGRESS) {
-		Log(LG_ERR, ("[%s] can't connect() %s node: %s", l->name,
+		Log(LG_ERR, ("[%s] can't connect() %s node: %s", p->name,
 		    NG_KSOCKET_NODE_TYPE, strerror(errno))); 
 		goto fail;
 	}
 
-	l->state = PHYS_STATE_CONNECTING;
+	p->state = PHYS_STATE_CONNECTING;
 
 	if (rval == 0)	/* Can happen when peer is local. */
-		TcpConnectEvent(EVENT_READ, l);
+		TcpConnectEvent(EVENT_READ, p);
 	else {
 		assert(errno == EINPROGRESS);
 		EventRegister(&pi->ev_connect, EVENT_READ, pi->csock,
-		    0, TcpConnectEvent, l);
-		Log(LG_PHYS, ("[%s] connecting to %s %u", l->name,
+		    0, TcpConnectEvent, p);
+		Log(LG_PHYS, ("[%s] connecting to %s %u", p->name,
 		    u_addrtoa(&pi->conf.peer_addr.addr, buf, sizeof(buf)), pi->conf.peer_port));
 	}
 
 	return;
 fail:
-	l->state = PHYS_STATE_DOWN;
-	TcpDoClose(l);
-	PhysDown(l, STR_ERROR, NULL);
+	p->state = PHYS_STATE_DOWN;
+	TcpDoClose(p);
+	PhysDown(p, STR_ERROR, NULL);
 }
 
 /*
@@ -337,20 +347,20 @@ TcpConnectEvent(int type, void *cookie)
 		struct ng_mesg	resp;
 		int32_t		rval;
 	} cn;
-	Link		l;
+	PhysInfo	p;
 	TcpInfo		pi;
-	char path[NG_PATHSIZ];
+	char path[NG_PATHLEN + 1];
 
 	/* Restore context. */
-	l = (Link)cookie;
-	pi = (TcpInfo)l->info;
+	p = (PhysInfo)cookie;
+	pi = (TcpInfo)p->info;
 
 	assert(type == EVENT_READ);
 
 	/* Check whether the connection was successful or not. */
 	if (NgRecvMsg(pi->csock, &cn.resp, sizeof(cn), path) < 0) {
 		Log(LG_ERR, ("[%s] error reading message from \"%s\": %s",
-		    l->name, path, strerror(errno)));
+		    p->name, path, strerror(errno)));
 		goto failed;
 	}
 
@@ -358,22 +368,22 @@ TcpConnectEvent(int type, void *cookie)
 	assert(cn.resp.header.cmd == NGM_KSOCKET_CONNECT);
 
 	if (cn.rval != 0) {
-		Log(LG_PHYS, ("[%s] failed to connect: %s", l->name,
+		Log(LG_PHYS, ("[%s] failed to connect: %s", p->name,
 		    strerror(cn.rval)));
 		goto failed;
 	}
 
 	/* Report connected. */
-	Log(LG_PHYS, ("[%s] connection established", l->name));
+	Log(LG_PHYS, ("[%s] connection established", p->name));
 
-	l->state = PHYS_STATE_UP;
-	PhysUp(l);
+	p->state = PHYS_STATE_UP;
+	PhysUp(p);
 
 	return;
 failed:
-	l->state = PHYS_STATE_DOWN;
-	TcpDoClose(l);
-	PhysDown(l, STR_ERROR, NULL);
+	p->state = PHYS_STATE_DOWN;
+	TcpDoClose(p);
+	PhysDown(p, STR_ERROR, NULL);
 
 }
 
@@ -389,13 +399,14 @@ TcpAcceptEvent(int type, void *cookie)
 		struct sockaddr_storage sin;
 	} ac;
 	struct ngm_name         nm;
-	char path[NG_PATHSIZ];
+	char path[NG_PATHLEN + 1];
 	struct u_addr	addr;
 	in_port_t	port;
 	char		buf[64];
 	int 		k;
 	struct TcpIf 	*If=(struct TcpIf *)(cookie);
-	Link		l = NULL;
+	time_t const 	now = time(NULL);
+	PhysInfo	p = NULL;
 	TcpInfo		pi = NULL;
 
 	assert(type == EVENT_READ);
@@ -422,24 +433,25 @@ TcpAcceptEvent(int type, void *cookie)
 	}
 
 	/* Examine all TCP links. */
-	for (k = 0; k < gNumLinks; k++) {
-		Link l2;
+	for (k = 0; k < gNumPhyses; k++) {
+		PhysInfo p2;
 	        TcpInfo pi2;
 
-		if (!gLinks[k] || gLinks[k]->type != &gTcpPhysType)
+		if (!gPhyses[k] || gPhyses[k]->type != &gTcpPhysType)
 			continue;
 
-		l2 = gLinks[k];
-		pi2 = (TcpInfo)l2->info;
+		p2 = gPhyses[k];
+		pi2 = (TcpInfo)p2->info;
 
-		if ((!PhysIsBusy(l2)) &&
-		    Enabled(&l2->conf.options, LINK_CONF_INCOMING) &&
+		if ((p2->state == PHYS_STATE_DOWN) &&
+		    (now - p2->lastClose >= TCP_REOPEN_PAUSE) &&
+		    Enabled(&pi2->conf.options, TCP_CONF_INCOMING) &&
 		    (pi2->If == If) &&
 		    IpAddrInRange(&pi2->conf.peer_addr, &addr) &&
 		    (pi2->conf.peer_port == 0 || pi2->conf.peer_port == port)) {
 
 			if (pi == NULL || pi2->conf.peer_addr.width > pi->conf.peer_addr.width) {
-				l = l2;
+				p = p2;
 				pi = pi2;
 				if (u_rangehost(&pi->conf.peer_addr)) {
 					break;	/* Nothing could be better */
@@ -447,31 +459,27 @@ TcpAcceptEvent(int type, void *cookie)
 			}
 		}
 	}
-	if (l != NULL && l->tmpl)
-    		l = LinkInst(l, NULL, 0, 0);
-
-	if (l != NULL) {
-    		pi = (TcpInfo)l->info;
+	if (pi != NULL) {
 		Log(LG_PHYS, ("[%s] Accepting TCP connection from %s %u",
-		    l->name, u_addrtoa(&addr, buf, sizeof(buf)), port));
+		    p->name, u_addrtoa(&addr, buf, sizeof(buf)), port));
 
 		sockaddrtou_addr(&ac.sin, &pi->peer_addr, &pi->peer_port);
 
 		pi->node_id = ac.id;
 
 		/* Give it a name */
-		snprintf(nm.name, sizeof(nm.name), "mpd%d-%s", gPid, l->name);
+		snprintf(nm.name, sizeof(nm.name), "mpd%d-%s", gPid, p->name);
 		snprintf(path, sizeof(path), "[%x]:", ac.id);
 		if (NgSendMsg(If->csock, path,
 		    NGM_GENERIC_COOKIE, NGM_NAME, &nm, sizeof(nm)) < 0) {
 			Log(LG_ERR, ("[%s] can't name %s node: %s",
-			    l->name, NG_BPF_NODE_TYPE, strerror(errno)));
+			    p->name, NG_BPF_NODE_TYPE, strerror(errno)));
 		}
 
 		pi->incoming=1;
-		l->state = PHYS_STATE_READY;
+		p->state = PHYS_STATE_READY;
 
-		PhysIncoming(l);
+		PhysIncoming(p);
 	} else {
 	    Log(LG_PHYS, ("No free TCP link with requested parameters "
 	        "was found"));
@@ -495,20 +503,20 @@ failed:
  */
 
 static void
-TcpClose(Link l)
+TcpClose(PhysInfo p)
 {
-	TcpInfo const pi = (TcpInfo) l->info;
+	TcpInfo const pi = (TcpInfo) p->info;
 
-	TcpDoClose(l);
+	TcpDoClose(p);
 
-	if (l->state != PHYS_STATE_DOWN) {
+	if (p->state != PHYS_STATE_DOWN) {
 	    pi->incoming=0;
-	    l->state = PHYS_STATE_DOWN;
+	    p->state = PHYS_STATE_DOWN;
 
 	    u_addrclear(&pi->peer_addr);
 	    pi->peer_port=0;
 
-	    PhysDown(l, STR_MANUALLY, NULL);
+	    PhysDown(p, 0, NULL);
 	}
 }
 
@@ -517,11 +525,9 @@ TcpClose(Link l)
  */
 
 static void
-TcpShutdown(Link l)
+TcpShutdown(PhysInfo p)
 {
-	TcpDoClose(l);
-	TcpUnListen(l);
-	Freee(l->info);
+	TcpDoClose(p);
 }
 
 /*
@@ -529,10 +535,10 @@ TcpShutdown(Link l)
  */
 
 static void
-TcpDoClose(Link l)
+TcpDoClose(PhysInfo p)
 {
-	char path[NG_PATHSIZ];
-	TcpInfo const pi = (TcpInfo) l->info;
+	char path[NG_PATHLEN + 1];
+	TcpInfo const pi = (TcpInfo) p->info;
 
 	EventUnRegister(&pi->ev_connect);
 
@@ -542,13 +548,13 @@ TcpDoClose(Link l)
 
 	if (pi->node_id != 0) {
 	    snprintf(path, sizeof(path), "[%lx]:", (u_long)pi->node_id);
-	    NgFuncShutdownNode(pi->csock, l->name, path);
+	    NgFuncShutdownNode(pi->csock, p->name, path);
 	    pi->node_id = 0;
 	}
 	
 	if (pi->async_node_id != 0) {
 	    snprintf(path, sizeof(path), "[%lx]:", (u_long)pi->async_node_id);
-	    NgFuncShutdownNode(pi->csock, l->name, path);
+	    NgFuncShutdownNode(pi->csock, p->name, path);
 	    pi->async_node_id = 0;
 	}
 	
@@ -562,9 +568,9 @@ TcpDoClose(Link l)
  */
 
 static int
-TcpOriginate(Link l)
+TcpOriginate(PhysInfo p)
 {
-	TcpInfo const pi = (TcpInfo) l->info;
+	TcpInfo const pi = (TcpInfo) p->info;
 
 	return (pi->incoming ? LINK_ORIGINATE_REMOTE : LINK_ORIGINATE_LOCAL);
 }
@@ -574,15 +580,15 @@ TcpOriginate(Link l)
  */
 
 static int
-TcpIsSync(Link l)
+TcpIsSync(PhysInfo p)
 {
 	return (1);
 }
 
 static int
-TcpPeerAddr(Link l, void *buf, size_t buf_len)
+TcpPeerAddr(PhysInfo p, void *buf, int buf_len)
 {
-	TcpInfo const pi = (TcpInfo) l->info;
+	TcpInfo const pi = (TcpInfo) p->info;
 
 	if (u_addrtoa(&pi->peer_addr, buf, buf_len))
 		return (0);
@@ -591,20 +597,20 @@ TcpPeerAddr(Link l, void *buf, size_t buf_len)
 }
 
 static int
-TcpPeerPort(Link l, void *buf, size_t buf_len)
+TcpPeerPort(PhysInfo p, void *buf, int buf_len)
 {
-	TcpInfo const pi = (TcpInfo) l->info;
+	TcpInfo const pi = (TcpInfo) p->info;
 
-	if (snprintf( buf, buf_len, "%u", pi->peer_port))
+	if (snprintf( buf, buf_len, "%d", pi->peer_port))
 		return (0);
   	else
 		return (-1);
 }
 
 static int
-TcpCallingNum(Link l, void *buf, size_t buf_len)
+TcpCallingNum(PhysInfo p, void *buf, int buf_len)
 {
-	TcpInfo const pi = (TcpInfo) l->info;
+	TcpInfo const pi = (TcpInfo) p->info;
 
 	if (pi->incoming) {
 	    if (u_addrtoa(&pi->peer_addr, buf, buf_len))
@@ -620,9 +626,9 @@ TcpCallingNum(Link l, void *buf, size_t buf_len)
 }
 
 static int
-TcpCalledNum(Link l, void *buf, size_t buf_len)
+TcpCalledNum(PhysInfo p, void *buf, int buf_len)
 {
-	TcpInfo const pi = (TcpInfo) l->info;
+	TcpInfo const pi = (TcpInfo) p->info;
 
 	if (!pi->incoming) {
 	    if (u_addrtoa(&pi->peer_addr, buf, buf_len))
@@ -644,7 +650,7 @@ TcpCalledNum(Link l, void *buf, size_t buf_len)
 void
 TcpStat(Context ctx)
 {
-	TcpInfo const pi = (TcpInfo) ctx->lnk->info;
+	TcpInfo const pi = (TcpInfo) ctx->phys->info;
 	char	buf[64];
 
 	Printf("TCP configuration:\r\n");
@@ -652,8 +658,11 @@ TcpStat(Context ctx)
 	    u_addrtoa(&pi->conf.self_addr, buf, sizeof(buf)), pi->conf.self_port);
 	Printf("\tPeer address : %s, port %u\r\n",
 	    u_rangetoa(&pi->conf.peer_addr, buf, sizeof(buf)), pi->conf.peer_port);
+	Printf("TCP options:\r\n");
+	OptStat(ctx, &pi->conf.options, gConfList);
 	Printf("TCP state:\r\n");
-	if (ctx->lnk->state != PHYS_STATE_DOWN) {
+	Printf("\tState        : %s\r\n", gPhysStateNames[ctx->phys->state]);
+	if (ctx->phys->state != PHYS_STATE_DOWN) {
 	    Printf("\tIncoming     : %s\r\n", (pi->incoming?"YES":"NO"));
 	    Printf("\tCurrent peer : %s, port %u\r\n",
 		u_addrtoa(&pi->peer_addr, buf, sizeof(buf)), pi->peer_port);
@@ -661,9 +670,8 @@ TcpStat(Context ctx)
 }
 
 static int 
-TcpListen(Link l)
+ListenTcpNode(struct TcpIf *If)
 {
-	TcpInfo const pi = (TcpInfo) l->info;
 	struct ngm_mkpeer mkp;
 	struct sockaddr_storage addr;
 	int32_t backlog = 1;
@@ -674,56 +682,25 @@ TcpListen(Link l)
 	    struct ng_ksocket_sockopt ksso;
 	} u;
 	struct ng_ksocket_sockopt *const ksso = &u.ksso;
-	int i, j = -1, free = -1;
-	
-	if (pi->If)
-	    return(1);
-
-	for (i = 0; i < TCP_MAXPARENTIFS; i++) {
-	    if (TcpIfs[i].self_port == 0)
-	        free = i;
-	    else if ((u_addrcompare(&TcpIfs[i].self_addr, &pi->conf.self_addr) == 0) &&
-	        (TcpIfs[i].self_port == pi->conf.self_port)) {
-	            j = i;
-	    	    break;
-	    }
-	}
-
-	if (j >= 0) {
-	    TcpIfs[j].refs++;
-	    pi->If=&TcpIfs[j];
-	    return(1);
-	}
-
-	if (free < 0) {
-	    Log(LG_ERR, ("[%s] TCP: Too many different listening ports! ", 
-		l->name));
-	    return (0);
-	}
-
-	TcpIfs[free].refs = 1;
-	pi->If=&TcpIfs[free];
-	
-	u_addrcopy(&pi->conf.self_addr,&pi->If->self_addr);
-	pi->If->self_port=pi->conf.self_port;
 	
 	/* Create a new netgraph node */
-	if (NgMkSockNode(NULL, &pi->If->csock, NULL) < 0) {
+	if (NgMkSockNode(NULL, &If->csock, NULL) < 0) {
 	    Log(LG_ERR, ("TCP: can't create ctrl socket: %s",
 	        strerror(errno)));
 	    return(0);
 	}
-	(void)fcntl(pi->If->csock, F_SETFD, 1);
+	(void)fcntl(If->csock, F_SETFD, 1);
 
 	/* Make listening TCP ksocket node. */
-	strcpy(mkp.type, NG_KSOCKET_NODE_TYPE);
-	strcpy(mkp.ourhook, LISTENHOOK);
-	if (pi->If->self_addr.family==AF_INET6) {
+	snprintf(mkp.type, sizeof(mkp.type), "%s",
+	    NG_KSOCKET_NODE_TYPE);
+	snprintf(mkp.ourhook, sizeof(mkp.ourhook), LISTENHOOK);
+	if (If->self_addr.family==AF_INET6) {
 	    snprintf(mkp.peerhook, sizeof(mkp.peerhook), "%d/%d/%d", PF_INET6, SOCK_STREAM, IPPROTO_TCP);
 	} else {
 	    snprintf(mkp.peerhook, sizeof(mkp.peerhook), "inet/stream/tcp");
 	}
-	if (NgSendMsg(pi->If->csock, ".:", NGM_GENERIC_COOKIE, NGM_MKPEER,
+	if (NgSendMsg(If->csock, ".", NGM_GENERIC_COOKIE, NGM_MKPEER,
 	    &mkp, sizeof(mkp)) < 0) {
 		Log(LG_ERR, ("TCP: can't attach %s node: %s",
 		    NG_KSOCKET_NODE_TYPE, strerror(errno)));
@@ -735,7 +712,7 @@ TcpListen(Link l)
 	ksso->level=SOL_SOCKET;
 	ksso->name=SO_REUSEPORT;
 	((int *)(ksso->value))[0]=1;
-	if (NgSendMsg(pi->If->csock, LISTENHOOK, NGM_KSOCKET_COOKIE,
+	if (NgSendMsg(If->csock, LISTENHOOK, NGM_KSOCKET_COOKIE,
 	    NGM_KSOCKET_SETOPT, &u, sizeof(u)) < 0) {
 		Log(LG_ERR, ("TCP: can't setsockopt() %s node: %s",
 		    NG_KSOCKET_NODE_TYPE, strerror(errno)));
@@ -744,8 +721,8 @@ TcpListen(Link l)
 	}
 
 	/* Bind socket. */
-	u_addrtosockaddr(&pi->If->self_addr, pi->If->self_port, &addr);
-	if (NgSendMsg(pi->If->csock, LISTENHOOK, NGM_KSOCKET_COOKIE,
+	u_addrtosockaddr(&If->self_addr, If->self_port, &addr);
+	if (NgSendMsg(If->csock, LISTENHOOK, NGM_KSOCKET_COOKIE,
 	    NGM_KSOCKET_BIND, &addr, addr.ss_len) < 0) {
 		Log(LG_ERR, ("TCP: can't bind() %s node: %s",
 		    NG_KSOCKET_NODE_TYPE, strerror(errno)));
@@ -754,7 +731,7 @@ TcpListen(Link l)
 	}
 
 	/* Listen. */
-	if (NgSendMsg(pi->If->csock, LISTENHOOK, NGM_KSOCKET_COOKIE,
+	if (NgSendMsg(If->csock, LISTENHOOK, NGM_KSOCKET_COOKIE,
 	    NGM_KSOCKET_LISTEN, &backlog, sizeof(backlog)) < 0) {
 		Log(LG_ERR, ("TCP: can't listen() on %s node: %s",
 		    NG_KSOCKET_NODE_TYPE, strerror(errno)));
@@ -763,7 +740,7 @@ TcpListen(Link l)
 	}
 
 	/* Tell that we are willing to receive accept message. */
-	if (NgSendMsg(pi->If->csock, LISTENHOOK, NGM_KSOCKET_COOKIE,
+	if (NgSendMsg(If->csock, LISTENHOOK, NGM_KSOCKET_COOKIE,
 	    NGM_KSOCKET_ACCEPT, NULL, 0) < 0) {
 		Log(LG_ERR, ("TCP: can't accept() on %s node: %s",
 		    NG_KSOCKET_NODE_TYPE, strerror(errno)));
@@ -772,35 +749,71 @@ TcpListen(Link l)
 	}
 
 	Log(LG_PHYS, ("TCP: waiting for connection on %s %u",
-	    u_addrtoa(&pi->If->self_addr, buf, sizeof(buf)), pi->If->self_port));
-	EventRegister(&pi->If->ctrlEvent, EVENT_READ, pi->If->csock,
-	    0, TcpAcceptEvent, pi->If);
+	    u_addrtoa(&If->self_addr, buf, sizeof(buf)), If->self_port));
+	EventRegister(&If->ctrlEvent, EVENT_READ, If->csock,
+	    0, TcpAcceptEvent, If);
 
 	return (1);
 fail2:
-	NgSendMsg(pi->If->csock, LISTENHOOK, NGM_GENERIC_COOKIE, NGM_SHUTDOWN,
+	NgSendMsg(If->csock, LISTENHOOK, NGM_GENERIC_COOKIE, NGM_SHUTDOWN,
 	    NULL, 0);
 	return (0);
-}
+};
+
+/*
+ * TcpListenUpdate()
+ */
 
 static void
-TcpUnListen(Link l)
+TcpListenUpdate(void *arg)
 {
-	TcpInfo const pi = (TcpInfo) l->info;
-	char buf[64];
-	
-	if (!pi->If)
-	    return;
+	int k;
 
-	pi->If->refs--;
-	if (pi->If->refs == 0) {
-	    Log(LG_PHYS, ("TCP: stop waiting for connection on %s %u",
-		u_addrtoa(&pi->If->self_addr, buf, sizeof(buf)), pi->If->self_port));
-	    EventUnRegister(&pi->If->ctrlEvent);
-	    close(pi->If->csock);
-	    pi->If->csock = -1;
-	    pi->If->self_port = 0;
-	    pi->If = NULL;
+	TcpListenUpdateSheduled = 0;
+
+	/* Examine all PPPoE links. */
+	for (k = 0; k < gNumPhyses; k++) {
+        	PhysInfo p;
+        	TcpInfo pi;
+		int i, j = -1;
+
+		if (!gPhyses[k] || gPhyses[k]->type != &gTcpPhysType)
+			continue;
+
+		p = gPhyses[k];
+		pi = (TcpInfo)p->info;
+
+		if (!Enabled(&pi->conf.options, TCP_CONF_INCOMING))
+			continue;
+
+		if (!pi->conf.self_port) {
+			Log(LG_ERR, ("Tcp: Skipping link %s with undefined "
+			    "port number", p->name));
+			continue;
+		}
+
+		for (i = 0; i < TcpIfCount; i++)
+			if ((u_addrcompare(&TcpIfs[i].self_addr, &pi->conf.self_addr) == 0) &&
+			    (TcpIfs[i].self_port == pi->conf.self_port))
+				j = i;
+
+		if (j == -1) {
+			if (TcpIfCount>=TCP_MAXPARENTIFS) {
+			    Log(LG_ERR, ("[%s] TCP: Too many different parent interfaces! ", 
+				p->name));
+			    continue;
+			}
+			u_addrcopy(&pi->conf.self_addr,&TcpIfs[TcpIfCount].self_addr);
+			TcpIfs[TcpIfCount].self_port=pi->conf.self_port;
+
+			if (ListenTcpNode(&(TcpIfs[TcpIfCount]))) {
+
+				pi->If=&TcpIfs[TcpIfCount];
+				TcpIfCount++;
+			}
+		} else {
+			pi->If=&TcpIfs[j];
+		}
 	}
 }
 
@@ -809,16 +822,18 @@ TcpUnListen(Link l)
  */
 
 static void
-TcpNodeUpdate(Link l)
+TcpNodeUpdate(PhysInfo p)
 {
-    TcpInfo const pi = (TcpInfo) l->info;
-    if (!pi->If) {
-	if (Enabled(&l->conf.options, LINK_CONF_INCOMING))
-	    TcpListen(l);
-    } else {
-	if (!Enabled(&l->conf.options, LINK_CONF_INCOMING))
-	    TcpUnListen(l);
-    }
+  TcpInfo pi = (TcpInfo)p->info;
+
+  if (Enabled(&pi->conf.options, TCP_CONF_INCOMING) &&
+        (!TcpListenUpdateSheduled)) {
+    	    /* Set a timer to run TcpListenUpdate(). */
+	    TimerInit(&TcpListenUpdateTimer, "TcpListenUpdate",
+		0, TcpListenUpdate, NULL);
+	    TimerStart(&TcpListenUpdateTimer);
+	    TcpListenUpdateSheduled = 1;
+  }
 }
 
 /*
@@ -828,36 +843,40 @@ TcpNodeUpdate(Link l)
 static int
 TcpSetCommand(Context ctx, int ac, char *av[], void *arg)
 {
-    TcpInfo		const pi = (TcpInfo) ctx->lnk->info;
-    struct u_range	rng;
-    int			port;
+	TcpInfo	const pi = (TcpInfo) ctx->phys->info;
+	struct u_range	rng;
+	int		port;
 
-    switch ((intptr_t)arg) {
+	switch ((intptr_t)arg) {
 	case SET_PEERADDR:
 	case SET_SELFADDR:
-    	    if (ac < 1 || ac > 2 || !ParseRange(av[0], &rng, ALLOW_IPV4|ALLOW_IPV6))
-		return(-1);
-	    if (ac > 1) {
-		if ((port = atoi(av[1])) < 0 || port > 0xffff)
-		    return(-1);
-    	    } else {
-	        port = 0;
-    	    }
-    	    if ((intptr_t)arg == SET_SELFADDR) {
-	    	pi->conf.self_addr = rng.addr;
-		pi->conf.self_port = port;
-    	    } else {
-		pi->conf.peer_addr = rng;
-		pi->conf.peer_port = port;
-    	    }
-	    if (pi->If) {
-		TcpUnListen(ctx->lnk);
-		TcpListen(ctx->lnk);
-	    }
-	    break;
+    		if (ac < 1 || ac > 2 || !ParseRange(av[0], &rng, ALLOW_IPV4|ALLOW_IPV6))
+			return(-1);
+	        if (ac > 1) {
+	    		if ((port = atoi(av[1])) < 0 || port > 0xffff)
+				return(-1);
+    		} else {
+			port = 0;
+    		}
+    		if ((intptr_t)arg == SET_SELFADDR) {
+			pi->conf.self_addr = rng.addr;
+			pi->conf.self_port = port;
+    		} else {
+			pi->conf.peer_addr = rng;
+			pi->conf.peer_port = port;
+    		}
+		break;
+	case SET_ENABLE:
+		EnableCommand(ac, av, &pi->conf.options, gConfList);
+    	    	TcpNodeUpdate(ctx->phys);
+        	break;
+        case SET_DISABLE:
+    		DisableCommand(ac, av, &pi->conf.options, gConfList);
+    		break;
+
 	default:
 		assert(0);
-    }
+	}
 
-    return (0);
+	return (0);
 }

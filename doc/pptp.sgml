@@ -31,8 +31,8 @@ client <- some link type -> PAC <- PPTP tunnel -> PNS
 </verb>
 
   PAC is physical level repeater, which receives PPP connection of some 
-  type and forwards it to PNS using PPTP protocol. PNS is a PPP endpoint, 
-  which receives PPP frames via PPTP tunnel and processes them.
+  type and forwards it to PNS using PPTP protocol. PNS is ppp endpoint, 
+  which receives ppp frames via PPTP tunnel and processes them.
 
   In simple case, when physical conversion is not required, topology 
   can be simplified to:
@@ -89,15 +89,28 @@ The following options are supported:
 
 <descrip>
 
+<tag><tt>originate</tt></tag>
+
+This option enables the initiation of PPTP connections to the peer.
+If this option is disabled, mpd will not initiate any PPTP connections.
+You must configure the peer's IP address with the
+<tt><bf>set pptp peer</bf></tt> command.
+
+<tag><tt>incoming</tt></tag>
+
+This option enables the acceptance of incoming PPTP connections.
+If this option is disabled, mpd will not accept any incoming connections.
+
 <tag><tt>outcall</tt></tag>
 
 In PPTP, each individual PPP connection between two IP hosts (there
 may be several, and these are not to be confused with the
 <em>single</em> TCP connection between any two IP hosts), is
 initiated as either an incoming or an outgoing call. 
-This allows to make an outgoing phone call (by PNS) via a remote access
-server (PAC), as well as in more common case forward an incoming
-phone call from an access server (PAC) to a remote PPTP server (PNS).
+This is to allow, for example, making an outgoing telephone call (by PNS) 
+via a remote access server (PAC), as well as the more common use of forwarding
+of an incoming telephone call from an access server (PAC) to a remote
+PPTP server (PNS).
 
 When this option is enabled, mpd will initiate outgoing calls (PNS);
 otherwise mpd will initiate incoming calls (PAC). Although it seems that
@@ -110,27 +123,87 @@ Mpd will accept either type of call on an incoming PPTP connection.
 <tag><tt>delayed-ack</tt></tag>
 
 Enable delayed ACK's. This can improve throughput on reliable links.
-
-The default is enable.
+Default is on.
 
 <tag><tt>always-ack</tt></tag>
 
 Always include ACK even if already sent. This can improve throughput
-on unreliable links.
-
-The default is disable.
+on unreliable links. Default is off.
 
 <tag><tt>windowing</tt></tag>
 
 Enables the windowing mechanism specified by the protocol. Disabling 
-this will cause Mpd to violate the protocol, possibly confusing some 
-PPTP peers, but usually results in better performance. The windowing 
+this will cause Mpd to violate the protocol, possibly confusing other 
+PPTP peers, but often results in better performance. The windowing 
 mechanism is a design error in the PPTP protocol; L2TP, the successor 
 to PPTP, removes it.
-
-the default is disable.
+Default is disabled.
 
 </descrip>
+
+  <sect1><heading>PPTP setup hints</heading>
+
+<p>
+
+If what you want to do is setup a PPTP server for remote clients
+to connect to your LAN, you would want something like this for
+each <tt>mpd.links</tt> entry:
+<tscreen><verb>
+#
+# Act like a PPTP server allowing clients to connect
+#
+Pptp0:
+    set link type pptp
+    set pptp enable incoming
+    set pptp disable originate
+</verb></tscreen>
+You may also need to enable proxy-ARP on each interface if you're
+assigning local Ethernet LAN addresses, as well as configuring
+DNS and NBNS server information for client bundles using the
+<tt>set ipcp dns</tt> and <tt>set ipcp nbns</tt> commands.
+
+If you want multiple <em>simultaneous</em> clients to be able
+to connect, you should define (and load) multiple bundles, one
+for each potential client. Each bundle should negotiate a different
+peer proxy-ARP IP address to avoid conflicts. For example:
+<tscreen><verb>
+#
+# mpd.conf: allow up to 2 clients
+#
+default:
+    load Pptp1
+    load Pptp2
+
+Pptp1:
+    new -i ng0 Pptp1 Pptp1
+    ...
+    set ipcp ranges 1.1.1.1/32 1.1.1.101/32
+    ...
+
+Pptp2:
+    new -i ng1 Pptp2 Pptp2
+    ...
+    set ipcp ranges 1.1.1.1/32 1.1.1.102/32
+    ...
+</verb></tscreen>
+
+If instead you want to set up a peer-to-peer symmetrical
+tunnelling arrangement (i.e., normal IP routing using PPP over PPTP),
+you might want something like this (here <tt>1.1.1.1</tt>
+is the local IP address and <tt>2.2.2.2</tt> is the remote
+IP address):
+<tscreen><verb>
+#
+# Tunnelling PPP traffic over a PPTP connection with peer 2.2.2.2
+#
+Pptp1:
+    set link type pptp
+    set pptp self 1.1.1.1
+    set pptp peer 2.2.2.2
+    set pptp enable incoming originate
+</verb></tscreen>
+On the remote machine, you'd have the same entry with the
+<tt>self</tt> and <tt>peer</tt> addresses reversed.
 
 Note that if you are connecting to an NT server, your authentication
 name must include the NT domain name. For example:

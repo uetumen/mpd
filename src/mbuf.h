@@ -19,18 +19,25 @@
  */
 
   struct mpdmbuf {
-    int			size;		/* size allocated */
+    u_char		*base;		/* pointer to top of buffer space */
+    int			size;		/* size allocated from base */
     int			offset;		/* offset to start position */
     int			cnt;		/* available byte count in buffer */
+    const char		*type;		/* type of mbuf (see below) */
+    struct mpdmbuf	*next;		/* link to next mbuf in chain */
   };
 
   typedef struct mpdmbuf	*Mbuf;
 
   /* Macros */
-  #define MBDATAU(bp)	((u_char *)(bp) + sizeof(struct mpdmbuf) + (bp)->offset)
-  #define MBDATA(bp)	((bp) ? MBDATAU(bp) : NULL)
+  #define MBDATA(bp)	((bp) ? ((bp)->base + (bp)->offset) : NULL)
+  #define MBDATAU(bp)	((bp)->base + (bp)->offset)
   #define MBLEN(bp)	((bp) ? (bp)->cnt : 0)
-  #define MBSPACE(bp)	((bp) ? (bp)->size - (bp)->offset : 0)
+
+  #define PFREE(bp)	do {			\
+			    while (bp)		\
+			    bp = mbfree(bp);	\
+			  } while (0)
 
   /* Types of allocated memory */
   #define MB_AUTH	"AUTH"
@@ -47,16 +54,17 @@
   #define MB_CRYPT	"CRYPT"
   #define MB_ECHO	"ECHO"
   #define MB_EVENT	"EVENT"
+  #define MB_FRAME_IN	"FRAME_IN"
+  #define MB_FRAME_OUT	"FRAME_OUT"
   #define MB_FSM	"FSM"
+  #define MB_IPQ	"IPQ"
   #define MB_LOG	"LOG"
   #define MB_MP		"MP"
-  #define MB_MBUF	"MBUF"
   #define MB_PHYS	"PHYS"
   #define MB_PPTP	"PPTP"
   #define MB_RADIUS	"RADIUS"
   #define MB_UTIL	"UTIL"
   #define MB_VJCOMP	"VJCOMP"
-  #define MB_IPPOOL	"IPPOOL"
 
 /*
  * FUNCTIONS
@@ -64,26 +72,46 @@
 
 /* Replacements for malloc() & free() */
 
-  extern void	*Malloc(const char *type, size_t size);
-  extern void	*Mdup(const char *type, const void *src, size_t size);
-  extern void	*Mstrdup(const char *type, const void *src);
-  extern void	Freee(void *ptr);
+  extern void	*Malloc(const char *type, int size);
+  extern void	Freee(const char *type, const void *ptr);
 
 /* Mbuf manipulation */
 
-  extern Mbuf	mballoc(int size);
-  extern void	mbfree(Mbuf bp);
-  extern Mbuf	mbread(Mbuf bp, void *ptr, int cnt);
-  extern int	mbcopy(Mbuf bp, int offset, void *buf, int cnt);
-  extern Mbuf	mbcopyback(Mbuf bp, int offset, const void *buf, int cnt);
+  extern Mbuf	mballoc(const char *type, int size);
+  extern Mbuf	mbufise(const char *type, u_char *buf, int len);
+  extern Mbuf	mbfree(Mbuf bp);
+  extern Mbuf	mbwrite(Mbuf bp, const u_char *ptr, int cnt);
+  extern Mbuf	mbread(Mbuf bp, u_char *ptr, int cnt, int *lenp);
+  extern int	mbcopy(Mbuf bp, u_char *buf, int remain);
   extern Mbuf	mbtrunc(Mbuf bp, int max);
-  extern Mbuf	mbadj(Mbuf bp, int cnt);
+  extern Mbuf	mbunify(Mbuf bp);
   extern Mbuf	mbsplit(Mbuf bp, int cnt);
+  extern Mbuf	mbclean(Mbuf bp);
 
 /* Etc */
 
   extern int	MemStat(Context ctx, int ac, char *av[], void *arg);
   extern void	DumpBp(Mbuf bp);
+
+/*
+ * INLINE FUNCTIONS
+ */
+
+/*
+ * plength()
+ *
+ * Return total length in an mbuf chain
+ */
+
+static inline int
+plength(Mbuf bp)
+{
+  int len;
+
+  for (len = 0; bp; bp = bp->next)
+    len += bp->cnt;
+  return(len);
+}
 
 #endif
 

@@ -19,7 +19,7 @@ Written by Archie Cobbs <archie@FreeBSD.org>
 
 * HOW DO I BUILD AND INSTALL IT?
 
-  cd /usr/ports/net/mpd5
+  cd /usr/ports/net/mpd4
   make all install
 
 * HOW DO I SET IT UP?
@@ -27,9 +27,10 @@ Written by Archie Cobbs <archie@FreeBSD.org>
   Complete documentation is included in the "doc" subdirectory.
 
   You will need to create your own versions of the four required
-  configuration files in /usr/local/etc/mpd5:
+  configuration files in /usr/local/etc/mpd4:
 
     mpd.conf    - General configuration
+    mpd.links   - Description of available links
     mpd.script  - Modem scripts
     mpd.secret  - Login/password pairs
 
@@ -53,6 +54,6 @@ Written by Archie Cobbs <archie@FreeBSD.org>
 
 * WHERE CAN I GO FOR HELP?
 
-  MPD is now hosted on SourceForge:
+  MPD is now hosted on SourceForge with a mpd-users mailing list.
   http://sourceforge.net/projects/mpd
 

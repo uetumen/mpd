@@ -3,7 +3,7 @@
 
 <!-- <!DOCTYPE linuxdoc PUBLIC '-//FreeBSD//DTD linuxdoc//EN'> -->
 
-  <sect><heading>Compression (CCP) layer<label id="compression"></heading>
+  <sect><heading>Compression layer commands<label id="compression"></heading>
 
   <p>
 
@@ -43,7 +43,9 @@ The <bf><tt>no</tt></bf> command is the same as
 </descrip>
 
 <p>
-The options available at the CCP layer are listed below.
+The options available at the CCP layer are listed below. Note that
+the STAC and MPPC options require proprietary files
+that are not included with the normal mpd distribution.
 
 <descrip>
 
@@ -52,101 +54,72 @@ The options available at the CCP layer are listed below.
 This option enables Predictor-1 (RFC 1978) compression.
 Predictor-1 compression is much faster then Deflate.
 <P>
-This option requires ng_pred1 Netgraph node type, which is present
+This option require ng_pred1 Netgraph node type, which is present
 since FreeBSD 6.2-STABLE of 2007-01-28.
-If there is no ng_pred1 in system, this algorithm is supported
-in user-level, but will consume more CPU power.
-
-The default is disable.
+If there no ng_pred1 in system, this algorithm is supported
+in user-level, but will consume more CPU power. To reduce packet 
+loss in user-level on fast links it is recommended to increase 
+values of net.graph.recvspace and net.graph.maxdgram sysctl variables.
 
 <tag><tt>deflate</tt></tag>
 
 This option enables Deflate (RFC 1979) compression.
 Deflate compression usually gives better compression ratio then Predictor-1.
 <P>
-This option requires ng_deflate Netgraph node type, which is present
+This option require ng_deflate Netgraph node type, which is present
 since FreeBSD 6.2-STABLE of 2007-01-28.
-
-The default is disable.
 
 <tag><tt>mppc</tt></tag>
 
-This option enables MPPC compression/encryption subprotocol.
-For details see <ref id="mppc" name="the MPPC protocol chapter">.
+This option is required in order to enable the
+Microsoft Point-to-point compression (MPPC) and/or
+Microsoft Point-to-point encryption (MPPE) protocols.
+However, this option does not actually enable MPPC or MPPE;
+you must use additional options (below) for that.
 
-The default is disable.
+This option is required because of the way Microsoft implemented MPPC and
+MPPE as additional, optional sub-components of the MPPC protocol.
 
-</descrip>
-</p>
+Note: in order for MPPE to work, MS-CHAPv1 or MS-CHAPv2 is
+mandatory, because the MPPE keys are generated using the results
+from authentication.
 
-  <sect1><heading>MPPC protocol<label id="mppc"></heading>
-<p>  
-Mpd implements Microsoft Point-to-point compression (MPPC)
-CCP subprotol. To enable it, 'mppc' option should be enabled at the CCP layer.
-
-MPPC CCP subprotocol consists of MPPC compression and MPPE encryption parts.
-To make MPPC CCP actually do something you should enable some of them using
-options below.
-  
-<descrip>
-
-<tag><tt>set mppc accept <em>option ...</em> </tt></tag><p>
-<tag><tt>set mppc deny <em>option ...</em> </tt></tag><p>
-<tag><tt>set mppc enable <em>option ...</em> </tt></tag><p>
-<tag><tt>set mppc disable <em>option ...</em> </tt></tag><p>
-<tag><tt>set mppc yes <em>option ...</em> </tt></tag><p>
-<tag><tt>set mppc no <em>option ...</em> </tt></tag><p>
-
-These commands configure various MPPC options.
-
-<tag><tt>compress</tt></tag>
+<tag><tt>mpp-compress</tt></tag>
 
 Enables MPPC compression. This is the only compression method supported by 
 Microsoft Windows RAS.
+<P>
+This option requires compression support from ng_mppc node which is 
+usually disabled as it require some Hi/Fn proprietary files.
 
-Note: this option requires ng_mppc node compression support which is disabled
-by default as it requires some Hi/Fn proprietary files. If support is not
-detected, compression will not be negotiated. Use 'show version' command
-to get actual status.
-
-The default is disable.
-
-<tag><tt>e40</tt></tag>
+<tag><tt>mpp-e40</tt></tag>
 
 Enables 40-bit MPPE encryption.
 
-The default is disable.
-
-<tag><tt>e56</tt></tag>
+<tag><tt>mpp-e56</tt></tag>
 
 Enables 56-bit MPPE encryption.
+Note: 56 bit MPPE encryption is only supported in FreeBSD 4.5 or later.
 
-The default is disable.
-
-<tag><tt>e128</tt></tag>
+<tag><tt>mpp-e128</tt></tag>
 
 Enables 128-bit MPPE encryption.
 
-Note: in order for MPPE encryption to work, MS-CHAPv1 or MS-CHAPv2 auth
-is mandatory, because the MPPE keys are generated using the authentication
-results. If MS-CHAP auth is not used by link, encryption will not be negotiated.
-
-The default is disable.
-
-<tag><tt>stateless</tt></tag>
+<tag><tt>mpp-stateless</tt></tag>
 
 Enables stateless mode. This mode requires more CPU time and is somewhat
-less secure, but allows faster recovery in the face of lost packets.
+less secure, but allows faster recovery in the face of dropped packets.
 
-The default is disable.
-
-<tag><tt>policy</tt></tag>
+<tag><tt>mppe-policy</tt></tag>
 
 If enabled, Mpd uses the MPPE-Types and MPPE-Policy info from the authentication 
 backend.
 
-The default is disable.
+Default <tt><bf>disable</bf></tt>.
 
 </descrip>
+
 </p>
+
+
 

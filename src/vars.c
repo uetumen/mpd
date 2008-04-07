@@ -35,26 +35,31 @@
 void
 OptStat(Context ctx, Options opt, ConfInfo list)
 {
-    int		k, peered = 0;
+  int	k,peered;
 
-    for (k = 0; list[k].name; k++) {
-	if (list[k].peered) {
-	    peered=1;
-	    break;
-	}
+  peered=0;
+  for (k = 0; list[k].name; k++)
+  {
+    if (list[k].peered) {
+	peered=1;
+	break;
     }
+  }
 
-    if (peered)
-	Printf("\t\t\tSelf\t\tPeer\r\n");
-    for (k = 0; list[k].name; k++) {
-	ConfInfo	const c = &list[k];
+  if (peered) {
+    Printf("\t\t\tSelf\t\tPeer\r\n");
+//    Printf("\t\t\t--------------  --------\r\n");
+  }
+  for (k = 0; list[k].name; k++)
+  {
+    ConfInfo	const c = &list[k];
 
-	Printf("\t%-10s\t%s",
-    	    c->name, Enabled(opt, c->option) ? "enable" : "disable");
-	if (c->peered)
-    	    Printf("\t\t%s", Acceptable(opt, c->option) ? "accept" : "deny");
-	Printf("\r\n");
-    }
+    Printf("\t%-10s\t%s",
+      c->name, Enabled(opt, c->option) ? "enable" : "disable");
+    if (c->peered)
+      Printf("\t\t%s", Acceptable(opt, c->option) ? "accept" : "deny");
+    Printf("\r\n");
+  }
 }
 
 /*
@@ -136,7 +141,10 @@ Do(int which, int ac, char *av[], Options opt, ConfInfo list)
     switch (index)
     {
       case -1:
-	Log(LG_ERR, ("option \"%s\" unknown", *av));
+//	if (!strcasecmp(*av, "help") || !strcmp(*av, "?"))
+//	  OptStat(opt, list);
+//	else
+	  Log(LG_ERR, ("option \"%s\" unknown", *av));
 	break;
       case -2:
 	Log(LG_ERR, ("option \"%s\" ambiguous", *av));
@@ -190,19 +198,19 @@ Do(int which, int ac, char *av[], Options opt, ConfInfo list)
 static int
 FindOpt(ConfInfo list, const char *name)
 {
-    int		k, found = -1;
+  int	k, found = -1;
 
-    for (k = 0; list[k].name; k++) {
-	if (strncasecmp(list[k].name, name, strlen(name)) == 0) {
-    	    if (found == -1)
-		found = k;
-    	    else {
-		found = -2;		/* ambiguous */
-    		break;
-	    }
-	}
+  for (k = 0; list[k].name; k++) {
+    ConfInfo	const c = &list[k];
+
+    if (strncasecmp(c->name, name, strlen(name)) == 0) {
+      if (found == -1)
+	found = k;
+      else
+	found = -2;		/* ambiguous */
     }
-    return(found);
+  }
+  return(found);
 }
 
 

@@ -41,9 +41,13 @@
   #define MODEM_MTU			1600
   #define MODEM_MRU			1600
 
+  #define MODEM_REOPEN_PAUSE		8
   #define MODEM_MIN_CLOSE_TIME		3
+  #define MODEM_CONNECT_TIMEOUT		30
   #define MODEM_CHECK_INTERVAL		1
   #define MODEM_DEFAULT_SPEED		115200
+  #define MODEM_MAX_SCRIPT_NAME		32
+  #define MODEM_MAX_QUEUE		8192
   #define MODEM_ERR_REPORT_INTERVAL	60
 
   #define MODEM_IDLE_RESULT_ANSWER	"answer"
@@ -67,7 +71,7 @@
     int			speed;			/* Port speed */
     u_int		watch;			/* Signals to watch */
     char		device[20];		/* Serial device name */
-    char		ttynode[NG_NODESIZ];	/* TTY node name */
+    char		ttynode[NG_NODELEN + 1];	/* TTY node name */
     char		connScript[CHAT_MAX_LABEL];	/* Connect script */
     char		idleScript[CHAT_MAX_LABEL];	/* Idle script */
     struct pppTimer	checkTimer;		/* Timer to check pins */
@@ -90,26 +94,24 @@
     SET_CSCRIPT,
     SET_ISCRIPT,
     SET_SCRIPT_VAR,
-    SET_WATCH
+    SET_WATCH,
   };
 
 /*
  * INTERNAL FUNCTIONS
  */
 
-  static int		ModemInit(Link l);
-  static void		ModemOpen(Link l);
-  static void		ModemClose(Link l);
-  static void		ModemUpdate(Link l);
-  static int		ModemSetAccm(Link l, u_int32_t xmit, u_int32_t recv);
+  static int		ModemInit(PhysInfo p);
+  static void		ModemOpen(PhysInfo p);
+  static void		ModemClose(PhysInfo p);
+  static int		ModemSetAccm(PhysInfo p, u_int32_t xmit, u_int32_t recv);
   static void		ModemStat(Context ctx);
-  static int		ModemOriginated(Link l);
-  static int		ModemIsSync(Link l);
-  static int		ModemPeerAddr(Link l, void *buf, size_t buf_len);
-  static int		ModemIface(Link l, void *buf, size_t buf_len);
+  static int		ModemOriginated(PhysInfo p);
+  static int		ModemIsSync(PhysInfo p);
+  static int		ModemPeerAddr(PhysInfo p, void *buf, int buf_len);
 
   static void		ModemStart(void *arg);
-  static void		ModemDoClose(Link l, int opened);
+  static void		ModemDoClose(PhysInfo p, int opened);
 
   /* Chat callbacks */
   static int		ModemChatSetBaudrate(void *arg, int baud);
@@ -123,8 +125,8 @@
 				const char *msg);
 
   static int		ModemSetCommand(Context ctx, int ac, char *av[], void *arg);
-  static int		ModemInstallNodes(Link l);
-  static int		ModemGetNgStats(Link l, struct ng_async_stat *sp);
+  static int		ModemInstallNodes(PhysInfo p);
+  static int		ModemGetNgStats(PhysInfo p, struct ng_async_stat *sp);
 
   static void		ModemCheck(void *arg);
   static void		ModemErrorCheck(void *arg);
@@ -135,37 +137,34 @@
 
   const struct phystype gModemPhysType = {
     .name		= "modem",
-    .descr		= "Serial port modem",
+    .minReopenDelay	= MODEM_REOPEN_PAUSE,
     .mtu		= MODEM_MTU,
     .mru		= MODEM_MRU,
-    .tmpl		= 0,
     .init		= ModemInit,
     .open		= ModemOpen,
     .close		= ModemClose,
-    .update		= ModemUpdate,
     .showstat		= ModemStat,
     .originate		= ModemOriginated,
     .issync		= ModemIsSync,
     .setaccm 		= ModemSetAccm,
     .peeraddr		= ModemPeerAddr,
-    .peeriface		= ModemIface,
     .callingnum		= NULL,
     .callednum		= NULL,
   };
 
   const struct cmdtab ModemSetCmds[] = {
-    { "device {name}",			"Set modem device",
-      ModemSetCommand, NULL, 2, (void *) SET_DEVICE },
-    { "speed {port-speed}",		"Set modem speed",
-      ModemSetCommand, NULL, 2, (void *) SET_SPEED },
-    { "script [{label}]",		"Set connect script",
-      ModemSetCommand, NULL, 2, (void *) SET_CSCRIPT },
-    { "idle-script [{label}]",		"Set idle script",
-      ModemSetCommand, NULL, 2, (void *) SET_ISCRIPT },
-    { "var ${var} {string}",		"Set script variable",
-      ModemSetCommand, NULL, 2, (void *) SET_SCRIPT_VAR },
+    { "device name",			"Set modem device",
+      ModemSetCommand, NULL, (void *) SET_DEVICE },
+    { "speed port-speed",		"Set modem speed",
+      ModemSetCommand, NULL, (void *) SET_SPEED },
+    { "script [label]",			"Set connect script",
+      ModemSetCommand, NULL, (void *) SET_CSCRIPT },
+    { "idle-script [label]",		"Set idle script",
+      ModemSetCommand, NULL, (void *) SET_ISCRIPT },
+    { "var $var string",		"Set script variable",
+      ModemSetCommand, NULL, (void *) SET_SCRIPT_VAR },
     { "watch [+|-cd] [+|-dsr]", 	"Set signals to monitor",
-      ModemSetCommand, NULL, 2, (void *) SET_WATCH },
+      ModemSetCommand, NULL, (void *) SET_WATCH },
     { NULL },
   };
 
@@ -186,21 +185,23 @@
  */
 
 static int
-ModemInit(Link l)
+ModemInit(PhysInfo p)
 {
-    char	defSpeed[32];
-    ModemInfo	m;
+  char		defSpeed[32];
+  ModemInfo	m;
 
-    m = (ModemInfo) (l->info = Malloc(MB_PHYS, sizeof(*m)));
-    m->watch = TIOCM_CAR;
-    m->chat = ChatInit(l, ModemChatSetBaudrate,
+  m = (ModemInfo) (p->info = Malloc(MB_PHYS, sizeof(*m)));
+  m->watch = TIOCM_CAR;
+  m->chat = ChatInit(p, ModemChatSetBaudrate,
 		ModemChatLog, ModemChatMalloc, ModemChatFree);
-    m->fd = -1;
-    m->opened = FALSE;
+  m->fd = -1;
+  m->opened = FALSE;
 
+  if (p->link) {
     /* Set nominal link speed and bandwith for a modem connection */
-    l->latency = MODEM_DEFAULT_LATENCY;
-    l->bandwidth = MODEM_DEFAULT_BANDWIDTH;
+    p->link->latency = MODEM_DEFAULT_LATENCY;
+    p->link->bandwidth = MODEM_DEFAULT_BANDWIDTH;
+  }
 
     /* Set default speed */
     m->speed = MODEM_DEFAULT_SPEED;
@@ -214,21 +215,21 @@ ModemInit(Link l)
  */
 
 static void
-ModemOpen(Link l)
+ModemOpen(PhysInfo p)
 {
-    ModemInfo	const m = (ModemInfo) l->info;
+  ModemInfo	const m = (ModemInfo) p->info;
 
-    assert(!m->opened);
-    m->opened = TRUE;
-    if (m->fd >= 0) {			/* Device is already open.. */
-	if (m->answering) {			/* We just answered a call */
-    	    m->originated = FALSE;
-    	    m->answering = FALSE;
-    	    ModemChatConnectResult(l, TRUE, NULL);
-	} else
-    	    ModemDoClose(l, TRUE);		/* Stop idle script then dial back */
+  assert(!m->opened);
+  m->opened = TRUE;
+  if (m->fd >= 0) {			/* Device is already open.. */
+    if (m->answering) {			/* We just answered a call */
+      m->originated = FALSE;
+      m->answering = FALSE;
+      ModemChatConnectResult(p, TRUE, NULL);
     } else
-	ModemStart(l);			/* Open device and try to dial */
+      ModemDoClose(p, TRUE);		/* Stop idle script then dial back */
+  } else
+    ModemStart(p);			/* Open device and try to dial */
 }
 
 /*
@@ -238,70 +239,70 @@ ModemOpen(Link l)
 static void
 ModemStart(void *arg)
 {
-    Link		const l = (Link) arg;
-    ModemInfo		const m = (ModemInfo) l->info;
-    const time_t	now = time(NULL);
-    char		password[AUTH_MAX_PASSWORD];
-    FILE		*scriptfp;
+  PhysInfo		const p = (PhysInfo) arg;
+  ModemInfo		const m = (ModemInfo) p->info;
+  const time_t		now = time(NULL);
+  char			password[AUTH_MAX_PASSWORD];
+  FILE			*scriptfp;
 
-    /* If we're idle, and there's no idle script, there's nothing to do */
-    assert(!m->answering);
-    TimerStop(&m->startTimer);
-    if (!m->opened &&
-      (!*m->idleScript || !Enabled(&l->conf.options, LINK_CONF_INCOMING) ||
-       gShutdownInProgress))
-	return;
+  /* If we're idle, and there's no idle script, there's nothing to do */
+  assert(!m->answering);
+  TimerStop(&m->startTimer);
+  if (!m->opened && !*m->idleScript)
+    return;
 
-    /* Avoid brief hang from kernel enforcing minimum DTR hold time */
-    if (now - m->lastClosed < MODEM_MIN_CLOSE_TIME) {
-	TimerInit(&m->startTimer, "ModemStart",
-    	  (MODEM_MIN_CLOSE_TIME - (now - m->lastClosed)) * SECONDS, ModemStart, l);
-	TimerStart(&m->startTimer);
-	return;
-    }
+  /* Avoid brief hang from kernel enforcing minimum DTR hold time */
+  if (now - m->lastClosed < MODEM_MIN_CLOSE_TIME) {
+    TimerInit(&m->startTimer, "ModemStart",
+      (MODEM_MIN_CLOSE_TIME - (now - m->lastClosed)) * SECONDS, ModemStart, p);
+    TimerStart(&m->startTimer);
+    return;
+  }
 
-    /* Open and configure serial port */
-    if ((m->fd = OpenSerialDevice(l->name, m->device, m->speed)) < 0)
-        goto fail;
+  /* Open and configure serial port */
+  if ((m->fd = OpenSerialDevice(p->name, m->device, m->speed)) < 0)
+    goto fail;
 
-    /* If connecting, but no connect script, then skip chat altogether */
-    if (m->opened && !*m->connScript) {
-	ModemChatConnectResult(l, TRUE, NULL);
-	return;
-    }
+  /* If connecting, but no connect script, then skip chat altogether */
+  if (m->opened && !*m->connScript) {
+    ModemChatConnectResult(p, TRUE, NULL);
+    return;
+  }
 
-    /* Open chat script file */
-    if ((scriptfp = OpenConfFile(SCRIPT_FILE, NULL)) == NULL) {
-	Log(LG_ERR, ("[%s] MODEM: can't open chat script file", l->name));
-	ExclusiveCloseDevice(l->name, m->fd, m->device);
-	m->fd = -1;
+  /* Open chat script file */
+  if ((scriptfp = OpenConfFile(SCRIPT_FILE, NULL)) == NULL) {
+    Log(LG_ERR, ("[%s] MODEM: can't open chat script file", p->name));
+    ExclusiveCloseDevice(p->name, m->fd, m->device);
+    m->fd = -1;
 fail:
-	m->opened = FALSE;
-	m->lastClosed = time(NULL);
-	l->state = PHYS_STATE_DOWN;
-	PhysDown(l, STR_ERROR, STR_DEV_NOT_READY);
-	return;
-    }
+    m->opened = FALSE;
+    m->lastClosed = time(NULL);
+    p->state = PHYS_STATE_DOWN;
+    PhysDown(p, STR_ERROR, STR_DEV_NOT_READY);
+    return;
+  }
 
     /* Preset some special chat variables */
     ChatPresetVar(m->chat, CHAT_VAR_DEVICE, m->device);
-    ChatPresetVar(m->chat, CHAT_VAR_LOGIN, l->lcp.auth.conf.authname);
-    if (l->lcp.auth.conf.password[0] != 0) {
-	ChatPresetVar(m->chat, CHAT_VAR_PASSWORD, l->lcp.auth.conf.password);
-    } else if (AuthGetData(l->lcp.auth.conf.authname,
-        password, sizeof(password), NULL, NULL) >= 0) {
-    	    ChatPresetVar(m->chat, CHAT_VAR_PASSWORD, password);
+    if (p->link) {
+	ChatPresetVar(m->chat, CHAT_VAR_LOGIN, p->link->lcp.auth.conf.authname);
+	if (p->link->lcp.auth.conf.password[0] != 0) {
+	    ChatPresetVar(m->chat, CHAT_VAR_PASSWORD, p->link->lcp.auth.conf.password);
+	} else if (AuthGetData(p->link->lcp.auth.conf.authname,
+	    password, sizeof(password), NULL, NULL) >= 0) {
+		ChatPresetVar(m->chat, CHAT_VAR_PASSWORD, password);
+	}
     }
 
-    /* Run connect or idle script as appropriate */
-    if (!m->opened) {
-	ChatPresetVar(m->chat, CHAT_VAR_IDLE_RESULT, "<unknown>");
-	ChatStart(m->chat, m->fd, scriptfp, m->idleScript, ModemChatIdleResult);
-    } else {
-	m->originated = TRUE;
-	l->state = PHYS_STATE_CONNECTING;
-	ChatStart(m->chat, m->fd, scriptfp, m->connScript, ModemChatConnectResult);
-    }
+  /* Run connect or idle script as appropriate */
+  if (!m->opened) {
+    ChatPresetVar(m->chat, CHAT_VAR_IDLE_RESULT, "<unknown>");
+    ChatStart(m->chat, m->fd, scriptfp, m->idleScript, ModemChatIdleResult);
+  } else {
+    m->originated = TRUE;
+    p->state = PHYS_STATE_CONNECTING;
+    ChatStart(m->chat, m->fd, scriptfp, m->connScript, ModemChatConnectResult);
+  }
 }
 
 /*
@@ -309,30 +310,15 @@ fail:
  */
 
 static void
-ModemClose(Link l)
+ModemClose(PhysInfo p)
 {
-    ModemInfo	const m = (ModemInfo) l->info;
+  ModemInfo	const m = (ModemInfo) p->info;
 
-    if (!m->opened)
-	return;
-    ModemDoClose(l, FALSE);
-    l->state = PHYS_STATE_DOWN;
-    PhysDown(l, STR_MANUALLY, NULL);
-}
-
-static void
-ModemUpdate(Link l)
-{
-    ModemInfo	const m = (ModemInfo) l->info;
-
-    if (m->opened || TimerRemain(&m->startTimer) >= 0)
-	return;		/* nothing needs to be done right now */
-    if (m->fd >= 0 &&
-      (!*m->idleScript || !Enabled(&l->conf.options, LINK_CONF_INCOMING)))
-        ModemDoClose(l, FALSE);
-    else if (m->fd < 0 &&
-      (*m->idleScript && Enabled(&l->conf.options, LINK_CONF_INCOMING)))
-        ModemStart(l);
+  if (!m->opened)
+    return;
+  ModemDoClose(p, FALSE);
+  p->state = PHYS_STATE_DOWN;
+  PhysDown(p, 0, NULL);
 }
 
 /*
@@ -340,35 +326,35 @@ ModemUpdate(Link l)
  */
 
 static void
-ModemDoClose(Link l, int opened)
+ModemDoClose(PhysInfo p, int opened)
 {
-    ModemInfo	const m = (ModemInfo) l->info;
-    char	path[NG_PATHSIZ];
-    const char	ch = ' ';
+  ModemInfo     const m = (ModemInfo) p->info;
+  char		path[NG_PATHLEN + 1];
+  const char	ch = ' ';
 
-    /* Shutdown everything */
-    assert(m->fd >= 0);
-    ChatAbort(m->chat);
-    TimerStop(&m->checkTimer);
-    TimerStop(&m->startTimer);
-    TimerStop(&m->reportTimer);
-    (void) write(m->fd, &ch, 1);	/* USR kludge to prevent dial lockup */
-    if (*m->ttynode != '\0') {
-	snprintf(path, sizeof(path), "%s:%s", m->ttynode, NG_TTY_HOOK);
-	NgFuncShutdownNode(m->csock, l->name, path);
-	*m->ttynode = '\0';
-    }
-    if (m->csock > 0) {
-	close(m->csock);
-	m->csock = -1;
-    }
+  /* Shutdown everything */
+  assert(m->fd >= 0);
+  ChatAbort(m->chat);
+  TimerStop(&m->checkTimer);
+  TimerStop(&m->startTimer);
+  TimerStop(&m->reportTimer);
+  (void) write(m->fd, &ch, 1);	/* USR kludge to prevent dial lockup */
+  if (*m->ttynode != '\0') {
+    snprintf(path, sizeof(path), "%s:%s", m->ttynode, NG_TTY_HOOK);
+    NgFuncShutdownNode(m->csock, p->name, path);
+    *m->ttynode = '\0';
+  }
+  if (m->csock > 0) {
+    close(m->csock);
+    m->csock = -1;
+  }
 
-    ExclusiveCloseDevice(l->name, m->fd, m->device);
-    m->lastClosed = time(NULL);
-    m->answering = FALSE;
-    m->fd = -1;
-    m->opened = opened;
-    ModemStart(l);
+  ExclusiveCloseDevice(p->name, m->fd, m->device);
+  m->lastClosed = time(NULL);
+  m->answering = FALSE;
+  m->fd = -1;
+  m->opened = opened;
+  ModemStart(p);
 }
 
 /*
@@ -376,21 +362,21 @@ ModemDoClose(Link l, int opened)
  */
 
 static int
-ModemSetAccm(Link l, u_int32_t xmit, u_int32_t recv)
+ModemSetAccm(PhysInfo p, u_int32_t xmit, u_int32_t recv)
 {
-    ModemInfo		const m = (ModemInfo) l->info;
-    char       		path[NG_PATHSIZ];
+  ModemInfo		const m = (ModemInfo) p->info;
+  char        		path[NG_PATHLEN+1];
 
-    /* Update async config */
-    m->acfg.accm = xmit|recv;
-    snprintf(path, sizeof(path), "%s:%s", m->ttynode, NG_TTY_HOOK);
-    if (NgSendMsg(m->csock, path, NGM_ASYNC_COOKIE,
+  /* Update async config */
+  m->acfg.accm = xmit|recv;
+  snprintf(path, sizeof(path), "%s:%s", m->ttynode, NG_TTY_HOOK);
+  if (NgSendMsg(m->csock, path, NGM_ASYNC_COOKIE,
       NGM_ASYNC_CMD_SET_CONFIG, &m->acfg, sizeof(m->acfg)) < 0) {
-	Log(LG_PHYS, ("[%s] MODEM: can't update config for %s: %s",
-    	    l->name, path, strerror(errno)));
-        return (-1);
-    }
-    return (0);
+    Log(LG_PHYS, ("[%s] MODEM: can't update config for %s: %s",
+      p->name, path, strerror(errno)));
+      return (-1);
+  }
+  return (0);
 }
 
 /*
@@ -402,47 +388,49 @@ ModemSetAccm(Link l, u_int32_t xmit, u_int32_t recv)
 static void
 ModemChatConnectResult(void *arg, int result, const char *msg)
 {
-    Link	const l = (Link) arg;
-    ModemInfo	const m = (ModemInfo) l->info;
-    char	*cspeed;
-    int		bw;
+  PhysInfo		const p = (PhysInfo) arg;
+  ModemInfo		const m = (ModemInfo) p->info;
+  const char	*cspeed;
+  int		bw;
 
-    /* Was the connect script successful? */
-    Log(LG_PHYS, ("[%s] MODEM: chat script %s",
-	l->name, result ? "succeeded" : "failed"));
-    if (!result) {
+  /* Was the connect script successful? */
+  Log(LG_PHYS, ("[%s] MODEM: chat script %s",
+    p->name, result ? "succeeded" : "failed"));
+  if (!result) {
 failed:
-	ModemDoClose(l, FALSE);
-	l->state = PHYS_STATE_DOWN;
-	PhysDown(l, STR_ERROR, "%s", msg);
-	return;
+    ModemDoClose(p, FALSE);
+    p->state = PHYS_STATE_DOWN;
+    PhysDown(p, STR_ERROR, "%s", msg);
+    return;
+  }
+
+  /* Set modem's reported connection speed (if any) as the link bandwidth */
+  if ((cspeed = ChatGetVar(m->chat, CHAT_VAR_CONNECT_SPEED)) != NULL) {
+    if ((bw = (int) strtoul(cspeed, NULL, 10)) > 0) {
+	if (p->link)
+	    p->link->bandwidth = bw;
     }
+    Freee(MB_CHAT, cspeed);
+  }
 
-    /* Set modem's reported connection speed (if any) as the link bandwidth */
-    if ((cspeed = ChatGetVar(m->chat, CHAT_VAR_CONNECT_SPEED)) != NULL) {
-	if ((bw = (int) strtoul(cspeed, NULL, 10)) > 0) {
-	    l->bandwidth = bw;
-	}
-	Freee(cspeed);
-    }
+  /* Do async <-> sync conversion via netgraph node */
+  if (ModemInstallNodes(p) < 0) {
+    msg = STR_DEV_NOT_READY;
+    goto failed;
+  }
 
-    /* Do async <-> sync conversion via netgraph node */
-    if (ModemInstallNodes(l) < 0) {
-	msg = STR_DEV_NOT_READY;
-	goto failed;
-    }
+  /* Start pin check and report timers */
+  TimerInit(&m->checkTimer, "ModemCheck",
+    MODEM_CHECK_INTERVAL * SECONDS, ModemCheck, p);
+  TimerStart(&m->checkTimer);
+  TimerStop(&m->reportTimer);
+  TimerInit(&m->reportTimer, "ModemReport",
+    MODEM_ERR_REPORT_INTERVAL * SECONDS, ModemErrorCheck, p);
+  TimerStart(&m->reportTimer);
 
-    /* Start pin check and report timers */
-    TimerInit(&m->checkTimer, "ModemCheck",
-	MODEM_CHECK_INTERVAL * SECONDS, ModemCheck, l);
-    TimerStart(&m->checkTimer);
-    TimerStop(&m->reportTimer);
-    TimerInit(&m->reportTimer, "ModemReport",
-	MODEM_ERR_REPORT_INTERVAL * SECONDS, ModemErrorCheck, l);
-    TimerStart(&m->reportTimer);
-
-    l->state = PHYS_STATE_UP;
-    PhysUp(l);
+  /* Done */
+  p->state = PHYS_STATE_UP;
+  PhysUp(p);
 }
 
 /*
@@ -457,48 +445,54 @@ failed:
 static void
 ModemChatIdleResult(void *arg, int result, const char *msg)
 {
-    Link		const l = (Link) arg;
-    ModemInfo	const m = (ModemInfo) l->info;
-    char	*idleResult;
+  PhysInfo		const p = (PhysInfo) arg;
+  ModemInfo		const m = (ModemInfo) p->info;
+  const char	*idleResult;
 
-    /* If script failed, then do nothing */
-    if (!result) {
-	ModemDoClose(l, FALSE);
-	return;
-    }
+  /* If script failed, then do nothing */
+  if (!result) {
+    ModemDoClose(p, FALSE);
+    return;
+  }
 
-    /* See what script wants us to do now by checking variable $IdleResult */
-    if ((idleResult = ChatGetVar(m->chat, CHAT_VAR_IDLE_RESULT)) == NULL) {
-	Log(LG_ERR, ("[%s] MODEM: idle script succeeded, but %s not defined",
-    	    l->name, CHAT_VAR_IDLE_RESULT));
-	ModemDoClose(l, FALSE);
-	return;
-    }
+  /* See what script wants us to do now by checking variable $IdleResult */
+  if ((idleResult = ChatGetVar(m->chat, CHAT_VAR_IDLE_RESULT)) == NULL) {
+    Log(LG_ERR, ("[%s] MODEM: idle script succeeded, but %s not defined",
+      p->name, CHAT_VAR_IDLE_RESULT));
+    ModemDoClose(p, FALSE);
+    return;
+  }
 
-    /* Do whatever */
-    Log(LG_PHYS, ("[%s] MODEM: idle script succeeded, action=%s",
-	l->name, idleResult));
+  /* Do whatever */
+  Log(LG_PHYS, ("[%s] MODEM: idle script succeeded, action=%s",
+    p->name, idleResult));
 
-    if (gShutdownInProgress) {
-        Log(LG_PHYS, ("Shutdown sequence in progress, ignoring"));
-	ModemDoClose(l, FALSE);
-    } else if (strcasecmp(idleResult, MODEM_IDLE_RESULT_ANSWER) == 0) {
-        Log(LG_PHYS, ("[%s] MODEM: opening link in %s mode", l->name, "answer"));
-        RecordLinkUpDownReason(NULL, l, 1, STR_INCOMING_CALL, msg ? "%s" : NULL, msg);
-        m->answering = TRUE;
-        l->state = PHYS_STATE_READY;
-        PhysIncoming(l);
+  if (gShutdownInProgress) {
+    Log(LG_PHYS, ("Shutdown sequence in progress, ignoring"));
+    ModemDoClose(p, FALSE);
+  }
+  else
+  {
+    if (strcasecmp(idleResult, MODEM_IDLE_RESULT_ANSWER) == 0) {
+      Log(LG_PHYS, ("[%s] MODEM: opening link in %s mode", p->name, "answer"));
+      if (p->link)
+        RecordLinkUpDownReason(NULL, p->link, 1, STR_INCOMING_CALL, msg ? "%s" : NULL, msg);
+      m->answering = TRUE;
+      p->state = PHYS_STATE_READY;
+      PhysIncoming(p);
     } else if (strcasecmp(idleResult, MODEM_IDLE_RESULT_RINGBACK) == 0) {
-        Log(LG_PHYS, ("[%s] MODEM: opening link in %s mode", l->name, "ringback"));
-        RecordLinkUpDownReason(NULL, l, 1, STR_RINGBACK, msg ? "%s" : NULL, msg);
-        m->answering = FALSE;
-        PhysIncoming(l);
+      Log(LG_PHYS, ("[%s] MODEM: opening link in %s mode", p->name, "ringback"));
+      if (p->link)
+        RecordLinkUpDownReason(NULL, p->link, 1, STR_RINGBACK, msg ? "%s" : NULL, msg);
+      m->answering = FALSE;
+      PhysIncoming(p);
     } else {
-        Log(LG_ERR, ("[%s] MODEM: idle script succeeded, but action \"%s\" unknown",
-    	  l->name, idleResult));
-        ModemDoClose(l, FALSE);
+      Log(LG_ERR, ("[%s] MODEM: idle script succeeded, but action \"%s\" unknown",
+        p->name, idleResult));
+      ModemDoClose(p, FALSE);
     }
-    Freee(idleResult);
+  }
+  Freee(MB_CHAT, idleResult);
 }
 
 /*
@@ -506,15 +500,15 @@ ModemChatIdleResult(void *arg, int result, const char *msg)
  */
 
 static int
-ModemInstallNodes(Link l)
+ModemInstallNodes(PhysInfo p)
 {
-    ModemInfo 		m = (ModemInfo) l->info;
-    struct nodeinfo	ngtty;
-    struct ngm_mkpeer	ngm;
-    struct ngm_connect	cn;
-    char       		path[NG_PATHSIZ];
-    int			hotchar = PPP_FLAG;
-    int			ldisc = NETGRAPHDISC;
+  ModemInfo 		m = (ModemInfo) p->info;
+  struct nodeinfo	ngtty;
+  struct ngm_mkpeer	ngm;
+  struct ngm_connect	cn;
+  char        		path[NG_PATHLEN+1];
+  int			hotchar = PPP_FLAG;
+  int			ldisc = NETGRAPHDISC;
 
     /* Get a temporary netgraph socket node */
     if (NgMkSockNode(NULL, &m->csock, NULL) == -1) {
@@ -522,69 +516,69 @@ ModemInstallNodes(Link l)
     	return(-1);
     }
 
-    /* Install ng_tty line discipline */
+  /* Install ng_tty line discipline */
+  if (ioctl(m->fd, TIOCSETD, &ldisc) < 0) {
+
+    /* Installation of the tty node type should be automatic, but isn't yet.
+       The 'mkpeer' below will fail, because you can only create a ng_tty
+       node via TIOCSETD; however, this will force a load of the node type. */
+    if (errno == ENODEV) {
+      (void)NgSendAsciiMsg(m->csock, ".",
+	"mkpeer { type=\"%s\" ourhook=\"dummy\" peerhook=\"%s\" }",
+	NG_TTY_NODE_TYPE, NG_TTY_HOOK);
+    }
     if (ioctl(m->fd, TIOCSETD, &ldisc) < 0) {
-
-	/* Installation of the tty node type should be automatic, but isn't yet.
-    	   The 'mkpeer' below will fail, because you can only create a ng_tty
-           node via TIOCSETD; however, this will force a load of the node type. */
-	if (errno == ENODEV) {
-    	    (void)NgSendAsciiMsg(m->csock, ".:",
-		"mkpeer { type=\"%s\" ourhook=\"dummy\" peerhook=\"%s\" }",
-		NG_TTY_NODE_TYPE, NG_TTY_HOOK);
-	}
-	if (ioctl(m->fd, TIOCSETD, &ldisc) < 0) {
-    	    Log(LG_ERR, ("[%s] ioctl(TIOCSETD, %d): %s",
-		l->name, ldisc, strerror(errno))); 
-    	    close(m->csock);
-    	    return(-1);
-	}
+      Log(LG_ERR, ("[%s] ioctl(TIOCSETD, %d): %s",
+	p->name, ldisc, strerror(errno))); 
+      close(m->csock);
+      return(-1);
     }
+  }
 
-    /* Get the name of the ng_tty node */
-    if (ioctl(m->fd, NGIOCGINFO, &ngtty) < 0) {
-	Log(LG_ERR, ("[%s] MODEM: ioctl(NGIOCGINFO): %s", l->name, strerror(errno))); 
-	return(-1);
-    }
-    strlcpy(m->ttynode, ngtty.name, sizeof(m->ttynode));
+  /* Get the name of the ng_tty node */
+  if (ioctl(m->fd, NGIOCGINFO, &ngtty) < 0) {
+    Log(LG_ERR, ("[%s] MODEM: ioctl(NGIOCGINFO): %s", p->name, strerror(errno))); 
+    return(-1);
+  }
+  snprintf(m->ttynode, sizeof(m->ttynode), "%s", ngtty.name);
 
-    /* Set the ``hot char'' on the TTY node */
-    snprintf(path, sizeof(path), "%s:", ngtty.name);
-    if (NgSendMsg(m->csock, path, NGM_TTY_COOKIE,
+  /* Set the ``hot char'' on the TTY node */
+  snprintf(path, sizeof(path), "%s:", ngtty.name);
+  if (NgSendMsg(m->csock, path, NGM_TTY_COOKIE,
       NGM_TTY_SET_HOTCHAR, &hotchar, sizeof(hotchar)) < 0) {
-	Log(LG_ERR, ("[%s] MODEM: can't set hotchar", l->name));
-	close(m->csock);
-	return(-1);
-    }
+    Log(LG_ERR, ("[%s] MODEM: can't set hotchar", p->name));
+    close(m->csock);
+    return(-1);
+  }
 
-    /* Attach an async converter node */
-    strcpy(ngm.type, NG_ASYNC_NODE_TYPE);
-    strcpy(ngm.ourhook, NG_TTY_HOOK);
-    strcpy(ngm.peerhook, NG_ASYNC_HOOK_ASYNC);
-    if (NgSendMsg(m->csock, path, NGM_GENERIC_COOKIE,
+  /* Attach an async converter node */
+  snprintf(ngm.type, sizeof(ngm.type), "%s", NG_ASYNC_NODE_TYPE);
+  snprintf(ngm.ourhook, sizeof(ngm.ourhook), "%s", NG_TTY_HOOK);
+  snprintf(ngm.peerhook, sizeof(ngm.peerhook), "%s", NG_ASYNC_HOOK_ASYNC);
+  if (NgSendMsg(m->csock, path, NGM_GENERIC_COOKIE,
       NGM_MKPEER, &ngm, sizeof(ngm)) < 0) {
-	Log(LG_ERR, ("[%s] MODEM: can't connect %s node", l->name, NG_ASYNC_NODE_TYPE));
-	close(m->csock);
-	return(-1);
-    }
+    Log(LG_ERR, ("[%s] MODEM: can't connect %s node", p->name, NG_ASYNC_NODE_TYPE));
+    close(m->csock);
+    return(-1);
+  }
 
-    /* Configure the async converter node */
-    snprintf(path, sizeof(path), "%s:%s", ngtty.name, NG_TTY_HOOK);
-    memset(&m->acfg, 0, sizeof(m->acfg));
-    m->acfg.enabled = TRUE;
-    m->acfg.accm = ~0;
-    m->acfg.amru = MODEM_MRU;
-    m->acfg.smru = MODEM_MTU;
-    if (NgSendMsg(m->csock, path, NGM_ASYNC_COOKIE,
+  /* Configure the async converter node */
+  snprintf(path, sizeof(path), "%s:%s", ngtty.name, NG_TTY_HOOK);
+  memset(&m->acfg, 0, sizeof(m->acfg));
+  m->acfg.enabled = TRUE;
+  m->acfg.accm = ~0;
+  m->acfg.amru = MODEM_MRU;
+  m->acfg.smru = MODEM_MTU;
+  if (NgSendMsg(m->csock, path, NGM_ASYNC_COOKIE,
       NGM_ASYNC_CMD_SET_CONFIG, &m->acfg, sizeof(m->acfg)) < 0) {
-	Log(LG_ERR, ("[%s] MODEM: can't config %s", l->name, path));
-	close(m->csock);
-	return(-1);
-    }
+    Log(LG_ERR, ("[%s] MODEM: can't config %s", p->name, path));
+    close(m->csock);
+    return(-1);
+  }
 
     /* Attach async node to PPP node */
-    if (!PhysGetUpperHook(l, cn.path, cn.peerhook)) {
-        Log(LG_PHYS, ("[%s] MODEM: can't get upper hook", l->name));
+    if (!PhysGetUpperHook(p, cn.path, cn.peerhook)) {
+        Log(LG_PHYS, ("[%s] MODEM: can't get upper hook", p->name));
 	close(m->csock);
 	return (-1);
     }
@@ -592,11 +586,12 @@ ModemInstallNodes(Link l)
     if (NgSendMsg(m->csock, path, NGM_GENERIC_COOKIE, NGM_CONNECT, 
         &cn, sizeof(cn)) < 0) {
     	    Log(LG_ERR, ("[%s] MODEM: can't connect \"%s\"->\"%s\" and \"%s\"->\"%s\": %s",
-	        l->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
+	        p->name, path, cn.ourhook, cn.path, cn.peerhook, strerror(errno)));
 	    close(m->csock);
 	    return (-1);
     }
 
+    /* OK */
     return(0);
 }
 
@@ -611,27 +606,27 @@ ModemInstallNodes(Link l)
 static int
 ModemChatSetBaudrate(void *arg, int baud)
 {
-    Link		const l = (Link) arg;
-    ModemInfo		const m = (ModemInfo) l->info;
-    struct termios	attr;
+  PhysInfo		const p = (PhysInfo) arg;
+  ModemInfo		const m = (ModemInfo) p->info;
+  struct termios	attr;
 
-    /* Change baud rate */
-    if (tcgetattr(m->fd, &attr) < 0) {
-	Log(LG_ERR, ("[%s] MODEM: can't tcgetattr \"%s\": %s",
-    	    l->name, m->device, strerror(errno)));
-	return(-1);
-    }
-    if (cfsetspeed(&attr, (speed_t) baud) < 0) {
-	Log(LG_ERR, ("[%s] MODEM: can't set speed %d: %s",
-    	    l->name, baud, strerror(errno)));
-	return(-1);
-    }
-    if (tcsetattr(m->fd, TCSANOW, &attr) < 0) {
-	Log(LG_ERR, ("[%s] MODEM: can't tcsetattr \"%s\": %s",
-    	    l->name, m->device, strerror(errno)));
-	return(-1);
-    }
-    return(0);
+  /* Change baud rate */
+  if (tcgetattr(m->fd, &attr) < 0) {
+    Log(LG_ERR, ("[%s] MODEM: can't tcgetattr \"%s\": %s",
+      p->name, m->device, strerror(errno)));
+    return(-1);
+  }
+  if (cfsetspeed(&attr, (speed_t) baud) < 0) {
+    Log(LG_ERR, ("[%s] MODEM: can't set speed %d: %s",
+      p->name, baud, strerror(errno)));
+    return(-1);
+  }
+  if (tcsetattr(m->fd, TCSANOW, &attr) < 0) {
+    Log(LG_ERR, ("[%s] MODEM: can't tcsetattr \"%s\": %s",
+      p->name, m->device, strerror(errno)));
+    return(-1);
+  }
+  return(0);
 }
 
 /*
@@ -641,41 +636,41 @@ ModemChatSetBaudrate(void *arg, int baud)
 static void
 ModemChatLog(void *arg, int level, const char *fmt, ...)
 {
-    Link	const l = (Link) arg;
-    char	buf[128];
-    va_list	args;
-    int		logLevel;
+  PhysInfo		const p = (PhysInfo) arg;
+  char		buf[128];
+  va_list	args;
+  int		logLevel;
 
-    /* Convert level */
-    switch (level) {
-	default:
-	case CHAT_LG_NORMAL:
-    	    logLevel = LG_CHAT;
-    	    break;
-	case CHAT_LG_ERROR:
-    	    logLevel = LG_ERR;
-    	    break;
-	case CHAT_LG_DEBUG:
-    	    logLevel = LG_CHAT2;
-    	    break;
-    }
-    if ((gLogOptions & logLevel) == 0)
-	return;
+  /* Convert level */
+  switch (level) {
+    default:
+    case CHAT_LG_NORMAL:
+      logLevel = LG_CHAT;
+      break;
+    case CHAT_LG_ERROR:
+      logLevel = LG_ERR;
+      break;
+    case CHAT_LG_DEBUG:
+      logLevel = LG_CHAT2;
+      break;
+  }
+  if ((gLogOptions & logLevel) == 0)
+    return;
 
-    /* Concat prefix and message */
-    va_start(args, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, args);
-    va_end(args);
-    if (*buf != ' ')
-	snprintf(buf, sizeof(buf), "[%s] chat: ", l->name);
-    else
-	*buf = '\0';
-    va_start(args, fmt);
-    vsnprintf(buf + strlen(buf), sizeof(buf) - strlen(buf), fmt, args);
-    va_end(args);
+  /* Concat prefix and message */
+  va_start(args, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
+  if (*buf != ' ')
+    snprintf(buf, sizeof(buf), "[%s] chat: ", p->name);
+  else
+    *buf = '\0';
+  va_start(args, fmt);
+  vsnprintf(buf + strlen(buf), sizeof(buf) - strlen(buf), fmt, args);
+  va_end(args);
 
-    /* Log it */
-    LogPrintf("%s", buf);
+  /* Log it */
+  LogPrintf("%s", buf);
 }
 
 /*
@@ -685,7 +680,7 @@ ModemChatLog(void *arg, int level, const char *fmt, ...)
 static void *
 ModemChatMalloc(void *arg, size_t size)
 {
-    return Malloc(MB_CHAT, size);
+  return Malloc(MB_CHAT, size);
 }
 
 /*
@@ -695,19 +690,19 @@ ModemChatMalloc(void *arg, size_t size)
 static void
 ModemChatFree(void *arg, void *mem)
 {
-    Freee(mem);
+  Freee(MB_CHAT, mem);
 }
 
 /*
  * ModemGetVar()
  */
 
-char *
-ModemGetVar(Link l, const char *name)
+const char *
+ModemGetVar(PhysInfo p, const char *name)
 {
-    ModemInfo	const m = (ModemInfo) l->info;
+  ModemInfo	const m = (ModemInfo) p->info;
 
-    return ChatGetVar(m->chat, name);
+  return ChatGetVar(m->chat, name);
 }
 
 /*
@@ -717,33 +712,33 @@ ModemGetVar(Link l, const char *name)
 static void
 ModemCheck(void *arg)
 {
-    Link	const l = (Link)arg;
-    ModemInfo	const m = (ModemInfo) l->info;
-    int		state;
+  PhysInfo	const p = (PhysInfo)arg;
+  ModemInfo	const m = (ModemInfo) p->info;
+  int		state;
 
-    if (ioctl(m->fd, TIOCMGET, &state) < 0) {
-	Log(LG_ERR, ("[%s] MODEM: can't ioctl(%s) %s: %s",
-    	    l->name, "TIOCMGET", m->device, strerror(errno)));
-	l->state = PHYS_STATE_DOWN;
-	ModemDoClose(l, FALSE);
-	PhysDown(l, STR_ERROR, "ioctl(%s): %s", "TIOCMGET", strerror(errno));
-	return;
-    }
-    if ((m->watch & TIOCM_CAR) && !(state & TIOCM_CAR)) {
-	Log(LG_PHYS, ("[%s] MODEM: carrier detect (CD) signal lost", l->name));
-	l->state = PHYS_STATE_DOWN;
-	ModemDoClose(l, FALSE);
-	PhysDown(l, STR_DROPPED, "%s", STR_LOST_CD);
-	return;
-    }
-    if ((m->watch & TIOCM_DSR) && !(state & TIOCM_DSR)) {
-	Log(LG_PHYS, ("[%s] MODEM: data-set ready (DSR) signal lost", l->name));
-	l->state = PHYS_STATE_DOWN;
-	ModemDoClose(l, FALSE);
-	PhysDown(l, STR_DROPPED, "%s", STR_LOST_DSR);
-	return;
-    }
-    TimerStart(&m->checkTimer);
+  if (ioctl(m->fd, TIOCMGET, &state) < 0) {
+    Log(LG_ERR, ("[%s] MODEM: can't ioctl(%s) %s: %s",
+      p->name, "TIOCMGET", m->device, strerror(errno)));
+    p->state = PHYS_STATE_DOWN;
+    PhysDown(p, STR_ERROR, "ioctl(%s): %s", "TIOCMGET", strerror(errno));
+    ModemDoClose(p, FALSE);
+    return;
+  }
+  if ((m->watch & TIOCM_CAR) && !(state & TIOCM_CAR)) {
+    Log(LG_PHYS, ("[%s] MODEM: carrier detect (CD) signal lost", p->name));
+    p->state = PHYS_STATE_DOWN;
+    PhysDown(p, STR_DROPPED, "%s", STR_LOST_CD);
+    ModemDoClose(p, FALSE);
+    return;
+  }
+  if ((m->watch & TIOCM_DSR) && !(state & TIOCM_DSR)) {
+    Log(LG_PHYS, ("[%s] MODEM: data-set ready (DSR) signal lost", p->name));
+    p->state = PHYS_STATE_DOWN;
+    PhysDown(p, STR_DROPPED, "%s", STR_LOST_DSR);
+    ModemDoClose(p, FALSE);
+    return;
+  }
+  TimerStart(&m->checkTimer);
 }
 
 /*
@@ -755,26 +750,26 @@ ModemCheck(void *arg)
 static void
 ModemErrorCheck(void *arg)
 {
-    Link			const l = (Link) arg;
-    ModemInfo			const m = (ModemInfo) l->info;
-    char			path[NG_PATHSIZ];
-    struct ng_async_stat	stats;
+  PhysInfo		const p = (PhysInfo) arg;
+  ModemInfo		const m = (ModemInfo) p->info;
+  char			path[NG_PATHLEN + 1];
+  struct ng_async_stat	stats;
 
-    /* Check for errors */
-    snprintf(path, sizeof(path), "%s:%s", m->ttynode, NG_TTY_HOOK);
-    if (ModemGetNgStats(l, &stats) >= 0
+  /* Check for errors */
+  snprintf(path, sizeof(path), "%s:%s", m->ttynode, NG_TTY_HOOK);
+  if (ModemGetNgStats(p, &stats) >= 0
       && (stats.asyncBadCheckSums
-       || stats.asyncRunts || stats.asyncOverflows)) {
-	Log(LG_PHYS, ("[%s] NEW FRAME ERRS: FCS %u RUNT %u OVFL %u",
-        l->name, stats.asyncBadCheckSums,
-        stats.asyncRunts, stats.asyncOverflows));
-	(void) NgSendMsg(m->csock, path,
-    	    NGM_ASYNC_COOKIE, NGM_ASYNC_CMD_CLR_STATS, NULL, 0);
-    }
+	|| stats.asyncRunts || stats.asyncOverflows)) {
+    Log(LG_PHYS, ("[%s] NEW FRAME ERRS: FCS %u RUNT %u OVFL %u",
+      p->name, stats.asyncBadCheckSums,
+      stats.asyncRunts, stats.asyncOverflows));
+    (void) NgSendMsg(m->csock, path,
+      NGM_ASYNC_COOKIE, NGM_ASYNC_CMD_CLR_STATS, NULL, 0);
+  }
 
-    /* Restart timer */
-    TimerStop(&m->reportTimer);
-    TimerStart(&m->reportTimer);
+  /* Restart timer */
+  TimerStop(&m->reportTimer);
+  TimerStart(&m->reportTimer);
 }
 
 /*
@@ -782,25 +777,26 @@ ModemErrorCheck(void *arg)
  */
 
 static int
-ModemGetNgStats(Link l, struct ng_async_stat *sp)
+ModemGetNgStats(PhysInfo p, struct ng_async_stat *sp)
 {
-    ModemInfo           const m = (ModemInfo) l->info;
-    char		path[NG_PATHSIZ];
-    union {
-	u_char		buf[sizeof(struct ng_mesg) + sizeof(*sp)];
-	struct ng_mesg	resp;
-    } u;
+  ModemInfo             const m = (ModemInfo) p->info;
+  char			path[NG_PATHLEN + 1];
+  union {
+    u_char		buf[sizeof(struct ng_mesg) + sizeof(*sp)];
+    struct ng_mesg	resp;
+  } u;
 
-    /* Get stats */
-    snprintf(path, sizeof(path), "%s:%s", m->ttynode, NG_TTY_HOOK);
-    if (NgFuncSendQuery(path, NGM_ASYNC_COOKIE, NGM_ASYNC_CMD_GET_STATS,
+  /* Get stats */
+  snprintf(path, sizeof(path), "%s:%s", m->ttynode, NG_TTY_HOOK);
+  if (NgFuncSendQuery(path, NGM_ASYNC_COOKIE, NGM_ASYNC_CMD_GET_STATS,
       NULL, 0, &u.resp, sizeof(u), NULL) < 0) {
-	Log(LG_ERR, ("[%s] MODEM: can't get stats: %s", l->name, strerror(errno)));
-	return(-1);
-    }
+    Log(LG_ERR, ("[%s] MODEM: can't get stats: %s", p->name, strerror(errno)));
+    return(-1);
+  }
 
-    memcpy(sp, u.resp.data, sizeof(*sp));
-    return(0);
+  /* Done */
+  memcpy(sp, u.resp.data, sizeof(*sp));
+  return(0);
 }
 
 /*
@@ -810,92 +806,96 @@ ModemGetNgStats(Link l, struct ng_async_stat *sp)
 static int
 ModemSetCommand(Context ctx, int ac, char *av[], void *arg)
 {
-    Link	const l = ctx->lnk;
-    ModemInfo	const m = (ModemInfo) l->info;
+  PhysInfo	const p = ctx->phys;
+  ModemInfo	const m = (ModemInfo) p->info;
 
-    switch ((intptr_t)arg) {
-	case SET_DEVICE:
-    	    if (ac == 1)
-		strlcpy(m->device, av[0], sizeof(m->device));
-    	    break;
-	case SET_SPEED:
-    	    {
-		int	k, baud;
+  switch ((intptr_t)arg) {
+    case SET_DEVICE:
+      if (ac == 1)
+	snprintf(m->device, sizeof(m->device), "%s", av[0]);
+      break;
+    case SET_SPEED:
+      {
+	int	k, baud;
 
-		if (ac != 1)
-		    return(-1);
-		baud = atoi(*av);
-		for (k = 0; gSpeedList[k] != -1 && baud != gSpeedList[k]; k++);
-		if (gSpeedList[k] == -1)
-		    Error("invalid speed \'%s\'", *av);
-		else {
-		    char	buf[32];
+	if (ac != 1)
+	  return(-1);
+	baud = atoi(*av);
+	for (k = 0; gSpeedList[k] != -1 && baud != gSpeedList[k]; k++);
+	if (gSpeedList[k] == -1)
+	  Log(LG_ERR, ("[%s] %s: invalid speed", p->name, *av));
+	else
+	{
+	  char	buf[32];
 
-		    m->speed = baud;
-		    snprintf(buf, sizeof(buf), "%d", m->speed);
-		    ChatPresetVar(m->chat, CHAT_VAR_BAUDRATE, buf);
-		}
-    	    }
-    	    break;
-	case SET_CSCRIPT:
-    	    if (ac != 1)
-		return(-1);
-    	    *m->connScript = 0;
-    	    strlcpy(m->connScript, av[0], sizeof(m->connScript));
-    	    break;
-	case SET_ISCRIPT:
-    	    if (ac != 1)
-		return(-1);
-    	    *m->idleScript = 0;
-    	    strlcpy(m->idleScript, av[0], sizeof(m->idleScript));
-    	    if (m->opened || TimerRemain(&m->startTimer) >= 0)
-		break;		/* nothing needs to be done right now */
-    	    if (m->fd >= 0 && !*m->idleScript)
-	        ModemDoClose(l, FALSE);
-    	    else if (m->fd < 0 && *m->idleScript)
-	        ModemStart(l);
-    	    break;
-	case SET_SCRIPT_VAR:
-    	    if (ac != 2)
-		return(-1);
-    	    ChatPresetVar(m->chat, av[0], av[1]);
-    	    break;
-	case SET_WATCH:
-    	    {
-		int	bit, add;
+	  m->speed = baud;
+	  snprintf(buf, sizeof(buf), "%d", m->speed);
+	  ChatPresetVar(m->chat, CHAT_VAR_BAUDRATE, buf);
+	}
+      }
+      break;
+    case SET_CSCRIPT:
+      if (ac != 1)
+	return(-1);
+      *m->connScript = 0;
+      snprintf(m->connScript, sizeof(m->connScript), "%s", av[0]);
+      break;
+    case SET_ISCRIPT:
+      if (ac != 1)
+	return(-1);
+      *m->idleScript = 0;
+      snprintf(m->idleScript, sizeof(m->idleScript), "%s", av[0]);
+      if (m->opened || TimerRemain(&m->startTimer) >= 0)
+	break;		/* nothing needs to be done right now */
+      if (m->fd >= 0 && !*m->idleScript)
+	ModemDoClose(p, FALSE);
+      else if (m->fd < 0 && *m->idleScript)
+	ModemStart(p);
+      break;
+    case SET_SCRIPT_VAR:
+      if (ac != 2)
+	return(-1);
+      ChatPresetVar(m->chat, av[0], av[1]);
+      break;
+    case SET_WATCH:
+      {
+	int	bit, add;
 
-		while (ac--) {
-		    switch (**av) {
-			case '+':
-	    		    (*av)++;
-			default:
-	    		    add = TRUE;
-	    		    break;
-			case '-':
-	    		    add = FALSE;
-	    		    (*av)++;
-	    		    break;
-		    }
-		    if (!strcasecmp(*av, "cd"))
-			bit = TIOCM_CAR;
-		    else if (!strcasecmp(*av, "dsr"))
-			bit = TIOCM_DSR;
-		    else {
-			Printf("[%s] modem signal \"%s\" is unknown\r\n", l->name, *av);
-			bit = 0;
-		    }
-		    if (add)
-			m->watch |= bit;
-		    else
-			m->watch &= ~bit;
-		    av++;
-		}
-    	    }
-    	    break;
-	default:
-    	    assert(0);
-    }
-    return(0);
+	while (ac--)
+	{
+	  switch (**av)
+	  {
+	    case '+':
+	      (*av)++;
+	    default:
+	      add = TRUE;
+	      break;
+	    case '-':
+	      add = FALSE;
+	      (*av)++;
+	      break;
+	  }
+	  if (!strcasecmp(*av, "cd"))
+	    bit = TIOCM_CAR;
+	  else if (!strcasecmp(*av, "dsr"))
+	    bit = TIOCM_DSR;
+	  else
+	  {
+	    Printf("[%s] modem signal \"%s\" is unknown\r\n", p->name, *av);
+	    bit = 0;
+	  }
+	  if (add)
+	    m->watch |= bit;
+	  else
+	    m->watch &= ~bit;
+	  av++;
+	}
+      }
+      break;
+    default:
+      assert(0);
+  }
+  return(0);
 }
 
 /*
@@ -903,11 +903,11 @@ ModemSetCommand(Context ctx, int ac, char *av[], void *arg)
  */
 
 static int
-ModemOriginated(Link l)
+ModemOriginated(PhysInfo p)
 {
-    ModemInfo	const m = (ModemInfo) l->info;
+  ModemInfo	const m = (ModemInfo) p->info;
 
-    return(m->originated ? LINK_ORIGINATE_LOCAL : LINK_ORIGINATE_REMOTE);
+  return(m->originated ? LINK_ORIGINATE_LOCAL : LINK_ORIGINATE_REMOTE);
 }
 
 /*
@@ -915,28 +915,25 @@ ModemOriginated(Link l)
  */
 
 static int
-ModemIsSync(Link l)
+ModemIsSync(PhysInfo p)
 {
-    return (0);
+  return (0);
 }
 
+/* XXX mbretter: the phone-number would be correct */
 static int
-ModemPeerAddr(Link l, void *buf, size_t buf_len)
+ModemPeerAddr(PhysInfo p, void *buf, int buf_len)
 {
-    ModemInfo	const m = (ModemInfo) l->info;
+  ModemInfo	const m = (ModemInfo) p->info;
 
-    strlcpy(buf, m->ttynode, buf_len);
-    return(0);
+  if (buf_len < sizeof(m->ttynode))
+    return(-1);
+
+  memcpy(buf, m->ttynode, sizeof(m->ttynode));
+
+  return(0);
 }
 
-static int
-ModemIface(Link l, void *buf, size_t buf_len)
-{
-    ModemInfo	const m = (ModemInfo) l->info;
-
-    strlcpy(buf, m->device, buf_len);
-    return(0);
-}
 
 /*
  * ModemStat()
@@ -945,32 +942,33 @@ ModemIface(Link l, void *buf, size_t buf_len)
 void
 ModemStat(Context ctx)
 {
-    ModemInfo			const m = (ModemInfo) ctx->lnk->info;
-    struct ng_async_stat	stats;
-    char			*cspeed;
+  ModemInfo		const m = (ModemInfo) ctx->phys->info;
+  struct ng_async_stat	stats;
+  const char		*cspeed;
 
-    Printf("Modem info:\r\n");
-    Printf("\tDevice       : %s\r\n", m->device);
-    Printf("\tPort speed   : %d baud\r\n", m->speed);
-    Printf("\tConn. script : \"%s\"\r\n", m->connScript);
-    Printf("\tIdle script  : \"%s\"\r\n", m->idleScript);
-    Printf("\tPins to watch: %s%s\r\n",
-	(m->watch & TIOCM_CAR) ? "CD " : "",
-	(m->watch & TIOCM_DSR) ? "DSR" : "");
+  Printf("Modem info:\r\n");
+  Printf("\tDevice       : %s\r\n", m->device);
+  Printf("\tPort speed   : %d baud\r\n", m->speed);
+  Printf("\tConn. script : \"%s\"\r\n", m->connScript);
+  Printf("\tIdle script  : \"%s\"\r\n", m->idleScript);
+  Printf("\tPins to watch: %s%s\r\n",
+    (m->watch & TIOCM_CAR) ? "CD " : "",
+    (m->watch & TIOCM_DSR) ? "DSR" : "");
 
     Printf("Modem status:\r\n");
-    if (ctx->lnk->state != PHYS_STATE_DOWN) {
+    Printf("\tState        : %s\r\n", gPhysStateNames[ctx->phys->state]);
+    if (ctx->phys->state != PHYS_STATE_DOWN) {
 	Printf("\tOpened       : %s\r\n", (m->opened?"YES":"NO"));
 	Printf("\tIncoming     : %s\r\n", (m->originated?"NO":"YES"));
 
 	/* Set modem's reported connection speed (if any) as the link bandwidth */
 	if ((cspeed = ChatGetVar(m->chat, CHAT_VAR_CONNECT_SPEED)) != NULL) {
 	    Printf("\tConnect speed: %s baud\r\n", cspeed);
-	    Freee(cspeed);
+	    Freee(MB_CHAT, cspeed);
 	}
 
-	if (ctx->lnk->state == PHYS_STATE_UP && 
-    		ModemGetNgStats(ctx->lnk, &stats) >= 0) {
+	if (ctx->phys->state == PHYS_STATE_UP && 
+    		ModemGetNgStats(ctx->phys, &stats) >= 0) {
     	    Printf("Async stats:\r\n");
     	    Printf("\t       syncOctets: %8u\r\n", stats.syncOctets);
     	    Printf("\t       syncFrames: %8u\r\n", stats.syncFrames);
@@ -980,7 +978,7 @@ ModemStat(Context ctx)
     	    Printf("\t       asyncRunts: %8u\r\n", stats.asyncRunts);
     	    Printf("\t   asyncOverflows: %8u\r\n", stats.asyncOverflows);
     	    Printf("\tasyncBadCheckSums: %8u\r\n", stats.asyncBadCheckSums);
-        }
+      }
     }
 }
 
