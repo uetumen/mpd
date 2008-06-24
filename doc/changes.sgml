@@ -6,6 +6,16 @@
   <sect><heading>Change history<label id="changes"></heading>
 
   <p>
+    Changes since version 4.4.1:
+    <itemize>
+	<item> Changes:
+	<itemize>
+	  <item> RADIUS accounting start error now closes link.
+	  </item>
+	</itemize>
+    </itemize>
+  </p>
+  <p>
     Changes since version 4.4:
     <itemize>
 	<item> Bugfixes:

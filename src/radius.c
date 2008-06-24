@@ -358,7 +358,8 @@ RadiusAccount(AuthData auth)
 
   Log(LG_RADIUS2, ("[%s] RADIUS: %s: Sending accounting data (Type: %d)",
     auth->info.lnkname, __func__, auth->acct_type));
-  RadiusSendRequest(auth);
+  if ((RadiusSendRequest(auth) == RAD_NACK) && (auth->acct_type == AUTH_ACCT_START))
+	  auth->drop_user = 1;
 
 }
 
