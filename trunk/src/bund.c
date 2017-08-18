@@ -1703,7 +1703,10 @@ BundNgInit(Bund b)
     newPpp = 1;
 
     /* Get PPP node ID */
-    b->nodeID = NgGetNodeID(gLinksCsock, b->hook);
+    if ((b->nodeID = NgGetNodeID(gLinksCsock, b->hook)) == 0) {
+	Perror("[%s] Cannot get %s node id", b->name, NG_PPP_NODE_TYPE);
+	goto fail;
+    }
 
     /* Give it a name */
     memset(&nm, 0, sizeof(nm));

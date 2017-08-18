@@ -160,7 +160,10 @@ NgFuncInitGlobalNetflow(void)
     /* If node exist just get it's ID. */
     if (gNetflowNode) {
 	snprintf(path, sizeof(path), "%s:", gNetflowNodeName);
-	gNetflowNodeID = NgGetNodeID(csock, path);
+	if ((gNetflowNodeID = NgGetNodeID(csock, path)) == 0) {
+	    Perror("NETFLOW: Cannot get %s node id", NG_NETFLOW_NODE_TYPE);
+	    goto fail;
+	}
 	close(csock);
 	return (0);
     }
@@ -179,7 +182,10 @@ NgFuncInitGlobalNetflow(void)
     }
     
     /* Get new node ID. */
-    gNetflowNodeID = NgGetNodeID(csock, TEMPHOOK);
+    if ((gNetflowNodeID = NgGetNodeID(csock, TEMPHOOK)) == 0) {
+	Perror("NETFLOW: Cannot get %s node id", NG_NETFLOW_NODE_TYPE);
+	goto fail;
+    }
 
     /* Set the new node's name. */
     strcpy(nm.name, gNetflowNodeName);
