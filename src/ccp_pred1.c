@@ -152,7 +152,11 @@ Pred1Init(Bund b, int dir)
 
     strlcat(path, ppphook, sizeof(path));
 
-    id = NgGetNodeID(-1, path);
+    if ((id = NgGetNodeID(-1, path)) == 0) {
+	Perror("[%s] Cannot get %s node id", b->name, NG_PRED1_NODE_TYPE);
+	goto fail;
+    }
+
     if (dir == COMP_DIR_XMIT) {
 	b->ccp.comp_node_id = id;
     } else {
@@ -165,11 +169,14 @@ Pred1Init(Bund b, int dir)
     	    NGM_PRED1_COOKIE, NGM_PRED1_CONFIG, &conf, sizeof(conf)) < 0) {
 	Perror("[%s] can't config %s node at %s",
     	    b->name, NG_PRED1_NODE_TYPE, path);
-	NgFuncShutdownNode(gCcpCsock, b->name, path);
-	return(-1);
+    	goto fail;
     }
 #endif
     return 0;
+
+fail:
+    NgFuncShutdownNode(gCcpCsock, b->name, path);
+    return(-1);
 }
 
 /*

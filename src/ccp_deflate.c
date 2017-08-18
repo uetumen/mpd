@@ -101,7 +101,11 @@ DeflateInit(Bund b, int dir)
 
     strlcat(path, ppphook, sizeof(path));
 
-    id = NgGetNodeID(-1, path);
+    if ((id = NgGetNodeID(-1, path)) == 0) {
+	Perror("[%s] Cannot get %s node id", b->name, NG_DEFLATE_NODE_TYPE);
+	goto fail;
+    }
+
     if (dir == COMP_DIR_XMIT) {
 	b->ccp.comp_node_id = id;
     } else {
@@ -114,11 +118,14 @@ DeflateInit(Bund b, int dir)
     	    NGM_DEFLATE_COOKIE, NGM_DEFLATE_CONFIG, &conf, sizeof(conf)) < 0) {
 	Perror("[%s] can't config %s node at %s",
     	    b->name, NG_DEFLATE_NODE_TYPE, path);
-	NgFuncShutdownNode(gCcpCsock, b->name, path);
-	return(-1);
+    	goto fail;
     }
 
     return 0;
+
+fail:
+    NgFuncShutdownNode(gCcpCsock, b->name, path);
+    return(-1);
 }
 
 /*

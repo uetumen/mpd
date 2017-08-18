@@ -197,7 +197,11 @@ MppcInit(Bund b, int dir)
 
     strlcat(path, ppphook, sizeof(path));
 
-    id = NgGetNodeID(-1, path);
+    if ((id = NgGetNodeID(-1, path)) == 0) {
+	Perror("[%s] Cannot get %s node id", b->name, NG_MPPC_NODE_TYPE);
+	goto fail;
+    }
+
     if (dir == COMP_DIR_XMIT) {
 	b->ccp.comp_node_id = id;
     } else {
@@ -210,12 +214,15 @@ MppcInit(Bund b, int dir)
     	    NGM_MPPC_COOKIE, cmd, &conf, sizeof(conf)) < 0) {
 	Perror("[%s] can't config %s node at %s",
     	    b->name, NG_MPPC_NODE_TYPE, path);
-	NgFuncShutdownNode(gCcpCsock, b->name, path);
-	return(-1);
+	goto fail;
     }
 
     /* Done */
     return(0);
+
+fail:
+    NgFuncShutdownNode(gCcpCsock, b->name, path);
+    return(-1);
 }
 
 static int
