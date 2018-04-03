@@ -9,6 +9,9 @@
 
 #include "ppp.h"
 #include "log.h"
+#ifdef USE_BACKTRACE
+#include <execinfo.h>
+#endif
 
 void
 DoAssert(const char *file, int line, const char *failedexpr)
