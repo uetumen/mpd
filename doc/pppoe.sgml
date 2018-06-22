@@ -69,6 +69,6 @@ set pppoe max-payload <em>size</em>
 Set PPP-Max-Payload PPPoE tag (RFC4638).
 This option works when mpd5 acts as PPPoE client only.
 This option takes precedence over both <tt>set link mtu</tt> and
-<tt>set link mru</tt>options, if PPPoE server agrees with our setting.
+<tt>set link mru</tt> options, if PPPoE server agrees with our setting.
 
 </descrip>
