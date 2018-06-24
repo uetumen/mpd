@@ -938,6 +938,7 @@ CcpDecodeConfig(Fsm fp, FsmOption list, int num, int mode)
 	CCP_PEER_REJ(ccp, index);
 	break;
 
+      case MODE_ACK:
       case MODE_NAK:
       case MODE_NOP:
 	(*ct->DecodeConfig)(fp, opt, mode);
