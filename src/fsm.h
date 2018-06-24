@@ -43,6 +43,7 @@
   #define MODE_NAK	1
   #define MODE_REJ	2
   #define MODE_NOP	3
+  #define MODE_ACK	4		/* pseudo mode for LCP negotiations */
 
   /* Codes */
   #define CODE_VENDOR		0

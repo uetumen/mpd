@@ -793,6 +793,7 @@ EcpDecodeConfig(Fsm fp, FsmOption list, int num, int mode)
 	ECP_PEER_REJ(ecp, index);
 	break;
 
+      case MODE_ACK:
       case MODE_NOP:
 	(*et->DecodeConfig)(fp, opt, mode);
 	break;

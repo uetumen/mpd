@@ -664,7 +664,7 @@ FsmRecvConfigAck(Fsm fp, FsmHeader lhp, Mbuf bp)
   /* XXX We should verify the contents are equal to our last sent config-req */
 
   /* Decode packet */
-  FsmDecodeBuffer(fp, MBDATA(bp), MBLEN(bp), MODE_NOP);
+  FsmDecodeBuffer(fp, MBDATA(bp), MBLEN(bp), MODE_ACK);
 
   /* Do whatever */
   switch (fp->state) {
