@@ -1394,9 +1394,9 @@ BundUpdateStats(Bund b)
     b->stats.runts	  += abs(stats.runts - b->oldStats.runts);
     b->stats.dupFragments += abs(stats.dupFragments - b->oldStats.dupFragments);
     b->stats.dropFragments += abs(stats.dropFragments - b->oldStats.dropFragments);
+    b->oldStats = stats;
   }
 
-  b->oldStats = stats;
 #else
     NgFuncGetStats64(b, l, &b->stats);
 #endif

@@ -1359,9 +1359,9 @@ LinkUpdateStats(Link l)
         l->stats.runts	  += abs(stats.runts - l->oldStats.runts);
         l->stats.dupFragments += abs(stats.dupFragments - l->oldStats.dupFragments);
         l->stats.dropFragments += abs(stats.dropFragments - l->oldStats.dropFragments);
+	l->oldStats = stats;
     }
 
-    l->oldStats = stats;
 #else
     NgFuncGetStats64(l->bund, l->bundleIndex, &l->stats);
 #endif
