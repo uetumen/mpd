@@ -29,13 +29,6 @@
 	    Installations not using RADIUS or not using %aX templates
 	    in RADIUS attributes were not affected.
 	  </item>
-	<itemize>
-	  <item> Fix bug #62: improve LCP MRU negotiation in some unusual cases
-	    sometimes happening while using Orange S.A. services. This allow us
-	    to setup PPPoE client connection interface using mtu=1492 instead
-	    of 1456.
-	  </item>
-	</itemize>
 	</itemize>
 	</item>
     </itemize>

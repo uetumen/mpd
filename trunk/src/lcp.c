@@ -843,10 +843,6 @@ LcpDecodeConfig(Fsm fp, FsmOption list, int num, int mode)
 	  mru = ntohs(mru);
 	  Log(LG_LCP, ("[%s]   %s %d", l->name, oi->name, mru));
 	  switch (mode) {
-	    case MODE_ACK:
-	      if (mru == lcp->want_mru)
-		lcp->peer_mru = mru;
-	      break;
 	    case MODE_REQ:
 	      if (mru < LCP_MIN_MRU) {
 		mru = htons(LCP_MIN_MRU);
