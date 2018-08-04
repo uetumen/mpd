@@ -90,10 +90,11 @@ of 32).
 Routes are automatically removed when the interface is brought down.
 
 <tag><tt>
-set iface mtu <em>value</em>
+set iface mtu <em>value</em> [ override ]
 </tt></tag>
 
-This command sets an upper bound on the MTU that will be configured
+Without optional keyword <tt><bf>override</bf></tt>, this command
+sets an upper bound on the MTU that will be configured
 on the interface when the bundle comes up.
 This value is not used at all during link negotiation; there are
 separate bundle and link commands for configuring that.
@@ -103,6 +104,12 @@ This command is useful when you want to manually restrict the MTU
 of the interface for other reasons, e.g., if you're also doing IPSec.
 
 The default is 1500.
+
+Optional keyword <tt><bf>override</bf></tt> allows you to override
+the result of link negotiation and set interface MTU to specified value.
+Such override can violate RFC 1661, so use with caution and at your own risk.
+This is useful when you deal with broken PPP peer negotiating too low value
+while higher MTU is known to work.
 
 <tag><tt>
 set iface idle <em>seconds</em>

@@ -14,6 +14,8 @@
 	    in the FreeBSD 11 when ipfw table delete command takes
 	    list of addresses.
 	  </item>
+	  <item> Added new option `override` for the command `set iface mtu`.
+	  </item>
 	</itemize>
 	</item>
 	<item> Bugfixes:

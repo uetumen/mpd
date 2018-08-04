@@ -107,6 +107,7 @@
     u_char		traffic[IFACE_IDLE_SPLIT];	/* Mark any traffic */
     u_short		mtu;			/* Interface MTU */
     u_short		max_mtu;		/* Configured maximum MTU */
+    u_short		mtu_override;		/* Configured MTU override */
     struct optinfo	options;		/* Configuration options */
     u_int		idle_timeout;		/* Idle timeout */
     u_int		session_timeout;	/* Session timeout */
