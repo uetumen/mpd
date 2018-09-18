@@ -262,7 +262,7 @@ LinkDown(Link l)
 	if (((l->conf.max_redial != 0) && (l->num_redial >= l->conf.max_redial)) ||
 	    gShutdownInProgress) {
 	    if (l->conf.max_redial >= 0) {
-		Log(LG_LINK, ("[%s] Link: giving up after %d reconnection attempts",
+		Log(LG_LINK, ("[%s] Link: giving up after %hu reconnection attempts",
 		  l->name, l->num_redial));
 	    }
 	    if (!l->stay)
@@ -280,7 +280,7 @@ LinkDown(Link l)
     	    LcpDown(l);
 
 	    l->num_redial++;
-	    Log(LG_LINK, ("[%s] Link: reconnection attempt %d in %d seconds",
+	    Log(LG_LINK, ("[%s] Link: reconnection attempt %hu in %d seconds",
 	      l->name, l->num_redial, delay));
 	}
     } else {
@@ -304,7 +304,7 @@ LinkReopenTimeout(void *arg)
 	return;
     }
 
-    Log(LG_LINK, ("[%s] Link: reconnection attempt %d",
+    Log(LG_LINK, ("[%s] Link: reconnection attempt %hu",
 	l->name, l->num_redial));
     RecordLinkUpDownReason(NULL, l, 1, STR_REDIAL, NULL);
     PhysOpen(l);
