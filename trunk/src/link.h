@@ -136,7 +136,7 @@
 #endif
 
     /* Link properties */
-    short		num_redial;	/* Counter for retry attempts */
+    unsigned short	num_redial;	/* Counter for retry attempts */
     u_char		upReasonValid;
     u_char		downReasonValid;
     u_char		tee_removed;
