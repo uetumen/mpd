@@ -125,7 +125,7 @@ LDADD+=		-lexpat
 OSVERSION!=	awk '/^\#define[[:blank:]]__FreeBSD_version/ {print $$3}' < /usr/include/sys/param.h
 .endif
 
-.sinclude "/etc/src.confq"
+.sinclude "/etc/src.conf"
 
 .if ${OSVERSION} < 1200084 || defined ( WITHOUT_REPRODUCIBLE_BUILD )
 MPD_VERSION!=	echo -n "${VERSION} (`id -un`@`uname -n` `LC_TIME=C date +'%R %v'`)"
