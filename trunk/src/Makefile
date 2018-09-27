@@ -120,7 +120,24 @@ LDADD+=		-lpdel
 LDADD+=		-lexpat
 .endif
 
+# Obtained from bsd.port.mk
+.if !defined ( OSVERSION )
+OSVERSION!=	awk '/^\#define[[:blank:]]__FreeBSD_version/ {print $$3}' < /usr/include/sys/param.h
+.endif
+
+.if ${OSVERSION} > 1200084
+.if exists( /etc/src.conf )
+.sinclude "/etc/src.conf"
+.endif
+.else
+WITHOUT_REPRODUCIBLE_BUILD=yes
+.endif
+
+.if defined ( WITHOUT_REPRODUCIBLE_BUILD )
 MPD_VERSION!=	echo -n "${VERSION} (`id -un`@`uname -n` `LC_TIME=C date +'%R %v'`)"
+.else
+MPD_VERSION!=	echo -n "${VERSION}"
+.endif
 
 CFLAGS+=	-DPATH_CONF_DIR='"${MPD_CONF_DIR}"'
 CFLAGS+=	-DMPD_VERSION='"${MPD_VERSION}"'
