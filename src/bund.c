@@ -328,7 +328,8 @@ BundJoin(Link l)
 
     /* Configure this link */
     b->pppConfig.links[l->bundleIndex].enableLink = 1;
-    b->pppConfig.links[l->bundleIndex].mru = lcp->peer_mru;
+    b->pppConfig.links[l->bundleIndex].mru = b->iface.mtu_override ?
+	b->iface.mtu_override : lcp->peer_mru;
     b->pppConfig.links[l->bundleIndex].enableACFComp = lcp->peer_acfcomp;
     b->pppConfig.links[l->bundleIndex].enableProtoComp = lcp->peer_protocomp;
     b->pppConfig.links[l->bundleIndex].bandwidth =
