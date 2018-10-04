@@ -967,7 +967,7 @@ static char*
 IfaceFixAclForDelete(char *r, char *buf, size_t len)
 {
   static const char sep[] = " \t";
-  char *limit, *s;
+  char *limit, *orig, *s;
   int  i, state = 0; 
 
 /*
@@ -978,6 +978,7 @@ IfaceFixAclForDelete(char *r, char *buf, size_t len)
  *  1: not first iteration, do copy.
 */
 
+  orig = r;
   s = buf;
   limit = buf + len;
 
@@ -993,7 +994,7 @@ IfaceFixAclForDelete(char *r, char *buf, size_t len)
       continue;
     }
     if (limit - s < i + 1 + state)	/* Check space.			    */
-      return r;
+      return orig;
     if (state != 0)			/* Insert separator.		    */
       *s++ = ' ';
     memcpy(s, r, i);			/* Copy IP address from the rule.   */
