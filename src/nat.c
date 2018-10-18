@@ -478,7 +478,7 @@ NatStat(Context ctx, int ac, char *av[], void *arg)
         Printf("LibAlias statistic:\r\n");
         if (NgFuncSendQuery(path, NGM_NAT_COOKIE, NGM_NAT_LIBALIAS_INFO,
             NULL, 0, &u.reply, sizeof(u), NULL) < 0)
-            Perror("Can't get LibAlis stats");
+            Perror("Can't get LibAlias stats");
         Printf("\ticmpLinkCount  : %u\r\n", li->icmpLinkCount);
         Printf("\tudpLinkCount   : %u\r\n", li->udpLinkCount);
         Printf("\ttcpLinkCount   : %u\r\n", li->tcpLinkCount);
