@@ -15,6 +15,7 @@
 #include <libutil.h>
 #include <netdb.h>
 #include <tcpd.h>
+#include <sys/limits.h>
 #include <sys/wait.h>
 #include <sys/sysctl.h>
 #include <net/route.h>
@@ -118,8 +119,8 @@ int
 ExecCmd(int log, const char *label, const char *fmt, ...)
 {
   int		rtn;
-  char		cmd[BIG_LINE_SIZE];
-  char		cmdn[BIG_LINE_SIZE];
+  char		cmd[LINE_MAX];
+  char		cmdn[LINE_MAX];
   va_list	ap;
 
   va_start(ap, fmt);
@@ -153,7 +154,7 @@ int
 ExecCmdNosh(int log, const char *label, const char *fmt, ...)
 {
     int		rtn;
-    char	cmd[BIG_LINE_SIZE];
+    char	cmd[LINE_MAX];
     char	*cmdp = &(cmd[0]);
     char	*argv[256];
     char 	**arg;
