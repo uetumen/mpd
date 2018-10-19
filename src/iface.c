@@ -19,6 +19,7 @@
 #include "netgraph.h"
 #include "util.h"
 
+#include <sys/limits.h>
 #include <sys/types.h>
 #include <sys/sockio.h>
 #include <sys/sysctl.h>
@@ -611,11 +612,11 @@ IfaceUp(Bund b, int ready)
     iface->tables = acl;
     if (strncmp(acl->rule, "peer_addr", 9) == 0) {
 	char hisaddr[20];
-	ExecCmd(LG_IFACE2, b->name, "%s table %d add %s",
+	ExecCmd(LG_IFACE2, b->name, "%s -q table %d add %s",
 	    PATH_IPFW, acl->real_number,
 	    u_addrtoa(&iface->peer_addr, hisaddr, sizeof(hisaddr)));
     } else {
-	ExecCmd(LG_IFACE2, b->name, "%s table %d add %s", PATH_IPFW, acl->real_number, acl->rule);
+	ExecCmd(LG_IFACE2, b->name, "%s -q table %d add %s", PATH_IPFW, acl->real_number, acl->rule);
     }
     acls = acls->next;
   };
@@ -650,7 +651,7 @@ IfaceDown(Bund b)
   IfaceState	const iface = &b->iface;
 #ifdef USE_IPFW
   struct acl_pool	**rp, *rp1;
-  char		cb[32768];
+  char		cb[LINE_MAX - sizeof(PATH_IPFW) - 14];
   struct acl    *acl, *aclnext;
 #endif
 
@@ -695,12 +696,12 @@ IfaceDown(Bund b)
   while (acl != NULL) {
     if (strncmp(acl->rule, "peer_addr", 9) == 0) {
       char hisaddr[20];
-      ExecCmd(LG_IFACE2, b->name, "%s table %d delete %s",
+      ExecCmd(LG_IFACE2, b->name, "%s -q table %d delete %s",
         PATH_IPFW, acl->real_number,
         u_addrtoa(&iface->peer_addr, hisaddr, sizeof(hisaddr)));
     } else {
       char buf[ACL_LEN];
-      ExecCmd(LG_IFACE2, b->name, "%s table %d delete %s",
+      ExecCmd(LG_IFACE2, b->name, "%s -q table %d delete %s",
         PATH_IPFW, acl->real_number,
         IfaceFixAclForDelete(acl->rule, buf, sizeof(buf)));
     }
