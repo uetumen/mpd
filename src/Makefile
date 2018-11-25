@@ -9,6 +9,7 @@
 
 PROG?=			mpd5
 PREFIX?=		/usr/local
+LOCALBASE?=		${PREFIX}
 BINDIR?=		${PREFIX}/sbin
 VERSION=		5.9a
 NOMAN=
@@ -60,9 +61,6 @@ USE_TCP_WRAP=		yes
 USE_AUTH_PAM=		yes
 USE_AUTH_SYSTEM=	yes
 
-# Build with builtin libpdel
-NOLIBPDEL=		yes
-
 # Build without builtin web server.
 #NOWEB=			yes
 
@@ -113,13 +111,6 @@ DPADD+=		${LIBNETGRAPH}
 LDADD+=		-L/usr/lib -lradius
 DPADD+=		${LIBRADIUS}
 
-## libpdel needs ssl and libexpat (libxml2 cannot be used)
-.if !defined ( NOLIBPDEL )
-LDADD+=		-L${PREFIX}/lib
-LDADD+=		-lpdel
-LDADD+=		-lexpat
-.endif
-
 # Obtained from bsd.port.mk
 .if !defined ( OSVERSION )
 OSVERSION!=	awk '/^\#define[[:blank:]]__FreeBSD_version/ {print $$3}' < /usr/include/sys/param.h
@@ -146,8 +137,7 @@ CFLAGS+=	-Wall \
 		-Wnested-externs \
 		-Wpointer-arith \
 		-Wwrite-strings \
-		-pthread \
-		-I${PREFIX}/include
+		-pthread
 
 .if defined ( MPD_VENDOR )
 CFLAGS+=	-DMPD_VENDOR='"${MPD_VENDOR}"'
@@ -172,8 +162,7 @@ STDSRCS+=	web.c
 LDADD+=		-lssl
 .endif
 
-.if defined ( NOLIBPDEL )
-CFLAGS+=		-DNOLIBPDEL -I./contrib/libpdel
+CFLAGS+=	-DNOLIBPDEL -I./contrib/libpdel
 PDPATH1=	contrib/libpdel/util:contrib/libpdel/structs
 PDPATH2=	contrib/libpdel/structs/type
 .if defined ( NOWEB )
@@ -210,7 +199,6 @@ PDELSRCS+=	http_connection.c \
 		ssl_fp.c \
 		string_fp.c \
 		timeout_fp.c
-.endif
 .endif
 
 # Add sources and flags for the various physical layer types
@@ -288,7 +276,7 @@ DPADD+=		${LIBPCAP}
 CFLAGS+=	-DUSE_NG_CAR
 .endif
 .if defined ( USE_NG_IPACCT )
-CFLAGS+=	-DUSE_NG_IPACCT
+CFLAGS+=	-DUSE_NG_IPACCT -nostdinc -I/usr/include -I{LOCALBASE}/include
 .endif
 .if defined ( USE_NG_NAT )
 SRCS+=		nat.c
@@ -327,9 +315,6 @@ CFLAGS+=	-DUSE_BACKTRACE
 # Now add standard sources
 
 SRCS+=		${STDSRCS}
-
-.if defined ( NOLIBPDEL )
 SRCS+=		${PDELSRCS}
-.endif
 
 .include <bsd.prog.mk>
