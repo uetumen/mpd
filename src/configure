@@ -33,13 +33,16 @@ else
 fi
 
 echo -n "Looking for ng_ipacct ..."
-if [ -e /usr/include/netgraph/ng_ipacct.h \
+if [ "$USE_NG_IPACCT" = no ]; then
+    echo " disabled."
+else if [ -e /usr/include/netgraph/ng_ipacct.h \
   -o -e /usr/local/include/netgraph/ng_ipacct.h ]
 then
     echo " found."
     echo "#define	HAVE_NG_IPACCT	1" >> $CONFIG
 else
     echo " not found."
+fi
 fi
 
 echo -n "Looking for ng_mppc ..."
