@@ -276,7 +276,7 @@ DPADD+=		${LIBPCAP}
 CFLAGS+=	-DUSE_NG_CAR
 .endif
 .if defined ( USE_NG_IPACCT )
-CFLAGS+=	-DUSE_NG_IPACCT -nostdinc -I/usr/include -I{LOCALBASE}/include
+CFLAGS+=	-DUSE_NG_IPACCT -nostdinc -I/usr/include -I${LOCALBASE}/include
 .endif
 .if defined ( USE_NG_NAT )
 SRCS+=		nat.c
