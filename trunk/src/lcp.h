@@ -85,6 +85,8 @@
     char	peer_ident[64];		/* Peer's LCP ident string */
     uint32_t	peer_reject;		/* Request codes rejected by peer */
     struct fsm	fsm;			/* Finite state machine */
+    
+    u_char	need_reset;		/* LCP needs complete reset before ConfReq */
   };
   typedef struct lcpstate	*LcpState;
 

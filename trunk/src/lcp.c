@@ -224,6 +224,7 @@ LcpConfigure(Fsm fp)
     lcp->fsm.conf.check_magic =
 	Enabled(&l->conf.options, LINK_CONF_CHECK_MAGIC);
     lcp->peer_reject = 0;
+    lcp->need_reset = 0;
 
     /* Initialize normal LCP stuff */
     lcp->peer_mru = PhysGetMtu(l, 1);
@@ -681,7 +682,11 @@ static void
 LcpLayerDown(Fsm fp)
 {
     Link	l = (Link)fp->arg;
+    LcpState	const lcp = &l->lcp;
+
     LcpStopActivity(l);
+    if (lcp->phase == PHASE_AUTHENTICATE || lcp->phase == PHASE_NETWORK)
+      lcp->need_reset = 1;
 }
 
 void LcpOpen(Link l)
@@ -793,6 +798,9 @@ LcpDecodeConfig(Fsm fp, FsmOption list, int num, int mode)
 
     /* If we have got request, forget the previous values */
     if (mode == MODE_REQ) {
+      if (lcp->need_reset)	/* perform complete reset when going back    */
+	LcpConfigure(fp);	/* from PHASE_AUTHENTICATE or PHASE_NETWORK */
+      else {
 	lcp->peer_mru = PhysGetMtu(l, 1);
 	lcp->peer_accmap = 0xffffffff;
 	lcp->peer_acfcomp = FALSE;
@@ -802,6 +810,7 @@ LcpDecodeConfig(Fsm fp, FsmOption list, int num, int mode)
 	lcp->peer_alg = 0;
 	lcp->peer_mrru = 0;
 	lcp->peer_shortseq = FALSE;
+      }
     }
 
   /* Decode each config option */
