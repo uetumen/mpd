@@ -54,7 +54,7 @@ The options available for the web are:
 
 <tag><tt>auth</tt></tag>
 
-This option enables basic authorisation on web server.
+This option enables basic authorization on web server.
 
 The default is enable.
 

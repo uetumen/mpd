@@ -14,16 +14,16 @@
 
 	Mpd has unified support for many link types:
 	<itemize>
-        <item><bf>modem</bf> to connect using different asychronous
+        <item><bf>modem</bf> to connect using different asynchronous
 	    serial connections, including modems, ISDN terminal adapters,
 	    and null-modem.
 	    Mpd includes event-driven scripting language for modem
 	    identification, setup, manual server login, etc.
         <item><bf>pptp</bf> to connect over the Internet using
-	    the Point-to-Point Tunnelling Protocol (PPTP).
+	    the Point-to-Point Tunneling Protocol (PPTP).
 	    This protocol is supported by the most OSes and hardware vendors.
         <item><bf>l2tp</bf> to connect over the Internet using
-	    the Layer Two Tunnelling Protocol (L2TP).
+	    the Layer Two Tunneling Protocol (L2TP).
 	    L2TP is a PPTP successor supported with modern clients and servers.
         <item><bf>pppoe</bf> to connect over an Ethernet port
 	    using the PPP-over-Ethernet (PPPoE) protocol.

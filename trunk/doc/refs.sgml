@@ -69,7 +69,7 @@
 
 <htmlurl url="http://www.ietf.org/rfc/rfc3579.txt" name="RFC 3579 RADIUS EAP">
 
-
+<htmlurl url="http://www.ietf.org/rfc/rfc4638.txt" name="RFC 4638 Accommodating a Maximum Transit Unit/Maximum Receive Unit (MTU/MRU) Greater Than 1492 in the Point-to-Point Protocol over Ethernet (PPPoE)">
 
   <sect><heading>Credits<label id="credits"></heading>
 

@@ -14,7 +14,7 @@
 
   <bf>Note:</bf> ng_nat node is available only on FreeBSD 6.0-RELEASE
   and newer. Some additional options like setting target address
-  implemeted in later versions.
+  implemented in later versions.
 
 <descrip>
 

@@ -62,7 +62,7 @@ client:
 	open
 </verb></tscreen>
 
-Commands are independant and executed one by one as if they were
+Commands are independent and executed one by one as if they were
 entered using console. Most command operation depends on the active
 context, which includes currently active link, bundle and repeater.
 Information about active context is shown at the console command prompt.
@@ -75,7 +75,7 @@ and <tt>create</tt> can change this context.
 	This file contains login, password pairs, one entry per line.
 	Each entry may have an optional third argument, which is
 	an IP address with optional netmask width. This is used
-	when netgotiating IP addresses with the corresponding peer.
+	when negotiating IP addresses with the corresponding peer.
 	We restrict the allowable IP addresses we'll assign to the
 	peer to lie within the specified range.
 </p>
@@ -151,5 +151,5 @@ labels identify starting points and/or subroutines
 in the script.
 
 See <ref id="chat" name="Chat Scripting">
-for a complete decscription of chat scripting.
+for a complete description of chat scripting.
 </p>

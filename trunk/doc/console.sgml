@@ -60,7 +60,7 @@ The default is enable for stdout and disable for the rest.
 
 <tag><tt>auth</tt></tag>
 
-This options enables autorized login to console. This is a read-only value.
+This options enables authorized login to console. This is a read-only value.
 
 The default is enable.
 

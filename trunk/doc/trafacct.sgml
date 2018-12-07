@@ -92,7 +92,7 @@ manual page.
 <sect1><heading>IP Accounting<label id="ipacct"></heading>
 <p>
   IP Accounting accumulates traffic information in kernel buffer. This buffer
-  can be periodically readed and flushed by some other program. IP Accounting
+  can be periodically read and flushed by some other program. IP Accounting
   implemented by <tt>ng_ipacct</tt> node. To enable IP Accounting on a
   particular interface <tt>ipacct</tt> options should be used.
 
@@ -181,7 +181,7 @@ ACCT_INPUT_OCTETS:Biz:3213213
 </verb>
 
   To simplify AAA integration mpd able to return specified traffic types
-  using standatd RADIUS attributes. Required traffic type can be specified
+  using standard RADIUS attributes. Required traffic type can be specified
   using mpd-input-acct/mpd-output-acct attributes.
 
 </p>

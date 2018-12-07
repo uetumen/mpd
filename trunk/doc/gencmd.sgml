@@ -19,7 +19,7 @@ Create new bundle with specified name, optionally based on specified template.
 If 'template' option is specified bundle will not operate itself,
 but will be used to create new bundles on demand.
 If 'static' option is specified, it will be a permanent bundle which will not
-disapear after operation complete.
+disappear after operation complete.
 Maximum name length is 10 characters for templates and 15 characters
 for the rest of bundles.
 
@@ -48,7 +48,7 @@ it may take some time to properly close it.
 <tag><tt>bundle [ <em>name</em> ] </tt>
 </tag>
 
-This command changes the currenly active bundle to the bundle named
+This command changes the currently active bundle to the bundle named
 <tt><em>name</em></tt>. The currently active link is also
 changed, to the first link of the bundle. If no
 <tt><em>name</em></tt> is given, this command lists all
