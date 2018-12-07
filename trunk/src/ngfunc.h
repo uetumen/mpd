@@ -72,10 +72,13 @@
   extern int	NgFuncWritePppFrameLink(Link l, int proto, Mbuf bp);
   extern int	NgFuncWriteFrame(int dsock, const char *hookname, const char *label, Mbuf bp);
   extern int	NgFuncClrStats(Bund b, u_int16_t linkNum);
+#ifndef NG_PPP_STATS64
   extern int	NgFuncGetStats(Bund b, u_int16_t linkNum,
 			struct ng_ppp_link_stat *s);
+#else
   extern int	NgFuncGetStats64(Bund b, u_int16_t linkNum,
 			struct ng_ppp_link_stat64 *s);
+#endif
   extern int	NgFuncSendQuery(const char *path, int cookie, int cmd,
 			const void *args, size_t arglen, struct ng_mesg *rbuf,
 			size_t replen, char *raddr);
