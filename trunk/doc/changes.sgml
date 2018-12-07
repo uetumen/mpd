@@ -1004,14 +1004,14 @@
 		</item>
 		<item>	NetFlow export over IPv6 is supported.
 		</item>
-		<item>	The following features don't yet support IPv6:
+		<item>	The following features do not yet support IPv6:
 			TcpMSSFix, NetFlow, Tee, DialOnDemand.
 		</item>
 	  </itemize>
 	  </item>
 
 	  <item> TCP link type now compiles and works
-		 (but isn't yet ready for production usage).
+		 but is not yet ready for production usage.
 	  </item>
 	  <item> NetFlow data generation on outgoing interface is supported.
 	  </item>
@@ -1042,7 +1042,7 @@
 	  <item> The shutdown of mpd is now much more graceful:
 		 the netgraph nodes are closed, the accounting RADIUS
 		 packets for closing links are sent, new connections
-		 aren't accepted during shutdown.
+		 are not accepted during shutdown.
 	  </item>
 	  <item> Fixed races in filling of RADIUS packets. In particular,
 		 RAD_NAS_PORT value in the RADIUS could be wrong.
@@ -1109,7 +1109,7 @@
         <item>Added a new <tt>global</tt> config space for all the global 
 		settings.
         </item>
-        <item>BugFix: don't generate new challenges, while retransmitting
+        <item>BugFix: do not generate new challenges while retransmitting
         	them.
         </item>
 	<item>Fix <tt>va_args</tt> bug on certain non-i386 platforms.
@@ -1121,7 +1121,7 @@
 		allowed. There is no input-console anymore, must use telnet
 		instead.
 	</item>
-	<item>BugFix: The directly configured password wasn't taken into
+	<item>BugFix: The directly configured password was not taken into
 		account when using PAP.
 	</item>
 	<item>Disallow empty usernames safely.

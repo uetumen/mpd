@@ -7,7 +7,7 @@
 
 <p>
 
-  This chapter describes general mpd commands that don't
+  This chapter describes general mpd commands that do not
   apply to a specific layer.
 
 <descrip>
@@ -16,10 +16,10 @@
 </tag>
 
 Create new bundle with specified name, optionally based on specified template.
-If 'template' option is specified bundle will not operate itself,
+If 'template' option is specified, bundle will not operate itself,
 but will be used to create new bundles on demand.
 If 'static' option is specified, it will be a permanent bundle which will not
-disappear after operation complete.
+disappear after operation completes.
 Maximum name length is 10 characters for templates and 15 characters
 for the rest of bundles.
 
@@ -28,7 +28,7 @@ for the rest of bundles.
 
 Create new link with specified name and type, optionally based on
 specified template.
-If 'template' option is specified link will not operate itself,
+If 'template' option is specified, link will not operate itself,
 but will be used to create new links on demand.
 If 'static' option is specified, it will be a permanent link which will not
 disapear after operation complete.
@@ -42,7 +42,7 @@ for the rest of links.
 </tag>
 
 Destroy existing link/bundle.
-Note, that if link is in use it may not disapear after command return,
+Note that if link is in use, it may not disapear after command returns,
 it may take some time to properly close it.
 
 <tag><tt>bundle [ <em>name</em> ] </tt>
