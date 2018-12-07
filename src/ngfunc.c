@@ -662,6 +662,8 @@ NgFuncClrStats(Bund b, u_int16_t linkNum)
     return(0);
 }
 
+#ifndef NG_PPP_STATS64
+
 /*
  * NgFuncGetStats()
  *
@@ -690,7 +692,7 @@ NgFuncGetStats(Bund b, u_int16_t linkNum, struct ng_ppp_link_stat *statp)
     return(0);
 }
 
-#ifdef NG_PPP_STATS64
+#else
 /*
  * NgFuncGetStats64()
  *

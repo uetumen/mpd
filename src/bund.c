@@ -1550,11 +1550,19 @@ BundBmTimeout(void *arg)
 	if (b->links[k] && b->links[k]->joined_bund) {
 	    Link	const l = b->links[k];
 
+#ifndef NG_PPP_STATS64
 	    struct ng_ppp_link_stat	oldStats;
+#else
+	    struct ng_ppp_link_stat64	oldStats;
+#endif
 	
 	    /* Get updated link traffic statistics */
 	    oldStats = l->bm.idleStats;
+#ifndef NG_PPP_STATS64
 	    NgFuncGetStats(l->bund, l->bundleIndex, &l->bm.idleStats);
+#else
+	    NgFuncGetStats64(l->bund, l->bundleIndex, &l->bm.idleStats);
+#endif
 	    b->bm.traffic[0][0] += l->bm.idleStats.recvOctets - oldStats.recvOctets;
 	    b->bm.traffic[1][0] += l->bm.idleStats.xmitOctets - oldStats.xmitOctets;
 	}

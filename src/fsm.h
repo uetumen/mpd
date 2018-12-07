@@ -141,8 +141,13 @@
     short		quietCount;	/* How long peer has been silent */
     struct pppTimer	timer;		/* Restart Timer */
     struct pppTimer	echoTimer;	/* Keep-alive timer */
+#ifndef NG_PPP_STATS64
     struct ng_ppp_link_stat
 			idleStats;	/* Stats for echo timeout */
+#else
+    struct ng_ppp_link_stat64
+			idleStats;	/* Stats for echo timeout */
+#endif
   };
 
   /* Packet header */

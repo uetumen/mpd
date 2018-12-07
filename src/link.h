@@ -90,8 +90,13 @@
   };
 
   struct linkbm {
+#ifndef NG_PPP_STATS64
     struct ng_ppp_link_stat
 		idleStats;		/* Link management stats */
+#else
+    struct ng_ppp_link_stat64
+		idleStats;		/* Link management stats */
+#endif
   };
   typedef struct linkbm	*LinkBm;
 

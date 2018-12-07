@@ -1389,7 +1389,11 @@ FsmEchoTimeout(void *arg)
     Fsm			const fp = (Fsm) arg;
     Bund		b;
     Link		l;
+#ifndef NG_PPP_STATS64
     struct ng_ppp_link_stat	oldStats;
+#else
+    struct ng_ppp_link_stat64	oldStats;
+#endif
 
     if (fp->type->link_layer) {
 	l = (Link)fp->arg;
@@ -1406,8 +1410,13 @@ FsmEchoTimeout(void *arg)
 
     /* See if there was any traffic since last time */
     oldStats = fp->idleStats;
+#ifndef NG_PPP_STATS64
     NgFuncGetStats(b, l ?
 	l->bundleIndex : NG_PPP_BUNDLE_LINKNUM, &fp->idleStats);
+#else
+    NgFuncGetStats64(b, l ?
+	l->bundleIndex : NG_PPP_BUNDLE_LINKNUM, &fp->idleStats);
+#endif
     if (fp->idleStats.recvFrames > oldStats.recvFrames)
 	fp->quietCount = 0;
     else
