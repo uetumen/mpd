@@ -28,7 +28,7 @@ set ng hook <em>hook</em>
 
 These commands configure which Netgraph node, and which hook on that
 node, mpd is supposed to connect to. The node is found via the
-absolute Negraph address <tt><em>nodepath</em></tt> and must have
+absolute Netgraph address <tt><em>nodepath</em></tt> and must have
 a free hook named <tt><em>hook</em></tt>. Both of these commands
 are required.
 

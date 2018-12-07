@@ -60,7 +60,7 @@ One or two DNS server IP addresses may be given. An address of
 set ipcp nbns <em>primary</em> [ <em>secondary</em> ]
 </tt></tag>
 
-Some MIcrosoft PPP clients request NetBIOS name server (NBNS)
+Some Microsoft PPP clients request NetBIOS name server (NBNS)
 information from their remote peer.  This commands enables mpd to
 have an answer for any such clients.  This command is especially
 useful for supplying information to PPTP clients.  One or two NBNS

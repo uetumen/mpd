@@ -87,7 +87,7 @@ Mpd supports the following command options:
 .It Fl b
 .It Fl -background
 .Pp
-Detach from the terminal and run as a background deamon.
+Detach from the terminal and run as a background daemon.
 .Pp
 .It Fl d Ar dirname
 .It Fl -directory Ar dirname
