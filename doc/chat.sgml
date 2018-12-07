@@ -41,7 +41,7 @@
 
   <p>
   An <bf>event</bf> is either the expiration of a timer, or the matching
-  of some pattern in the input.  Events that haven't happened yet are
+  of some pattern in the input.  Events that have not happened yet are
   <bf>pending events</bf>. Pending events are created with the
   <tt>timer</tt> and <tt>match</tt> commands, respectively.
 
@@ -423,7 +423,7 @@ timer <em>seconds</em>
 	such.
 
     <tag><tt>$TA_NoDoubleTelno</tt></tag>
-	When <tt>$TA_Bonding</tt> is <tt>yes</tt>, don't double
+	When <tt>$TA_Bonding</tt> is <tt>yes</tt>, do not double
 	the dialed number. Normally, in such situations mpd dials
 	using the command <tt>ATDT${Telephone}&${Telephone}</tt>.
 	If your <tt>$Telephone</tt> string already contains both

@@ -124,7 +124,7 @@ set link fsm-timeout <em>seconds</em>
 
 This command is analogous to the same command at the bundle layer,
 but it applies to link-layer FSM's such as Link Control Protocol (LCP).
-The default is two seconds; normally this value shouldn't be changed.
+The default is two seconds; normally this value should not be changed.
 
 <tag><tt>
 set link keep-alive <em>seconds</em> <em>max</em>
@@ -311,7 +311,7 @@ conditions.
 The <tt>check-magic</tt> option causes mpd to verify that the peer's
 magic number is correct in all received LCP frames.
 
-Some old broken PPP implementations don't handle magic numbers correctly,
+Some old broken PPP implementations do not handle magic numbers correctly,
 so these options need to be disabled in these cases.
 
 Default for both options is <tt><bf>enable</bf></tt>.

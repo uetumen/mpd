@@ -140,7 +140,7 @@ Require encryption.
 When encryption support is compiled into mpd, this option
 causes mpd to drop the link if encryption cannot be successfully
 negotiated in both directions. This means in effect, ``use encryption
-or don't connect at all.''
+or do not connect at all.''
 
 The default is disable.
 

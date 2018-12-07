@@ -38,7 +38,7 @@ information. If your backend provides other parameters, like MTU, IP, etc.
 then put these at the appropriate place into <tt>AuthData</tt> or 
 <tt>Auth</tt>.
 
-If you can't avoid reading from Mpd's internal data, then acquire the 
+If you can not avoid reading from Mpd's internal data, then acquire the 
 Giant Mutex:
 <code>
 [...]

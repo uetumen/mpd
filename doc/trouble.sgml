@@ -15,7 +15,7 @@
 <descrip>
 
 <tag><bf>
-It does not works and I don't understand why.
+It does not works and I do not understand why.
 </bf></tag>
 
 Mpd has extensive logging system supporting syslog. To direct logs
@@ -36,7 +36,7 @@ Packets won't flow.
 Make sure you have set <tt><bf>gateway_enable="YES"</bf></tt>
 in <tt>/etc/rc.conf</tt>, otherwise your FreeBSD box will not
 route packets.
-Alternately, invoke <tt>sysctl -w net.inet.ip.forwarding=1</tt>
+Alternately, invoke <tt>sysctl net.inet.ip.forwarding=1</tt>
 for immediate effect.
 
 Also, check your firewall settings. Mpd will create new interfaces
@@ -45,7 +45,7 @@ If you're doing PPTP, you need to allow TCP port 1723 and IP protocol
 47 (GRE).
 
 <tag><bf>
-It doesn't work, and there are strange netgraph-related errors in the log.
+It does not work and there are strange netgraph-related errors in the log.
 </bf></tag>
 
 Make sure you have all the required netgraph KLD's loaded.
@@ -80,14 +80,14 @@ The following node types are or may be needed:
 </itemize>
 
 <tag><bf>
-My configuration doesn't seem to be working as expected.
+My configuration does not seem to be working as expected.
 </bf></tag>
 
 Make sure your <tt>mpd.conf</tt> file formatted properly.
 Labels must be left-justified, while other lines must not.
 
 <tag><bf>
-I'm getting no valid response from the RADIUS server.
+I am getting no valid response from the RADIUS server.
 </bf></tag>
 
 Double-check the shared secret in the RADIUS servers config and the
@@ -98,7 +98,7 @@ the past unofficial port numbers (1645 and 1646) were used for RADIUS,
 but these are deprecated.
 
 <tag><bf>
-I'm getting ``Operation not permitted'' errors trying to run mpd.
+I am getting ``Operation not permitted'' errors trying to run mpd.
 </bf></tag>
 
 This is often caused by a combination of (a) using netgraph in KLD module
@@ -108,29 +108,29 @@ kernel security level (see the <tt>init(8)</tt> man page), which prevents
 KLD modules from being loaded. Change one of these things to fix the problem.
 
 <tag><bf>
-I've configured a link for dial-in, and sometimes after disconnecting
+I have configured a link for dial-in and sometimes after disconnecting
 mpd gets into some kind of infinite loop.
 </bf></tag>
 
-This is because mpd is trying to ``redial,'' which of course is not
+This is because mpd is trying to ``redial'' which of course is not
 appropriate for dial-in links. Use <tt>set link max-redial -1</tt> and 
 <tt>set bundle yes noretry</tt> to disable the redial function.
 
 <tag><bf>
-I'm using mpd as PPTP server for Windows XP clients, when accessing bigger
-websites, or listing larger ftp directories, then the connection
+I use mpd as PPTP server for Windows XP clients. While accessing bigger
+websites or listing larger ftp directories the connection
 seems to hang.
 </bf></tag>
 
-Windows XP insists on a very low MTU (usually 1396 Bytes), this needs
-fragmentation, if bigger packets should be transmitted over the link.
-Fragmentation is negotiated at ICMP level, if there is a bad router
-somewhere in the network, who drops such packets, then the connection
-seems to hang.
+Windows XP insists on a very low MTU (usually 1396 Bytes). This needs
+fragmentation if bigger packets should be transmitted over the link.
+Fragmentation is negotiated at ICMP level. If there is a bad router
+somewhere in the network dropping such packets then the connection
+hangs.
 The first thing what you can try is reducing mpd's MTU value, by
 setting: <tt>set link mtu 1300</tt> and <tt>set bundle disable multilink</tt>,
 this should help in most cases.
-For TCP connections it's possible enabling the TCP-MSS-Fix:
+For TCP connections it is possible enabling the TCP-MSS-Fix:
 <tt>set iface enable tcpmssfix</tt>.
 
 <tag><bf>
