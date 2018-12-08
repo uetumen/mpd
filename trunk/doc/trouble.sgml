@@ -15,7 +15,7 @@
 <descrip>
 
 <tag><bf>
-It does not works and I do not understand why.
+It does not work and I do not understand why.
 </bf></tag>
 
 Mpd has extensive logging system supporting syslog. To direct logs
@@ -36,8 +36,6 @@ Packets won't flow.
 Make sure you have set <tt><bf>gateway_enable="YES"</bf></tt>
 in <tt>/etc/rc.conf</tt>, otherwise your FreeBSD box will not
 route packets.
-Alternately, invoke <tt>sysctl net.inet.ip.forwarding=1</tt>
-for immediate effect.
 
 Also, check your firewall settings. Mpd will create new interfaces
 which may need to be incorporated into your firewall rules.
