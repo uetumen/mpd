@@ -76,7 +76,7 @@
   	ConsoleSetCommand, NULL, 0, (void *) SET_ENABLE },
     { "disable [opt ...]",	"Disable this console option" ,
   	ConsoleSetCommand, NULL, 0, (void *) SET_DISABLE },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
   struct ghash		*gUsers;		/* allowed users */
@@ -96,8 +96,8 @@
     { 0,	0,			NULL		},
   };
 
-  struct termios gOrigTermiosAttrs;
-  int		gOrigFlags;
+static struct termios	gOrigTermiosAttrs;
+static int		gOrigFlags;
 
 /*
  * ConsoleInit()
@@ -195,6 +195,10 @@ ConsoleStat(Context ctx, int ac, char *av[], void *arg)
   ConsoleSession	cs = ctx->cs;
   char       		addrstr[INET6_ADDRSTRLEN];
 
+  (void)ac;
+  (void)av;
+  (void)arg;
+
   Printf("Configuration:\r\n");
   Printf("\tState         : %s\r\n", c->fd ? "OPENED" : "CLOSED");
   Printf("\tIP-Address    : %s\r\n", u_addrtoa(&c->addr,addrstr,sizeof(addrstr)));
@@ -234,7 +238,8 @@ ConsoleConnect(int type, void *cookie)
 	  "\xFF\xFD\x01";	/* DO echo */
   char                  addrstr[INET6_ADDRSTRLEN];
   struct sockaddr_storage ss;
-  
+
+  (void)type;  
   Log(LG_CONSOLE, ("CONSOLE: Connect"));
   cs = Malloc(MB_CONS, sizeof(*cs));
   if ((cs->fd = TcpAcceptConnection(c->fd, &ss, FALSE)) < 0) 
@@ -392,6 +397,7 @@ ConsoleSessionReadEvent(int type, void *cookie)
   char			*av_copy[MAX_CONSOLE_ARGS];
   char                  addrstr[INET6_ADDRSTRLEN];
 
+  (void)type;
   while(1) {
     if ((n = read(cs->fd, &c, 1)) <= 0) {
       if (n < 0) {
@@ -719,6 +725,7 @@ StdConsoleSessionWrite(ConsoleSession cs, const char *fmt, ...)
 static void 
 StdConsoleSessionWriteV(ConsoleSession cs, const char *fmt, va_list vl)
 {
+    (void)cs;
     vprintf(fmt, vl);
     fflush(stdout);
 }
@@ -765,10 +772,11 @@ ConsoleSessionShowPrompt(ConsoleSession cs)
 static u_int32_t
 ConsoleUserHash(struct ghash *g, const void *item)
 {
-  ConsoleUser u = (ConsoleUser) item;
-  u_char *s = (u_char *) u->username;
+  const struct console_user *u = (const struct console_user *) item;
+  const u_char *s = (const u_char *) u->username;
   u_int32_t hash = 0x811c9dc5;
 
+  (void)g;
   while (*s) {
     hash += (hash<<1) + (hash<<4) + (hash<<7) + (hash<<8) + (hash<<24);
     /* xor the bottom with the current octet */
@@ -785,9 +793,10 @@ ConsoleUserHash(struct ghash *g, const void *item)
 static int
 ConsoleUserHashEqual(struct ghash *g, const void *item1, const void *item2)
 {
-  ConsoleUser u1 = (ConsoleUser) item1;
-  ConsoleUser u2 = (ConsoleUser) item2;
+  const struct console_user *u1 = (const struct console_user *) item1;
+  const struct console_user *u2 = (const struct console_user *) item2;
 
+  (void)g;
   if (u1 && u2)
     return (strcmp(u1->username, u2->username) == 0);
   else
@@ -878,6 +887,9 @@ UserCommand(Context ctx, int ac, char *av[], void *arg)
 {
     ConsoleUser		u;
 
+    (void)arg;
+    (void)ctx;
+
     if (ac < 2 || ac > 3) 
 	return(-1);
 
@@ -912,6 +924,10 @@ UserStat(Context ctx, int ac, char *av[], void *arg)
 {
     struct ghash_walk	walk;
     ConsoleUser		u;
+
+    (void)ac;
+    (void)av;
+    (void)arg;
 
     Printf("Configured users:\r\n");
     pthread_cleanup_push(ConsoleCancelCleanup, gUsersLock);
