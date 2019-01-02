@@ -913,7 +913,7 @@ PptpHookUp(Link l)
 	/* increase recvspace to avoid packet loss due to very small GRE recv buffer. */
 	ksso->level=SOL_SOCKET;
 	ksso->name=SO_RCVBUF;
-	((int *)(ksso->value))[0]=48*1024;
+	((int *)(void *)(ksso->value))[0]=48*1024;
 	if (NgSendMsg(csock, ksockpath, NGM_KSOCKET_COOKIE,
 	    NGM_KSOCKET_SETOPT, &u, sizeof(u)) < 0) {
 		Perror("[%s] PPTP: can't setsockopt %s node",
