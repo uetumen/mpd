@@ -128,13 +128,13 @@ const struct cmdtab AuthSetCmds[] = {
 	AuthSetCommand, NULL, 2, (void *)SET_YES},
 	{"no [opt ...]", "Disable and deny option",
 	AuthSetCommand, NULL, 2, (void *)SET_NO},
-	{NULL},
+	{NULL, NULL, NULL, NULL, 0, NULL},
 };
 
 const u_char gMsoftZeros[32];
-int	gMaxLogins = 0;			/* max number of concurrent logins per
+static unsigned	gMaxLogins = 0;			/* max number of concurrent logins per
 					 * user */
-int	gMaxLoginsCI = 0;
+static unsigned	gMaxLoginsCI = 0;
 
 /*
  * INTERNAL VARIABLES
@@ -455,10 +455,10 @@ void
 AuthInput(Link l, int proto, Mbuf bp)
 {
 	AuthData auth;
-	int len;
 	struct fsmheader fsmh;
 	u_char *pkt;
 	char buf[16];
+	u_short len;
 
 	/* Sanity check */
 	if (l->lcp.phase != PHASE_AUTHENTICATE && l->lcp.phase != PHASE_NETWORK) {
@@ -470,7 +470,7 @@ AuthInput(Link l, int proto, Mbuf bp)
 
 	/* Sanity check length */
 	if (len < sizeof(fsmh)) {
-		Log(LG_ERR | LG_AUTH, ("[%s] AUTH: rec'd runt packet: %d bytes",
+		Log(LG_ERR | LG_AUTH, ("[%s] AUTH: rec'd runt packet: %hu bytes",
 		    l->name, len));
 		mbfree(bp);
 		return;
@@ -735,9 +735,13 @@ AuthStat(Context ctx, int ac, char *av[], void *arg)
 
 #endif
 
+	(void)ac;
+	(void)av;
+	(void)arg;
+
 	Printf("Configuration:\r\n");
 	Printf("\tMy authname     : %s\r\n", conf->authname);
-	Printf("\tMax-Logins      : %d%s\r\n", gMaxLogins, (gMaxLoginsCI ? " CI" : ""));
+	Printf("\tMax-Logins      : %u%s\r\n", gMaxLogins, (gMaxLoginsCI ? " CI" : ""));
 	Printf("\tAcct Update     : %d\r\n", conf->acct_update);
 	Printf("\t   Limit In     : %d\r\n", conf->acct_update_lim_recv);
 	Printf("\t   Limit Out    : %d\r\n", conf->acct_update_lim_xmit);
@@ -1868,21 +1872,21 @@ const char *
 AuthMPPETypesname(int types, char *buf, size_t len)
 {
 	if (types == 0) {
-		sprintf(buf, "no encryption required");
+		strlcpy(buf, "no encryption required", len);
 		return (buf);
 	}
 	buf[0] = 0;
 	if (types & MPPE_TYPE_40BIT)
-		sprintf(buf, "40 ");
+		strlcpy(buf, "40 ", len);
 	if (types & MPPE_TYPE_56BIT)
-		sprintf(&buf[strlen(buf)], "56 ");
+		strlcat(buf, "56 ", len);
 	if (types & MPPE_TYPE_128BIT)
-		sprintf(&buf[strlen(buf)], "128 ");
+		strlcat(buf, "128 ", len);
 
 	if (strlen(buf) == 0) {
-		sprintf(buf, "unknown types");
+		strlcpy(buf, "unknown types", len);
 	} else {
-		sprintf(&buf[strlen(buf)], "bit");
+		strlcat(buf, "bit", len);
 	}
 
 	return (buf);
@@ -1983,7 +1987,7 @@ AuthSetCommand(Context ctx, int ac, char *av[], void *arg)
 		break;
 
 	case SET_MAX_LOGINS:
-		gMaxLogins = atoi(av[0]);
+		gMaxLogins = (unsigned)atoi(av[0]);
 		if (ac >= 2 && strcasecmp(av[1], "ci") == 0) {
 			gMaxLoginsCI = 1;
 		} else {

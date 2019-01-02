@@ -305,9 +305,6 @@ extern const struct cmdtab AuthSetCmds[];
  * GLOBAL VARIABLES
  */
 extern const u_char gMsoftZeros[32];
-extern int gMaxLogins;			/* max number of concurrent logins per
-					 * user */
-extern int gMaxLoginsCI;
 
 /*
  * FUNCTIONS
