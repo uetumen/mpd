@@ -196,6 +196,11 @@ static Mbuf
 DeflateRecvResetReq(Bund b, int id, Mbuf bp, int *noAck)
 {
     char		path[NG_PATHSIZ];
+
+    (void)bp;
+    (void)id;
+    (void)noAck;
+
     /* Forward ResetReq to the DEFLATE compression node */
     snprintf(path, sizeof(path), "[%x]:", b->ccp.comp_node_id);
     if (NgSendMsg(gCcpCsock, path,
@@ -212,6 +217,7 @@ DeflateRecvResetReq(Bund b, int id, Mbuf bp, int *noAck)
 static Mbuf
 DeflateSendResetReq(Bund b)
 {
+  (void)b;
   return(NULL);
 }
 
@@ -223,6 +229,10 @@ static void
 DeflateRecvResetAck(Bund b, int id, Mbuf bp)
 {
     char		path[NG_PATHSIZ];
+
+    (void)bp;
+    (void)id;
+
     /* Forward ResetReq to the DEFLATE compression node */
     snprintf(path, sizeof(path), "[%x]:", b->ccp.decomp_node_id);
     if (NgSendMsg(gCcpCsock, path,
@@ -312,6 +322,9 @@ DeflateDecodeConfigReq(Fsm fp, FsmOption opt, int mode)
 static int
 DeflateNegotiated(Bund b, int dir)
 {
+  (void)b;
+  (void)dir;
+
   return 1;
 }
 
@@ -322,6 +335,9 @@ DeflateNegotiated(Bund b, int dir)
 static int
 DeflateSubtractBloat(Bund b, int size)
 {
+  (void)b;
+  (void)size;
+
   return(size + CCP_OVERHEAD);  /* Compression compensate header size */
 }
 
