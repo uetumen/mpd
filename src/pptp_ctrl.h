@@ -390,16 +390,12 @@
 
   typedef struct pptplinkinfo	(*PptpGetInLink_t)(struct pptpctrlinfo *cinfo,
 				  struct u_addr *self, struct u_addr *peer, in_port_t port, 
-				  int bearType,
 				  const char *callingNum,
-				  const char *calledNum,
-				  const char *subAddress);
+				  const char *calledNum);
 
   typedef struct pptplinkinfo	(*PptpGetOutLink_t)(struct pptpctrlinfo *cinfo,
 				  struct u_addr *self, struct u_addr *peer, in_port_t port, 
-				  int bearType, int frameType, int minBps, int maxBps,
-				  const char *calledNum,
-				  const char *subAddress);
+				  const char *calledNum);
 
 /*
  * FUNCTIONS

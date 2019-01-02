@@ -126,22 +126,18 @@
   static void	PptpListenUpdate(Link l);
 
   static struct pptplinkinfo	PptpIncoming(struct pptpctrlinfo *cinfo,
-				  struct u_addr *self, struct u_addr *peer, in_port_t port, int bearType,
+				  struct u_addr *self, struct u_addr *peer, in_port_t port,
 				  const char *callingNum,
-				  const char *calledNum,
-				  const char *subAddress);
+				  const char *calledNum);
 
   static struct pptplinkinfo	PptpOutgoing(struct pptpctrlinfo *cinfo,
-				  struct u_addr *self, struct u_addr *peer, in_port_t port, int bearType,
-				  int frameType, int minBps, int maxBps,
-				  const char *calledNum,
-				  const char *subAddress);
+				  struct u_addr *self, struct u_addr *peer, in_port_t port,
+				  const char *calledNum);
 
   static struct pptplinkinfo	PptpPeerCall(struct pptpctrlinfo *cinfo,
 				  struct u_addr *self, struct u_addr *peer, in_port_t port, int incoming,
 				  const char *callingNum,
-				  const char *calledNum,
-				  const char *subAddress);
+				  const char *calledNum);
 
   static int	PptpSetCommand(Context ctx, int ac, char *av[], void *arg);
   static int	PptpTunEQ(struct ghash *g, const void *item1, const void *item2);
@@ -196,7 +192,7 @@
 	PptpSetCommand, NULL, 2, (void *) SET_ENABLE },
     { "disable [opt ...]",		"Disable option",
 	PptpSetCommand, NULL, 2, (void *) SET_DISABLE },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
 /*
@@ -214,7 +210,7 @@
     { 0,	0,			NULL		},
   };
 
-struct ghash    *gPptpTuns;
+static struct ghash    *gPptpTuns;
 
 /*
  * PptpTInit()
@@ -591,7 +587,7 @@ PptpPeerMacAddr(Link l, void *buf, size_t buf_len)
 {
     PptpInfo	const pptp = (PptpInfo) l->info;
 
-    if (pptp->peer_iface[0]) {
+    if (buf_len >= 18 && pptp->peer_iface[0]) {
 	ether_ntoa_r((struct ether_addr *)pptp->peer_mac_addr, buf);
 	return (0);
     }
@@ -784,6 +780,8 @@ PptpTunEQ(struct ghash *g, const void *item1, const void *item2)
 {
     const struct pptptun *tun1 = item1;
     const struct pptptun *tun2 = item2;
+
+    (void)g;
     if (u_addrcompare(&tun1->self_addr, &tun2->self_addr) == 0 &&
 	u_addrcompare(&tun1->peer_addr, &tun2->peer_addr) == 0)
 	    return (1);
@@ -794,6 +792,8 @@ static u_int32_t
 PptpTunHash(struct ghash *g, const void *item)
 {
     const struct pptptun *tun = item;
+
+    (void)g;
     return (u_addrtoid(&tun->self_addr) + u_addrtoid(&tun->peer_addr));
 }
 
@@ -985,12 +985,11 @@ PptpHookUp(Link l)
 
 static struct pptplinkinfo
 PptpIncoming(struct pptpctrlinfo *cinfo,
-	struct u_addr *self, struct u_addr *peer, in_port_t port, int bearType,
+	struct u_addr *self, struct u_addr *peer, in_port_t port,
 	const char *callingNum,
-	const char *calledNum,
-	const char *subAddress)
+	const char *calledNum)
 {
-    return(PptpPeerCall(cinfo, self, peer, port, TRUE, callingNum, calledNum, subAddress));
+    return(PptpPeerCall(cinfo, self, peer, port, TRUE, callingNum, calledNum));
 }
 
 /*
@@ -1004,11 +1003,10 @@ PptpIncoming(struct pptpctrlinfo *cinfo,
 
 static struct pptplinkinfo
 PptpOutgoing(struct pptpctrlinfo *cinfo,
-	struct u_addr *self, struct u_addr *peer, in_port_t port, int bearType,
-	int frameType, int minBps, int maxBps,
-	const char *calledNum, const char *subAddress)
+	struct u_addr *self, struct u_addr *peer, in_port_t port,
+	const char *calledNum)
 {
-    return(PptpPeerCall(cinfo, self, peer, port, FALSE, "", calledNum, subAddress));
+    return(PptpPeerCall(cinfo, self, peer, port, FALSE, "", calledNum));
 }
 
 /*
@@ -1023,8 +1021,7 @@ static struct pptplinkinfo
 PptpPeerCall(struct pptpctrlinfo *cinfo,
 	struct u_addr *self, struct u_addr *peer, in_port_t port, int incoming,
 	const char *callingNum,
-	const char *calledNum,
-	const char *subAddress)
+	const char *calledNum)
 {
     struct pptplinkinfo	linfo;
     Link		l = NULL;
