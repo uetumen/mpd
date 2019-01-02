@@ -104,6 +104,7 @@ DeseBisConfigure(Bund b)
 static int
 DeseBisSubtractBloat(Bund b, int size)
 {
+  (void)b;
   size -= DES_OVERHEAD;	/* reserve space for header */
   size &= ~0x7;
   size--;	 	/* reserve space for possible padding */
