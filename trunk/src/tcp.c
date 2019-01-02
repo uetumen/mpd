@@ -132,7 +132,7 @@ const struct cmdtab TcpSetCmds[] = {
 	TcpSetCommand, NULL, 2, (void *) SET_ENABLE },
     { "disable [opt ...]",		"Disable option",
 	TcpSetCommand, NULL, 2, (void *) SET_DISABLE },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
 };
 
 struct TcpIf {
@@ -142,7 +142,7 @@ struct TcpIf {
     int		csock;                  /* netgraph Control socket */
     EventRef	ctrlEvent;		/* listen for ctrl messages */
 };
-struct TcpIf TcpIfs[TCP_MAXPARENTIFS];
+static struct TcpIf TcpIfs[TCP_MAXPARENTIFS];
 
  /*
  * INTERNAL VARIABLES
@@ -615,6 +615,7 @@ TcpOriginate(Link l)
 static int
 TcpIsSync(Link l)
 {
+	(void)l;
 	return (1);
 }
 
