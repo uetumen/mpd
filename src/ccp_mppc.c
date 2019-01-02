@@ -130,7 +130,7 @@
 	MppcSetCommand, NULL, 2, (void *) SET_YES },
     { "no [opt ...]",			"Disable and deny option",
 	MppcSetCommand, NULL, 2, (void *) SET_NO },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
   int	MPPCPresent = 0;
@@ -496,6 +496,10 @@ static Mbuf
 MppcRecvResetReq(Bund b, int id, Mbuf bp, int *noAck)
 {
     char		path[NG_PATHSIZ];
+
+    (void)id;
+    (void)bp;
+
     /* Forward ResetReq to the MPPC compression node */
     snprintf(path, sizeof(path), "[%x]:", b->ccp.comp_node_id);
     if (NgSendMsg(gCcpCsock, path,
@@ -813,6 +817,10 @@ int
 MppcStat(Context ctx, int ac, char *av[], void *arg)
 {
   MppcInfo	const mppc = &ctx->bund->ccp.mppc;
+
+  (void)ac;
+  (void)av;
+  (void)arg;
 
   Printf("MPPC options:\r\n");
   OptStat(ctx, &mppc->options, gConfList);
