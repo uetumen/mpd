@@ -200,11 +200,11 @@
 
 #ifdef PHYSTYPE_PPTP
   extern int		gPPTPto;
-  extern int		gPPTPtunlimit;
+  extern unsigned	gPPTPtunlimit;
 #endif
 #ifdef PHYSTYPE_L2TP
   extern int		gL2TPto;
-  extern int		gL2TPtunlimit;
+  extern unsigned	gL2TPtunlimit;
 #endif
   extern int		gChildren;
   extern int		gMaxChildren;

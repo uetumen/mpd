@@ -677,7 +677,7 @@ GlobalSetCommand(Context ctx, int ac, char *av[], void *arg)
 	if (val < 0 || val > 65536)
 	    Error("Incorrect L2TP call limit");
 	else
-	    gL2TPtunlimit = val;
+	    gL2TPtunlimit = (unsigned)val;
       break;
 #endif
 
@@ -695,7 +695,7 @@ GlobalSetCommand(Context ctx, int ac, char *av[], void *arg)
 	if (val <= 0 || val > 65536)
 	    Error("Incorrect PPTP call limit");
 	else
-	    gPPTPtunlimit = val;
+	    gPPTPtunlimit = (unsigned)val;
       break;
 #endif
 
@@ -985,11 +985,11 @@ ShowGlobal(Context ctx, int ac, char *av[], void *arg)
 #endif
 #ifdef PHYSTYPE_L2TP
     Printf("	l2tptimeout	: %d\r\n", gL2TPto);
-    Printf("	l2tplimit	: %d\r\n", gL2TPtunlimit);
+    Printf("	l2tplimit	: %u\r\n", gL2TPtunlimit);
 #endif
 #ifdef PHYSTYPE_PPTP
     Printf("	pptptimeout	: %d\r\n", gPPTPto);
-    Printf("	pptplimit	: %d\r\n", gPPTPtunlimit);
+    Printf("	pptplimit	: %u\r\n", gPPTPtunlimit);
 #endif
     Printf("	max-children	: %d\r\n", gMaxChildren);
     Printf("	qthreshold	: %d %d\r\n", gQThresMin, gQThresMax);
