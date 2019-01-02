@@ -3936,7 +3936,7 @@ IfaceSetDescr(Bund b, const char * template)
 		DST_COPY("-");
 	    }
 	    break;
-	  /* local "physycal" address */
+	  /* local "physical" address */
 	  case 'o':
 	    if (b->links[0] && PhysGetSelfAddr(b->links[0], buf, sizeof(buf)) == 0) {
 		DST_COPY(buf);
@@ -3944,7 +3944,7 @@ IfaceSetDescr(Bund b, const char * template)
 		DST_COPY("-");
 	    }
 	    break;
-	  /* peer "physycal" address */
+	  /* peer "physical" address */
 	  case 'O':
 	    if (b->links[0] && PhysGetPeerAddr(b->links[0], buf, sizeof(buf)) == 0) {
 		DST_COPY(buf);
