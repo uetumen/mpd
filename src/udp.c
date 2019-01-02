@@ -272,7 +272,7 @@ UdpOpen(Link l)
 	/* Setsockopt socket. */
 	ksso->level=SOL_SOCKET;
 	ksso->name=SO_REUSEPORT;
-	((int *)(ksso->value))[0]=1;
+	((int *)(void *)(ksso->value))[0]=1;
 	if (NgSendMsg(csock, path, NGM_KSOCKET_COOKIE,
     	    NGM_KSOCKET_SETOPT, &u, sizeof(u)) < 0) {
     	    Perror("[%s] can't setsockopt() %s node",

@@ -362,10 +362,12 @@ fail:
 static void
 TcpConnectEvent(int type, void *cookie)
 {
-	struct {
+	union {
+		u_char buf[sizeof(struct ng_mesg) + sizeof(uint32_t)];
 		struct ng_mesg	resp;
-		int32_t		rval;
 	} cn;
+	uint32_t *const rval = (uint32_t *)(void *)cn.resp.data;
+
 	Link		l;
 	TcpInfo		pi;
 	char path[NG_PATHSIZ];
@@ -385,9 +387,9 @@ TcpConnectEvent(int type, void *cookie)
 	assert(cn.resp.header.typecookie == NGM_KSOCKET_COOKIE);
 	assert(cn.resp.header.cmd == NGM_KSOCKET_CONNECT);
 
-	if (cn.rval != 0) {
+	if (*rval != 0) {
 		Log(LG_PHYS, ("[%s] failed to connect: %s", l->name,
-		    strerror(cn.rval)));
+		    strerror(*rval)));
 		goto failed;
 	}
 
@@ -411,11 +413,17 @@ failed:
 static void
 TcpAcceptEvent(int type, void *cookie)
 {
-	struct {
-		struct ng_mesg	resp;
+	union {
 		uint32_t	id;
 		struct sockaddr_storage sin;
+		u_char buf[sizeof(struct ng_mesg) + sizeof(uint32_t)
+					+ sizeof(struct sockaddr_storage)];
+		struct ng_mesg	resp;
 	} ac;
+	uint32_t *const id = (uint32_t *)(void *)ac.resp.data;
+	struct sockaddr_storage *const sin =
+		(struct sockaddr_storage*)(void *)(id + 1);
+
 	struct ngm_name         nm;
 	char path[NG_PATHSIZ];
 	struct u_addr	addr;
@@ -433,7 +441,7 @@ TcpAcceptEvent(int type, void *cookie)
 		Perror("TCP: error reading message from \"%s\"", path);
 		goto failed;
 	}
-	sockaddrtou_addr(&ac.sin, &addr, &port);
+	sockaddrtou_addr(sin, &addr, &port);
 
 	Log(LG_PHYS, ("Incoming TCP connection from %s %u",
 	    u_addrtoa(&addr, buf, sizeof(buf)), port));
@@ -482,13 +490,13 @@ TcpAcceptEvent(int type, void *cookie)
 		Log(LG_PHYS, ("[%s] Accepting TCP connection from %s %u",
 		    l->name, u_addrtoa(&addr, buf, sizeof(buf)), port));
 
-		sockaddrtou_addr(&ac.sin, &pi->peer_addr, &pi->peer_port);
+		sockaddrtou_addr(sin, &pi->peer_addr, &pi->peer_port);
 
-		pi->node_id = ac.id;
+		pi->node_id = *id;
 
 		/* Give it a name */
 		snprintf(nm.name, sizeof(nm.name), "mpd%d-%s", gPid, l->name);
-		snprintf(path, sizeof(path), "[%x]:", ac.id);
+		snprintf(path, sizeof(path), "[%x]:", *id);
 		if (NgSendMsg(If->csock, path,
 		    NGM_GENERIC_COOKIE, NGM_NAME, &nm, sizeof(nm)) < 0) {
 			Perror("[%s] can't name %s node",
@@ -502,7 +510,7 @@ TcpAcceptEvent(int type, void *cookie)
 	} else {
 	    Log(LG_PHYS, ("No free TCP link with requested parameters "
 	        "was found"));
-	    snprintf(path, sizeof(path), "[%x]:", ac.id);
+	    snprintf(path, sizeof(path), "[%x]:", *id);
 	    NgFuncShutdownNode(If->csock, "", path);
 	}
 
@@ -779,7 +787,7 @@ TcpListen(Link l)
 	/* Setsockopt socket. */
 	ksso->level=SOL_SOCKET;
 	ksso->name=SO_REUSEPORT;
-	((int *)(ksso->value))[0]=1;
+	((int *)(void *)(ksso->value))[0]=1;
 	if (NgSendMsg(pi->If->csock, LISTENHOOK, NGM_KSOCKET_COOKIE,
 	    NGM_KSOCKET_SETOPT, &u, sizeof(u)) < 0) {
 		Perror("TCP: can't setsockopt() %s node", NG_KSOCKET_NODE_TYPE);
