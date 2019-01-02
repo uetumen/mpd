@@ -82,7 +82,7 @@
 	CcpSetCommand, NULL, 2, (void *) SET_YES },
     { "no [opt ...]",			"Disable and deny option",
 	CcpSetCommand, NULL, 2, (void *) SET_NO },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
 /*
@@ -129,7 +129,7 @@
     CcpFailure,
     CcpRecvResetReq,
     CcpRecvResetAck,
-    NULL,
+    NULL, NULL, NULL, NULL
   };
 
   /* Names for different types of compression */
@@ -155,10 +155,10 @@
     { 0,			NULL },
   };
 
-    int		gCcpCsock = -1;		/* Socket node control socket */
-    int		gCcpDsock = -1;		/* Socket node data socket */
-    EventRef	gCcpCtrlEvent;
-    EventRef	gCcpDataEvent;
+int		gCcpCsock = -1;		/* Socket node control socket */
+int		gCcpDsock = -1;		/* Socket node data socket */
+static EventRef	gCcpCtrlEvent;
+static EventRef	gCcpDataEvent;
 
 int
 CcpsInit(void)
@@ -211,7 +211,7 @@ CcpInit(Bund b)
   /* Construct options list if we haven't done so already */
   if (gConfList == NULL) {
     struct confinfo	*ci;
-    int			k;
+    unsigned		k;
 
     ci = Malloc(MB_COMP, (CCP_NUM_PROTOS + 1) * sizeof(*ci));
     for (k = 0; k < CCP_NUM_PROTOS; k++) {
@@ -249,7 +249,7 @@ CcpConfigure(Fsm fp)
 {
     Bund 	b = (Bund)fp->arg;
     CcpState	const ccp = &b->ccp;
-    int		k;
+    unsigned	k;
 
     /* Reset state */
     ccp->self_reject = 0;
@@ -282,7 +282,7 @@ CcpUnConfigure(Fsm fp)
 {
     Bund 	b = (Bund)fp->arg;
   CcpState	const ccp = &b->ccp;
-  int		k;
+  unsigned	k;
 
   /* Reset state */
   ccp->self_reject = 0;
@@ -314,6 +314,9 @@ CcpNgCtrlEvent(int type, void *cookie)
     char		raddr[NG_PATHSIZ];
     int			i, len;
     ng_ID_t		id;
+
+    (void)cookie;
+    (void)type;
 
     /* Read message */
     if ((len = NgRecvMsg(gCcpCsock, &u.msg, sizeof(u), raddr)) < 0) {
@@ -376,6 +379,9 @@ CcpNgDataEvent(int type, void *cookie)
     char                *bundname, *rest;
     int                 id;
 		
+    (void)cookie;
+    (void)type;
+
     while (1) {
 	/* Protect from bundle shutdown and DoS */
 	if (num > 100)
@@ -438,6 +444,8 @@ CcpRecvMsg(Bund b, struct ng_mesg *msg, int len)
 {
   CcpState	const ccp = &b->ccp;
   Fsm		const fp = &ccp->fsm;
+
+  (void)len;
 
   switch (msg->header.typecookie) {
 #ifdef USE_NG_MPPC
@@ -562,6 +570,8 @@ static void
 CcpFailure(Fsm fp, enum fsmfail reason)
 {
     Bund 	b = (Bund)fp->arg;
+
+    (void)reason;
     CcpCheckEncryption(b);
 }
 
@@ -746,7 +756,7 @@ CcpBuildConfigReq(Fsm fp, u_char *cp)
 {
     Bund 	b = (Bund)fp->arg;
     CcpState	const ccp = &b->ccp;
-    int		type;
+    unsigned	type;
     int		ok;
 
     /* Put in all options that peer hasn't rejected in preferred order */
@@ -1025,6 +1035,8 @@ fail:
   FsmFailure(&b->ipcp.fsm, FAIL_CANT_ENCRYPT);
   FsmFailure(&b->ipv6cp.fsm, FAIL_CANT_ENCRYPT);
   return(-1);
+#else
+  (void)b;
 #endif
     return (0);
 }
@@ -1078,7 +1090,7 @@ CcpSetCommand(Context ctx, int ac, char *av[], void *arg)
 static CompType
 CcpFindComp(int type, int *indexp)
 {
-  int	k;
+  unsigned k;
 
   for (k = 0; k < CCP_NUM_PROTOS; k++) {
     if (gCompTypes[k]->type == type) {
