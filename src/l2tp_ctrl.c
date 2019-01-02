@@ -379,7 +379,7 @@ static const	struct l2tp_msg_info ppp_l2tp_msg_info[] = {
 	    { SS_ESTABLISHED, SS_DYING, -1 },
 	    { ORIG_LOCAL, ORIG_REMOTE, -1 }, { SIDE_LAC, -1 },
 	    { AVP_ACCM, -1 } },
-	{ NULL }
+	{ NULL, 0, NULL, NULL, { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0 }, { 0, 0 } }
 };
 
 /* Descriptors for each AVP */
@@ -431,7 +431,7 @@ static const	struct ppp_l2tp_avp_info ppp_l2tp_avp_info_list[] = {
 };
 
 /* All control connections */
-struct ghash	*ppp_l2tp_ctrls;
+static struct ghash	*ppp_l2tp_ctrls;
 
 static uint32_t gNextSerial = 0;
 
@@ -451,8 +451,9 @@ ppp_l2tp_ctrl_create(struct pevent_ctx *ctx, pthread_mutex_t *mutex,
 {
 	struct ppp_l2tp_ctrl *ctrl;
 	struct ngm_mkpeer mkpeer;
+	unsigned i;
 	u_int16_t value16;
-	int index, i;
+	int index;
 	
 	/* Init Call Serial Number */
 	if (gNextSerial == 0)
@@ -558,7 +559,7 @@ ppp_l2tp_ctrl_create(struct pevent_ctx *ctx, pthread_mutex_t *mutex,
 		    0, AVP_HOST_NAME, ctrl->self_name, strlen(ctrl->self_name)) == -1)
 			goto fail;
 	} else {
-	    int len = ctrl->avps->avps[index].vlen;
+	    unsigned len = ctrl->avps->avps[index].vlen;
 	    if (len >= sizeof(ctrl->self_name))
 		len = sizeof(ctrl->self_name) - 1;
 	    memcpy(ctrl->self_name, ctrl->avps->avps[index].value, len);
@@ -666,7 +667,7 @@ ppp_l2tp_initiate(struct ppp_l2tp_ctrl *ctrl, int out,
 {
 	struct ppp_l2tp_sess *sess;
 	u_int32_t value32;
-	int i;
+	unsigned i;
 
 	/* Debugging */
 	Log(LOG_DEBUG, ("L2TP: %s invoked, ctrl=%p out=%d", __FUNCTION__, ctrl, out));
@@ -773,7 +774,7 @@ ppp_l2tp_connected(struct ppp_l2tp_sess *sess,
 {
 	struct ppp_l2tp_ctrl *const ctrl = sess->ctrl;
 	u_int32_t value32;
-	int i;
+	unsigned i;
 
 	/* Debugging */
 	Log(LOG_DEBUG, ("L2TP: %s invoked, sess=%p", __FUNCTION__, sess));
@@ -1750,8 +1751,7 @@ ppp_l2tp_data_event(void *arg)
 	u_int16_t msgtype;
 	char ebuf[64];
 	int len;
-	int i;
-	int j;
+	unsigned i, j;
 
 	/* Restart idle timer */
 	pevent_unregister(&ctrl->idle_timer);
@@ -1859,7 +1859,7 @@ ppp_l2tp_data_event(void *arg)
 
 		/* Check for valid control connection state */
 		for (i = 0; msg_info->valid_states[i] != -1
-		    && msg_info->valid_states[i] != ctrl->state; i++);
+		    && msg_info->valid_states[i] != (int)ctrl->state; i++);
 		if (msg_info->valid_states[i] == -1) {
 
 			/* Could be in CS_DYING if we just closed the tunnel */
@@ -1918,7 +1918,7 @@ ppp_l2tp_data_event(void *arg)
 
 	/* Check for valid session state, origination, and side */
 	for (i = 0; msg_info->valid_states[i] != -1
-	    && msg_info->valid_states[i] != sess->state; i++);
+	    && msg_info->valid_states[i] != (int)sess->state; i++);
 	if (msg_info->valid_states[i] == -1) {
 		snprintf(ebuf, sizeof(ebuf), "rec'd %s in state %s",
 		    msg_info->name, ppp_l2tp_sess_state_str(sess->state));
@@ -1927,7 +1927,7 @@ ppp_l2tp_data_event(void *arg)
 		goto done;
 	}
 	for (i = 0; msg_info->valid_orig[i] != -1
-	    && msg_info->valid_orig[i] != sess->orig; i++);
+	    && msg_info->valid_orig[i] != (int)sess->orig; i++);
 	if (msg_info->valid_orig[i] == -1) {
 		snprintf(ebuf, sizeof(ebuf), "rec'd %s in state %s,"
 		    " but session originated %sly", msg_info->name,
@@ -1938,7 +1938,7 @@ ppp_l2tp_data_event(void *arg)
 		goto done;
 	}
 	for (i = 0; msg_info->valid_side[i] != -1
-	    && msg_info->valid_side[i] != sess->side; i++);
+	    && msg_info->valid_side[i] != (int)sess->side; i++);
 	if (msg_info->valid_side[i] == -1) {
 		snprintf(ebuf, sizeof(ebuf), "rec'd %s in state %s,"
 		    " but we are %s for this session", msg_info->name,
@@ -2033,8 +2033,9 @@ ppp_l2tp_handle_SCCRQ(struct ppp_l2tp_ctrl *ctrl,
 	const u_char *tiebreaker;
 	struct ghash_walk walk;
 	int diff;
-	int i;
+	unsigned i;
 
+	(void)avps;
 	/* See if there is an outstanding SCCRQ to this peer */
 	ghash_walk_init(ppp_l2tp_ctrls, &walk);
 	while ((ctrl2 = ghash_walk_next(ppp_l2tp_ctrls, &walk)) != NULL) {
@@ -2096,6 +2097,7 @@ static int
 ppp_l2tp_handle_SCCRP(struct ppp_l2tp_ctrl *ctrl,
 	const struct ppp_l2tp_avp_list *avps, struct ppp_l2tp_avp_ptrs *ptrs)
 {
+	(void)avps;
 	/* Do control connection setup */
 	if (ppp_l2tp_ctrl_setup_1(ctrl, ptrs) == -1)
 		return (-1);
@@ -2114,6 +2116,7 @@ static int
 ppp_l2tp_handle_SCCCN(struct ppp_l2tp_ctrl *ctrl,
 	const struct ppp_l2tp_avp_list *avps, struct ppp_l2tp_avp_ptrs *ptrs)
 {
+	(void)avps;
 	/* Do control connection setup */
 	if (ppp_l2tp_ctrl_setup_2(ctrl, ptrs) == -1)
 		return (-1);
@@ -2132,6 +2135,7 @@ ppp_l2tp_handle_StopCCN(struct ppp_l2tp_ctrl *ctrl,
 	struct ppp_l2tp_sess *sess;
 	struct ghash_walk walk;
 
+	(void)avps;
 	/* StopCCN implies closing all sessions */
 	ctrl->peer_notified = 1;
 	ghash_walk_init(ctrl->sessions, &walk);
@@ -2148,6 +2152,9 @@ static int
 ppp_l2tp_handle_HELLO(struct ppp_l2tp_ctrl *ctrl,
 	const struct ppp_l2tp_avp_list *avps, struct ppp_l2tp_avp_ptrs *ptrs)
 {
+	(void)avps;
+	(void)ctrl;
+	(void)ptrs;
 	return (0);
 }
 
@@ -2204,6 +2211,7 @@ static int
 ppp_l2tp_handle_OCRP(struct ppp_l2tp_sess *sess,
 	const struct ppp_l2tp_avp_list *avps, struct ppp_l2tp_avp_ptrs *ptrs)
 {
+	(void)avps;
 	if (sess->state == SS_DYING)
 		return (0);
 
@@ -2240,6 +2248,7 @@ ppp_l2tp_handle_ICRP(struct ppp_l2tp_sess *sess,
 	struct ppp_l2tp_ctrl *const ctrl = sess->ctrl;
 	char buf[64];
 	
+	(void)avps;
 	if (sess->state == SS_DYING)
 		return (0);
 
@@ -2268,6 +2277,7 @@ static int
 ppp_l2tp_handle_CDN(struct ppp_l2tp_sess *sess,
 	const struct ppp_l2tp_avp_list *avps, struct ppp_l2tp_avp_ptrs *ptrs)
 {
+	(void)avps;
 	sess->peer_notified = 1;
 	ppp_l2tp_sess_close(sess, ptrs->errresultcode->result,
 	    ptrs->errresultcode->error, ptrs->errresultcode->errmsg);
@@ -2280,6 +2290,7 @@ ppp_l2tp_handle_SLI(struct ppp_l2tp_sess *sess,
 {
 	struct ppp_l2tp_ctrl *const ctrl = sess->ctrl;
 
+	(void)avps;
 	if (sess->state == SS_DYING)
 		return (0);
 
@@ -2295,6 +2306,7 @@ ppp_l2tp_handle_WEN(struct ppp_l2tp_sess *sess,
 {
 	struct ppp_l2tp_ctrl *const ctrl = sess->ctrl;
 
+	(void)avps;
 	if (sess->state == SS_DYING)
 		return (0);
 
@@ -2482,6 +2494,7 @@ ppp_l2tp_ctrl_equal(struct ghash *g, const void *item1, const void *item2)
 	const struct ppp_l2tp_ctrl *const ctrl1 = item1;
 	const struct ppp_l2tp_ctrl *const ctrl2 = item2;
 
+	(void)g;
 	return (ctrl1->config.tunnel_id == ctrl2->config.tunnel_id);
 }
 
@@ -2490,6 +2503,7 @@ ppp_l2tp_ctrl_hash(struct ghash *g, const void *item)
 {
 	const struct ppp_l2tp_ctrl *const ctrl = item;
 
+	(void)g;
 	return ((u_int32_t)ctrl->config.tunnel_id);
 }
 
@@ -2499,6 +2513,7 @@ ppp_l2tp_sess_equal(struct ghash *g, const void *item1, const void *item2)
 	const struct ppp_l2tp_sess *const sess1 = item1;
 	const struct ppp_l2tp_sess *const sess2 = item2;
 
+	(void)g;
 	return (sess1->config.session_id == sess2->config.session_id);
 }
 
@@ -2507,6 +2522,7 @@ ppp_l2tp_sess_hash(struct ghash *g, const void *item)
 {
 	const struct ppp_l2tp_sess *const sess = item;
 
+	(void)g;
 	return ((u_int32_t)sess->config.session_id);
 }
 
@@ -2523,8 +2539,9 @@ ppp_l2tp_ctrl_dump(struct ppp_l2tp_ctrl *ctrl,
 {
 	char buf[1024];
 	va_list args;
-	int i;
+	unsigned i;
 
+	(void)ctrl;
 	va_start(args, fmt);
 	vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
