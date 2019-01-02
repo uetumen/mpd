@@ -303,42 +303,43 @@
   static const struct pptpmsginfo	gPptpMsgInfo[PPTP_MAX_CTRL_TYPE] = {
     { "PptpMsgHead", NULL,			/* placeholder */
       FALSE, sizeof(struct pptpMsgHead),
+      0, { 0, 0, NULL, NULL }, { 0, 0, 0 },
     },
     { "StartCtrlConnRequest", PptpStartCtrlConnRequest,
       FALSE, sizeof(struct pptpStartCtrlConnRequest),
       CL(IDLE),
-      { 0, 0 },					/* no associated channel */
+      { 0, 0, NULL, NULL },			/* no associated channel */
       { PPTP_StartCtrlConnReply, TRUE, PPTP_DFL_REPLY_TIME },
     },
     { "StartCtrlConnReply", PptpStartCtrlConnReply,
       TRUE, sizeof(struct pptpStartCtrlConnReply),
       CL(WAIT_CTL_REPLY),
-      { 0, 0 },					/* no associated channel */
-      { 0 },					/* no reply expected */
+      { 0, 0, NULL, NULL },			/* no associated channel */
+      { 0, 0, 0 },				/* no reply expected */
     },
     { "StopCtrlConnRequest", PptpStopCtrlConnRequest,
       FALSE, sizeof(struct pptpStopCtrlConnRequest),
       CL(WAIT_CTL_REPLY)|CL(WAIT_STOP_REPLY)|CL(ESTABLISHED),
-      { 0, 0 },					/* no associated channel */
+      { 0, 0, NULL, NULL },			/* no associated channel */
       { PPTP_StopCtrlConnReply, TRUE, PPTP_STOPCCR_REPLY_TIME },
     },
     { "StopCtrlConnReply", PptpStopCtrlConnReply,
       TRUE, sizeof(struct pptpStopCtrlConnReply),
       CL(WAIT_STOP_REPLY),
-      { 0, 0 },					/* no associated channel */
-      { 0 },					/* no reply expected */
+      { 0, 0, NULL, NULL },			/* no associated channel */
+      { 0, 0, 0 },				/* no reply expected */
     },
     { "EchoRequest", PptpEchoRequest,
       FALSE, sizeof(struct pptpEchoRequest),
       CL(ESTABLISHED),
-      { 0, 0 },					/* no associated channel */
+      { 0, 0, NULL, NULL },			/* no associated channel */
       { PPTP_EchoReply, TRUE, PPTP_DFL_REPLY_TIME },
     },
     { "EchoReply", PptpEchoReply,
       TRUE, sizeof(struct pptpEchoReply),
       CL(ESTABLISHED),
-      { 0, 0 },					/* no associated channel */
-      { 0 },					/* no reply expected */
+      { 0, 0, NULL, NULL },			/* no associated channel */
+      { 0, 0, 0 },				/* no reply expected */
     },
     { "OutCallRequest", PptpOutCallRequest,
       FALSE, sizeof(struct pptpOutCallRequest),
@@ -350,7 +351,7 @@
       TRUE, sizeof(struct pptpOutCallReply),
       CH(WAIT_OUT_REPLY),
       { PPTP_FIND_CHAN_MY_CID, PPTP_FIND_CHAN_MY_CID, "peerCid", "cid" },
-      { 0 },					/* no reply expected */
+      { 0, 0, 0 },				/* no reply expected */
     },
     { "InCallRequest", PptpInCallRequest,
       FALSE, sizeof(struct pptpInCallRequest),
@@ -368,7 +369,7 @@
       TRUE, sizeof(struct pptpInCallConn),
       CH(WAIT_CONNECT),
       { PPTP_FIND_CHAN_MY_CID, PPTP_FIND_CHAN_PEER_CID, "peerCid", "peerCid" },
-      { 0 },					/* no reply expected */
+      { 0, 0, 0 },				/* no reply expected */
     },
     { "CallClearRequest", PptpCallClearRequest,
       FALSE, sizeof(struct pptpCallClearRequest),
@@ -380,19 +381,19 @@
       FALSE, sizeof(struct pptpCallDiscNotify),
       CH(WAIT_OUT_REPLY)|CH(WAIT_CONNECT)|CH(WAIT_DISCONNECT)|CH(ESTABLISHED),
       { PPTP_FIND_CHAN_PAC_CID, PPTP_FIND_CHAN_PAC_CID, "cid", "cid" },
-      { 0 },					/* no reply expected */
+      { 0, 0, 0 },				/* no reply expected */
     },
     { "WanErrorNotify", PptpWanErrorNotify,
       FALSE, sizeof(struct pptpWanErrorNotify),
       CH(ESTABLISHED),
       { PPTP_FIND_CHAN_PNS_CID, PPTP_FIND_CHAN_PNS_CID, "cid", "cid" },
-      { 0 },					/* no reply expected */
+      { 0, 0, 0 },				/* no reply expected */
     },
     { "SetLinkInfo", PptpSetLinkInfo,
       FALSE, sizeof(struct pptpSetLinkInfo),
       CH(ESTABLISHED),
       { PPTP_FIND_CHAN_PAC_CID, PPTP_FIND_CHAN_PAC_CID, "cid", "cid" },
-      { 0 },					/* no reply expected */
+      { 0, 0, 0 },				/* no reply expected */
     },
   };
 
@@ -542,13 +543,13 @@ PptpCtrlListen(struct u_addr *ip, in_port_t port)
     
     /* See if we're already have a listener matching this address and port */
     for (k = 0; k < gNumPptpLis; k++) {
-	PptpLis	const l = gPptpLis[k];
+	PptpLis	const m = gPptpLis[k];
 
-	if (l != NULL
-	    && (!u_addrcompare (&l->self_addr, ip))
-	    && l->self_port == port) {
-		l->ref++;
-		return(l);
+	if (m != NULL
+	    && (!u_addrcompare (&m->self_addr, ip))
+	    && m->self_port == port) {
+		m->ref++;
+		return(m);
         }
     }
 
@@ -623,6 +624,7 @@ PptpCtrlListenRetry(int type, void *cookie)
 {
     PptpLis const	l = (PptpLis)cookie;
 
+    (void)type;
     if ((l->sock = TcpGetListenPort(&l->self_addr, l->self_port, FALSE)) < 0) {
 	EventRegister(&l->retry, EVENT_TIMEOUT, PPTP_LISTEN_RETRY * 1000,
 	    0, PptpCtrlListenRetry, l);
@@ -805,6 +807,7 @@ PptpCtrlListenEvent(int type, void *cookie)
   char				buf[48], buf2[48];
   socklen_t			addrLen;
   
+    (void)type;
     /* Accept connection */
     if ((sock = TcpAcceptConnection(l->sock, &peerst, FALSE)) < 0)
 	return;
@@ -850,6 +853,8 @@ PptpCtrlConnEvent(int type, void *cookie)
   struct sockaddr_storage	addr;
   socklen_t		addrLen = sizeof(addr);
   char			buf[48];
+
+  (void)type;
 
   /* Get event */
   assert(c->state == PPTP_CTRL_ST_IDLE);
@@ -964,6 +969,8 @@ PptpCtrlReadCtrl(int type, void *cookie)
   PptpCtrl	const c = (PptpCtrl) cookie;
   PptpMsgHead	const hdr = &c->frame.hdr;
   int		nread;
+
+  (void)type;
 
   /* Figure how much to read and read it */
   nread = (c->flen < sizeof(*hdr) ? sizeof(*hdr) : hdr->length) - c->flen;
@@ -1194,15 +1201,15 @@ PptpCtrlGetCtrl(int orig, struct u_addr *self_addr,
     if (orig) {
 	/* See if we're already have a control block matching this address and port */
 	  for (k = 0; k < gNumPptpCtrl; k++) {
-		PptpCtrl	const c = gPptpCtrl[k];
+		PptpCtrl	const d = gPptpCtrl[k];
 	
-		if (c != NULL
-		    && (c->active_sessions < gPPTPtunlimit)
-		    && (u_addrcompare(&c->peer_addr, peer_addr) == 0)
-		    && (c->peer_port == peer_port || c->orig != orig)
+		if (d != NULL
+		    && (d->active_sessions < gPPTPtunlimit)
+		    && (u_addrcompare(&d->peer_addr, peer_addr) == 0)
+		    && (d->peer_port == peer_port || d->orig != orig)
 		    && (u_addrempty(self_addr) || 
-		      (u_addrcompare(&c->self_addr, self_addr) == 0))) {
-			return(c);
+		      (u_addrcompare(&d->self_addr, self_addr) == 0))) {
+			return(d);
 		}
 	  }
     }
@@ -2098,6 +2105,7 @@ PptpStopCtrlConnRequest(PptpCtrl c, struct pptpStopCtrlConnRequest *req)
 static void
 PptpStopCtrlConnReply(PptpCtrl c, struct pptpStopCtrlConnReply *rep)
 {
+  (void)rep;
   PptpCtrlKillCtrl(c);
 }
 
@@ -2368,6 +2376,7 @@ PptpCallClearRequest(PptpChan ch, struct pptpCallClearRequest *req)
   struct pptpCallDiscNotify	notify;
   PptpCtrl			const c = ch->ctrl;
 
+  (void)req;
   if (PPTP_CHAN_IS_PNS(ch)) {
     Log(LG_PHYS2, ("pptp%d-%d: got %s, but we are PNS for this call",
       c->id, ch->id, gPptpMsgInfo[PPTP_CallClearRequest].name));
@@ -2407,6 +2416,7 @@ PptpWanErrorNotify(PptpChan ch, struct pptpWanErrorNotify *notif)
 {
   PptpCtrl	const c = ch->ctrl;
 
+  (void)notif;
   Log(LG_PHYS2, ("pptp%d-%d: ignoring %s",
     c->id, ch->id, gPptpMsgInfo[PPTP_WanErrorNotify].name));
 }
@@ -2437,6 +2447,10 @@ PptpsStat(Context ctx, int ac, char *av[], void *arg)
 {
     int		k;
     char	buf1[48], buf2[48];
+
+    (void)ac;
+    (void)av;
+    (void)arg;
 
     Printf("Active PPTP tunnels:\r\n");
     for (k = 0; k < gNumPptpCtrl; k++) {
