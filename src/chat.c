@@ -178,7 +178,7 @@
     { NOTHING,	CMD_NOTHING,	1, 1 },
   };
 
-  #define CHAT_NUM_COMMANDS	(sizeof(gCmds) / sizeof(*gCmds))
+  #define CHAT_NUM_COMMANDS	((int)(sizeof(gCmds) / sizeof(*gCmds)))
 
 /*
  * INTERNAL FUNCTIONS
@@ -191,7 +191,7 @@
   static void	ChatCancel(ChatInfo c, const char *set);
   static int	ChatGoto(ChatInfo c, const char *label);
   static void	ChatCall(ChatInfo c, const char *label);
-  static void	ChatLog(ChatInfo c, int code, const char *string);
+  static void	ChatLog(ChatInfo c, const char *string);
   static void	ChatPrint(ChatInfo c, const char *string);
   static void	ChatReturn(ChatInfo c, int seek);
   static void	ChatRun(ChatInfo c);
@@ -214,19 +214,19 @@
   static int	ChatVarExtract(const char *string,
 		  char *buf, int max, int strict);
 
-  static void	ChatFreeMatch(ChatInfo c, ChatMatch match);
-  static void	ChatFreeTimer(ChatInfo c, ChatTimer timer);
+  static void	ChatFreeMatch(ChatMatch match);
+  static void	ChatFreeTimer(ChatTimer timer);
   static int	ChatMatchChar(struct cm_exact *ex, char ch);
   static int	ChatMatchRegex(ChatInfo c, regex_t *reg, const char *input);
   static void	ChatSetMatchVars(ChatInfo c, int exact, const char *input, ...);
-  static void	ChatComputeFailure(ChatInfo c, struct cm_exact *ex);
+  static void	ChatComputeFailure(struct cm_exact *ex);
 
   static int	ChatDecodeTime(ChatInfo c, char *string, u_int *secsp);
   static int	ChatSetBaudrate(ChatInfo c, const char *new);
   static char	*ChatExpandString(ChatInfo c, const char *string);
 
   static char	*ChatReadLine(ChatInfo c);
-  static int	ChatParseLine(ChatInfo c, char *line, char *av[], int max);
+  static int	ChatParseLine(char *line, char *av[], int max);
   static int	ChatSeekToLabel(ChatInfo c, const char *label);
   static void	ChatDumpBuf(ChatInfo c, const char *buf,
 		  int len, const char *fmt, ...);
@@ -360,13 +360,15 @@ ChatRead(int type, void *cookie)
 {
   ChatInfo	const c = (ChatInfo) cookie;
   ChatMatch	match;
-  int		nread, lineBufLen;
+  size_t	lineBufLen;
+  int		nread;
   char		ch;
   Link		const l = (Link) c->arg;
 
 /* Sanity */
 
   assert(c->state == CHAT_WAIT);
+  (void)type;
 
 /* Process one byte at a time */
 
@@ -497,7 +499,7 @@ ChatTimeout(int type, void *cookie)
 /* Sanity */
 
   assert(c->state == CHAT_WAIT);
-
+  (void)type;
 /* Locate timer in list */
 
   for (tp = &c->timers; *tp != timer; tp = &(*tp)->next);
@@ -559,7 +561,7 @@ ChatRun(ChatInfo c)
 
   /* Parse out line */
 
-    ac = ChatParseLine(c, line, av, CHAT_MAX_ARGS);
+    ac = ChatParseLine(line, av, CHAT_MAX_ARGS);
     Freee(line);
 
   /* Do command */
@@ -733,7 +735,7 @@ ChatDoCmd(ChatInfo c, int ac, char *av[])
       break;
 
     case CMD_LOG:
-      ChatLog(c, 0, av[1]);
+      ChatLog(c, av[1]);
       break;
 
     case CMD_RETURN:
@@ -916,7 +918,7 @@ ChatAddMatch(ChatInfo c, int exact, const char *set,
   if (exact) {
     match->u.exact.pat = pat;
     match->u.exact.matched = 0;
-    ChatComputeFailure(c, &match->u.exact);
+    ChatComputeFailure(&match->u.exact);
   } else {
     int		errcode;
     char	errbuf[100];
@@ -991,7 +993,7 @@ ChatCancel(ChatInfo c, const char *set0)
   for (mp = &c->matches; (match = *mp) != NULL; ) {
     if (all || !strcmp(match->set, set)) {
       *mp = match->next;
-      ChatFreeMatch(c, match);
+      ChatFreeMatch(match);
     } else
       mp = &match->next;
   }
@@ -1001,7 +1003,7 @@ ChatCancel(ChatInfo c, const char *set0)
   for (tp = &c->timers; (timer = *tp) != NULL; ) {
     if (all || !strcmp(timer->set, set)) {
       *tp = timer->next;
-      ChatFreeTimer(c, timer);
+      ChatFreeTimer(timer);
     } else
       tp = &timer->next;
   }
@@ -1125,14 +1127,14 @@ ChatReturn(ChatInfo c, int seek)
   for (mp = &c->matches; (match = *mp) != NULL; ) {
     if (--match->frameDepth < 0) {
       *mp = match->next;
-      ChatFreeMatch(c, match);
+      ChatFreeMatch(match);
     } else
       mp = &match->next;
   }
   for (tp = &c->timers; (timer = *tp) != NULL; ) {
     if (--timer->frameDepth < 0) {
       *tp = timer->next;
-      ChatFreeTimer(c, timer);
+      ChatFreeTimer(timer);
     } else
       tp = &timer->next;
   }
@@ -1143,7 +1145,7 @@ ChatReturn(ChatInfo c, int seek)
  */
 
 static void
-ChatLog(ChatInfo c, int code, const char *string)
+ChatLog(ChatInfo c, const char *string)
 {
   char	*exp_string;
   Link	const l = (Link) c->arg;
@@ -1199,9 +1201,10 @@ ChatWrite(int type, void *cookie)
   int		nw;
   Link		const l = (Link) c->arg;
 
-/* Write as much as we can */
-
   assert(c->out != NULL && c->outLen > 0);
+  (void)type;
+
+/* Write as much as we can */
   if ((nw = write(c->fd, c->out, c->outLen)) < 0) {
     if (errno == EAGAIN)
       return;
@@ -1375,7 +1378,7 @@ ChatVarExtract(const char *string, char *buf, int max, int strict)
  */
 
 static void
-ChatFreeMatch(ChatInfo c, ChatMatch match)
+ChatFreeMatch(ChatMatch match)
 {
   Freee(match->set);
   Freee(match->label);
@@ -1393,7 +1396,7 @@ ChatFreeMatch(ChatInfo c, ChatMatch match)
  */
 
 static void
-ChatFreeTimer(ChatInfo c, ChatTimer timer)
+ChatFreeTimer(ChatTimer timer)
 {
   EventUnRegister(&timer->event);
   Freee(timer->set);
@@ -1580,7 +1583,7 @@ ChatSetMatchVars(ChatInfo c, int exact, const char *input, ...)
 static int
 ChatMatchChar(struct cm_exact *ex, char ch)
 {
-  const int	len = strlen(ex->pat);
+  const u_int	len = strlen(ex->pat);
 
   /* Account for zero length pattern string -- match on next input char */
   if (len == 0)
@@ -1640,7 +1643,7 @@ ChatMatchRegex(ChatInfo c, regex_t *reg, const char *input)
  */
 
 static void
-ChatComputeFailure(ChatInfo c, struct cm_exact *ex)
+ChatComputeFailure(struct cm_exact *ex)
 {
   const int	len = strlen(ex->pat);
   int		i, j, k;
@@ -1695,7 +1698,7 @@ ChatReadLine(ChatInfo c)
  */
 
 static int
-ChatParseLine(ChatInfo c, char *line, char *av[], int max)
+ChatParseLine(char *line, char *av[], int max)
 {
   return ParseLine(line, av, max, 1);
 }
