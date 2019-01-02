@@ -644,7 +644,7 @@ PppoeCtrlReadEvent(int type, void *arg)
 	    {
 		struct ngpppoe_maxp *maxp;
 		
-		maxp = ((struct ngpppoe_maxp *)u.resp.data);
+		maxp = ((struct ngpppoe_maxp *)(void *)u.resp.data);
 		Log(LG_PHYS, ("[%s] PPPoE: rec'd PPP-Max-Payload '%u'",
 		  l->name, maxp->data));
 		if (pi->max_payload > 0) {
@@ -935,7 +935,7 @@ CreatePppoeNode(struct PppoeIf *PIf, const char *path, const char *hook)
 		}
 
 		/* Look for NG_ETHER_NODE_TYPE. */
-		tlist = (const struct typelist*) resp->data;
+		tlist = (const struct typelist*)(void *)resp->data;
 		for (f = 0; f < tlist->numtypes; f++)
 			if (strncmp(tlist->typeinfo[f].type_name,
 			    NG_ETHER_NODE_TYPE,
@@ -974,7 +974,7 @@ CreatePppoeNode(struct PppoeIf *PIf, const char *path, const char *hook)
 		return (0);
 	}
 
-	hlist = (const struct hooklist *)resp->data;
+	hlist = (const struct hooklist *)(void *)resp->data;
 	ninfo = &hlist->nodeinfo;
 
 	/* Make sure we've got the right type of node. */
@@ -1104,7 +1104,7 @@ get_vs_tag(const struct pppoe_hdr* ph, uint32_t idx)
 			return (NULL);
 		if (pt->tag_type == PTT_VENDOR &&
 		    ntohs(pt->tag_len) >= 4 &&
-		    *(const uint32_t*)(pt + 1) == idx)
+		    *(const uint32_t*)(void *)(pt + 1) == idx)
 			return (pt);
 
 		pt = (const struct pppoe_tag*)ptn;
@@ -1180,7 +1180,7 @@ print_tags(const struct pppoe_hdr* ph)
 			if (len != 2) {
 			    sprintf(buf, "TAG_LENGTH is not 2!");
 			} else {
-			    sprintf(buf, "%u", *(uint16_t*)(pt + 1));
+			    sprintf(buf, "%u", *(uint16_t*)(void *)(pt + 1));
 			}
 			break;
 		    case PTT_SRV_ERR:
