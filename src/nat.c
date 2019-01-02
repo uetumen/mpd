@@ -48,7 +48,7 @@ static int	NatSetCommand(Context ctx, int ac, char *av[], void *arg);
 	NatSetCommand, AdmitBund, 2, (void *) UNSET_REDIRECT_ADDR },
     { "red-proto {proto} {alias-addr} {local_addr} [{remote-addr}]",	"Redirect protocol",
 	NatSetCommand, AdmitBund, 2, (void *) UNSET_REDIRECT_PROTO },
-	  { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 #endif
 
@@ -69,7 +69,7 @@ static int	NatSetCommand(Context ctx, int ac, char *av[], void *arg);
 	NatSetCommand, AdmitBund, 2, (void *) SET_ENABLE },
     { "disable [opt ...]",		"Disable option",
 	NatSetCommand, AdmitBund, 2, (void *) SET_DISABLE },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
 /*
@@ -418,12 +418,16 @@ NatStat(Context ctx, int ac, char *av[], void *arg)
         u_char buf[sizeof(struct ng_mesg) + sizeof(struct ng_nat_libalias_info)];
         struct ng_mesg reply;
     } u;
-    struct ng_nat_libalias_info *const li = \
+    struct ng_nat_libalias_info *const nli = \
         (struct ng_nat_libalias_info *)(void *)u.reply.data;
     char	path[NG_PATHSIZ];
 #endif
     char	buf[48];
     int k;
+
+    (void)ac;
+    (void)av;
+    (void)arg;
 
     Printf("NAT configuration:\r\n");
     Printf("\tAlias addresses : %s\r\n", 
@@ -474,20 +478,20 @@ NatStat(Context ctx, int ac, char *av[], void *arg)
     if (Enabled(&nat->options, NAT_CONF_LOG) && iface->up && iface->nat_up) {
         snprintf(path, sizeof(path), "mpd%d-%s-nat:", gPid, \
             (char *)&ctx->bund->name);
-        bzero(li, sizeof(struct ng_nat_libalias_info));
+        bzero(nli, sizeof(struct ng_nat_libalias_info));
         Printf("LibAlias statistic:\r\n");
         if (NgFuncSendQuery(path, NGM_NAT_COOKIE, NGM_NAT_LIBALIAS_INFO,
             NULL, 0, &u.reply, sizeof(u), NULL) < 0)
             Perror("Can't get LibAlias stats");
-        Printf("\ticmpLinkCount  : %u\r\n", li->icmpLinkCount);
-        Printf("\tudpLinkCount   : %u\r\n", li->udpLinkCount);
-        Printf("\ttcpLinkCount   : %u\r\n", li->tcpLinkCount);
-        Printf("\tsctpLinkCount  : %u\r\n", li->sctpLinkCount);
-        Printf("\tpptpLinkCount  : %u\r\n", li->pptpLinkCount);
-        Printf("\tprotoLinkCount : %u\r\n", li->protoLinkCount);
-        Printf("\tfragmentIdLinkCount  : %u\r\n", li->fragmentIdLinkCount);
-        Printf("\tfragmentPtrLinkCount : %u\r\n", li->fragmentPtrLinkCount);
-        Printf("\tsockCount      : %u\r\n", li->sockCount);
+        Printf("\ticmpLinkCount  : %u\r\n", nli->icmpLinkCount);
+        Printf("\tudpLinkCount   : %u\r\n", nli->udpLinkCount);
+        Printf("\ttcpLinkCount   : %u\r\n", nli->tcpLinkCount);
+        Printf("\tsctpLinkCount  : %u\r\n", nli->sctpLinkCount);
+        Printf("\tpptpLinkCount  : %u\r\n", nli->pptpLinkCount);
+        Printf("\tprotoLinkCount : %u\r\n", nli->protoLinkCount);
+        Printf("\tfragmentIdLinkCount  : %u\r\n", nli->fragmentIdLinkCount);
+        Printf("\tfragmentPtrLinkCount : %u\r\n", nli->fragmentPtrLinkCount);
+        Printf("\tsockCount      : %u\r\n", nli->sockCount);
     }
 #endif
     return(0);
