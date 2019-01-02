@@ -487,7 +487,7 @@ u_addrtoid(const struct u_addr *addr)
     if (addr->family==AF_INET) {
 	id = ntohl(addr->u.ip4.s_addr);
     } else if (addr->family==AF_INET6) {
-	uint32_t *a32 = (uint32_t *)(&addr->u.ip6.s6_addr[0]);
+	uint32_t *a32 = (uint32_t *)(void *)(&addr->u.ip6.s6_addr[0]);
         id = a32[0] + a32[1] + a32[2] + a32[3];
     } else {
 	id = 0;

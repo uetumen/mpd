@@ -1177,7 +1177,7 @@ GetAnyIpAddress(struct u_addr *ipaddr, const char *ifname)
     	    close(s);
     	    return(-1);
         }
-	ipa = ((struct sockaddr_in *)&ifreq.ifr_ifru.ifru_addr)->sin_addr;
+	ipa = ((struct sockaddr_in *)(void *)&ifreq.ifr_ifru.ifru_addr)->sin_addr;
 	if ((ntohl(ipa.s_addr)>>24) == 127)
 	    ipa.s_addr = 0; 	/* We don't like 127.0.0.1 */
     }
@@ -1432,10 +1432,10 @@ GetPeerEther(struct u_addr *addr, struct sockaddr_dl *hwaddr)
 	}
 	lim = buf + needed;
 	for (next = buf; next < lim; next += rtm->rtm_msglen) {
-		rtm = (struct rt_msghdr *)next;
+		rtm = (struct rt_msghdr *)(void *)next;
 		sin2 = (struct sockaddr_inarp *)(rtm + 1);
 		if (addr->u.ip4.s_addr == sin2->sin_addr.s_addr) {
-			sdl = (struct sockaddr_dl *)((char *)sin2 + SA_SIZE(sin2));
+			sdl = (struct sockaddr_dl *)(void *)((char *)sin2 + SA_SIZE(sin2));
 			memcpy(hwaddr, sdl, sdl->sdl_len);
 			found_entry = 1;
 			break;

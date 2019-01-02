@@ -322,8 +322,8 @@ DeseBisBuildConfigReq(Bund b, u_char *cp)
   EcpState	const ecp = &b->ecp;
   DeseBisInfo	const des = &ecp->desebis;
 
-  ((u_int32_t *) des->xmit_ivec)[0] = random();
-  ((u_int32_t *) des->xmit_ivec)[1] = random();
+  ((u_int32_t *)(void *) des->xmit_ivec)[0] = random();
+  ((u_int32_t *)(void *) des->xmit_ivec)[1] = random();
   return(FsmConfValue(cp, ECP_TY_DESE_bis, 8, des->xmit_ivec));
 }
 

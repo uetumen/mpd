@@ -1444,7 +1444,7 @@ IfaceIsDemand(int proto, Mbuf pkt)
         if (MBLEN(pkt) < sizeof(struct ip))
 	    return (0);
 
-	ip = (struct ip *)MBDATA(pkt);
+	ip = (struct ip *)(void *)MBDATA(pkt);
 	switch (ip->ip_p) {
 	  case IPPROTO_IGMP:		/* No multicast stuff */
 	    return(0);
@@ -1456,7 +1456,7 @@ IfaceIsDemand(int proto, Mbuf pkt)
     	      if (MBLEN(pkt) < (ip->ip_hl * 4 + sizeof(struct icmphdr)))
 		return (0);
 
-	      icmp = (struct icmphdr *) ((u_int32_t *) ip + ip->ip_hl);
+	      icmp = (struct icmphdr *) ((u_int32_t *)(void *) ip + ip->ip_hl);
 
 	      switch (icmp->icmp_type)	/* No ICMP replies */
 	      {
@@ -1477,7 +1477,7 @@ IfaceIsDemand(int proto, Mbuf pkt)
     	      if (MBLEN(pkt) < (ip->ip_hl * 4 + sizeof(struct udphdr)))
 		return (0);
 
-	      udp = (struct udphdr *) ((u_int32_t *) ip + ip->ip_hl);
+	      udp = (struct udphdr *) ((u_int32_t *)(void *) ip + ip->ip_hl);
 
 #define NTP_PORT	123
 	      if (ntohs(udp->uh_dport) == NTP_PORT)	/* No NTP packets */
@@ -1491,7 +1491,7 @@ IfaceIsDemand(int proto, Mbuf pkt)
     	      if (MBLEN(pkt) < (ip->ip_hl * 4 + sizeof(struct tcphdr)))
 		return (0);
 
-	      tcp = (struct tcphdr *) ((u_int32_t *) ip + ip->ip_hl);
+	      tcp = (struct tcphdr *) ((u_int32_t *)(void *) ip + ip->ip_hl);
 
 	      if (tcp->th_flags & TH_RST)	/* No TCP reset packets */
 		return(0);
@@ -1972,7 +1972,7 @@ add_scope(struct sockaddr *sa, int ifindex)
 
   if (sa->sa_family != AF_INET6)
     return;
-  sa6 = (struct sockaddr_in6 *)sa;
+  sa6 = (struct sockaddr_in6 *)(void *)sa;
   if (!IN6_IS_ADDR_LINKLOCAL(&sa6->sin6_addr) &&
       !IN6_IS_ADDR_MC_LINKLOCAL(&sa6->sin6_addr))
     return;
@@ -2012,13 +2012,13 @@ IfaceChangeAddr(Bund b, int add, struct u_range *self, struct u_addr *peer)
 	memset(&ifra, '\0', sizeof(ifra));
 	strlcpy(ifra.ifra_name, b->iface.ifname, sizeof(ifra.ifra_name));
 
-	me4 = (struct sockaddr_in *)&ifra.ifra_addr;
+	me4 = (struct sockaddr_in *)(void *)&ifra.ifra_addr;
 	memcpy(me4, &ssself, sizeof(*me4));
 
-	msk4 = (struct sockaddr_in *)&ifra.ifra_mask;
+	msk4 = (struct sockaddr_in *)(void *)&ifra.ifra_mask;
 	memcpy(msk4, &ssmsk, sizeof(*msk4));
 
-	peer4 = (struct sockaddr_in *)&ifra.ifra_broadaddr;
+	peer4 = (struct sockaddr_in *)(void *)&ifra.ifra_broadaddr;
 	if (peer == NULL || peer->family == AF_UNSPEC) {
     	    peer4->sin_family = AF_INET;
     	    peer4->sin_len = sizeof(*peer4);

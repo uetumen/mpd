@@ -232,7 +232,7 @@ InputMPLink(Bund b, int proto, Mbuf pkt)
 	case PROTO_LCP:
     	    if (MBLEN(pkt) < sizeof(hdr))
 		break;
-    	    hdr = (struct fsmheader *)MBDATA(pkt);
+    	    hdr = (struct fsmheader *)(void *)MBDATA(pkt);
     	    switch (hdr->code) {
 		case CODE_CODEREJ:		/* these two are OK */
 		case CODE_PROTOREJ:

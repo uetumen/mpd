@@ -498,7 +498,7 @@ EapRadiusSendMsg(void *ptr)
   Mbuf		bp;
   Link		l = (Link)ptr;
   Auth		const a = &l->lcp.auth;
-  FsmHeader	const f = (FsmHeader)a->params.eapmsg;
+  FsmHeader	const f = (FsmHeader)(void *)a->params.eapmsg;
   char		buf[32];
 
   if (a->params.eapmsg_len > 4) {
