@@ -118,7 +118,7 @@ int
 structs_string_encode(const struct structs_type *type, const char *mtype,
 	struct structs_data *code, const void *data)
 {
-	if ((code->data = structs_get_string(type,
+	if ((code->data = (u_char *)structs_get_string(type,
 	    NULL, data, mtype)) == NULL)
 		return (-1);
 	code->length = strlen((char *)code->data) + 1;
