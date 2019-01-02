@@ -1190,9 +1190,9 @@ ppp_l2tp_initiated_cb(struct ppp_l2tp_ctrl *ctrl,
 		pi->tun = tun;
 		tun->active_sessions++;
 		pi->sess = sess;
-		if (ptrs->callingnum && ptrs->callingnum->number)
+		if (ptrs->callingnum)
 		    strlcpy(pi->callingnum, ptrs->callingnum->number, sizeof(pi->callingnum));
-		if (ptrs->callednum && ptrs->callednum->number)
+		if (ptrs->callednum)
 		    strlcpy(pi->callednum, ptrs->callednum->number, sizeof(pi->callednum));
 		    
 		*include_length = (Enabled(&pi->conf.options, L2TP_CONF_LENGTH)?1:0);
