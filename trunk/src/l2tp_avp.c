@@ -115,7 +115,7 @@ ppp_l2tp_avp_list_create(void)
  */
 int
 ppp_l2tp_avp_list_insert(struct ppp_l2tp_avp_list *list,
-	struct ppp_l2tp_avp **avpp, int index)
+	struct ppp_l2tp_avp **avpp, unsigned index)
 {
 	struct ppp_l2tp_avp *const avp = *avpp;
 	void *mem;
@@ -199,7 +199,7 @@ int
 ppp_l2tp_avp_list_find(const struct ppp_l2tp_avp_list *list,
 	u_int16_t vendor, u_int16_t type)
 {
-	int i;
+	unsigned i;
 
 	for (i = 0; i < list->length; i++) {
 		const struct ppp_l2tp_avp *const avp = &list->avps[i];
@@ -217,7 +217,7 @@ struct ppp_l2tp_avp_list *
 ppp_l2tp_avp_list_copy(const struct ppp_l2tp_avp_list *orig)
 {
 	struct ppp_l2tp_avp_list *list;
-	int i;
+	unsigned i;
 
 	list = ppp_l2tp_avp_list_create();
 	for (i = 0; i < orig->length; i++) {
@@ -239,7 +239,7 @@ void
 ppp_l2tp_avp_list_destroy(struct ppp_l2tp_avp_list **listp)
 {
 	struct ppp_l2tp_avp_list *const list = *listp;
-	int i;
+	unsigned i;
 
 	if (list == NULL)
 		return;
@@ -266,11 +266,11 @@ ppp_l2tp_avp_pack(const struct ppp_l2tp_avp_info *info,
 {
 	uint32_t randvec;
 	int randsent = 0;
-	int len;
-	int i;
+	int len = 0;
+	unsigned i;
 
 	/* Pack AVP's */
-	for (len = i = 0; i < list->length; i++) {
+	for (i = 0; i < list->length; i++) {
 		const struct ppp_l2tp_avp *const avp = &list->avps[i];
 		const struct ppp_l2tp_avp_info *desc;
 		u_int16_t hdr[3];
@@ -516,7 +516,7 @@ struct ppp_l2tp_avp_ptrs *
 ppp_l2tp_avp_list2ptrs(const struct ppp_l2tp_avp_list *list)
 {
 	struct ppp_l2tp_avp_ptrs *ptrs;
-	int i;
+	unsigned i;
 
 	/* Macro to allocate one pointer structure */
 #define AVP_ALLOC(field)						\
@@ -810,12 +810,13 @@ ppp_l2tp_avp_ptrs_destroy(struct ppp_l2tp_avp_ptrs **ptrsp)
 #define DECODE_INITIAL(t)						\
 void									\
 ppp_l2tp_avp_decode_ ## t(const struct ppp_l2tp_avp_info *info,		\
-	const struct ppp_l2tp_avp *avp, char *buf, size_t bmax)		\
+	struct ppp_l2tp_avp *avp, char *buf, size_t bmax)		\
 {									\
 	const struct ppp_l2tp_avp_list list				\
 	    = { 1, (struct ppp_l2tp_avp *)avp };			\
 	struct ppp_l2tp_avp_ptrs *ptrs;					\
 									\
+	(void)info;							\
 	if ((ptrs = ppp_l2tp_avp_list2ptrs(&list)) == NULL) {		\
 		snprintf(buf, bmax,					\
 		    "decode failed: %s", strerror(errno));		\
@@ -830,7 +831,7 @@ done:									\
 
 #define DECODE_BYTES(p, len)						\
 	do {								\
-		int _i;							\
+		u_int _i;						\
 									\
 		for (_i = 0; _i < len; _i++) {				\
 			snprintf(buf + strlen(buf),			\

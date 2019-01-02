@@ -66,7 +66,7 @@ struct ppp_l2tp_avp;
 
 /* AVP decoder function type */
 typedef void	ppp_l2tp_avp_decode_t(const struct ppp_l2tp_avp_info *info,
-			const struct ppp_l2tp_avp *avp, char *buf, size_t bmax);
+			struct ppp_l2tp_avp *avp, char *buf, size_t bmax);
 
 /* Structure describing one AVP type */
 struct ppp_l2tp_avp_info {
@@ -477,7 +477,7 @@ extern struct	ppp_l2tp_avp_list *ppp_l2tp_avp_list_create(void);
  *	-1	If failure (errno is set)
  */
 extern int	ppp_l2tp_avp_list_insert(struct ppp_l2tp_avp_list *list,
-			struct ppp_l2tp_avp **avpp, int index);
+			struct ppp_l2tp_avp **avpp, unsigned index);
 
 /*
  * Create a new AVP and add it to the end of the given list. That is, this
