@@ -213,7 +213,7 @@ const struct cmdtab PppoeSetCmds[] = {
 #endif
       { "mac-format {format}",	"Set RADIUS attribute 31 MAC format",
 	  PppoeSetCommand, NULL, 2, (void *)SET_MAC_FORMAT },
-      { NULL }
+      { NULL, NULL, NULL, NULL, 0, NULL }
 };
 
 /* 
@@ -237,8 +237,7 @@ struct PppoeIf {
     SLIST_HEAD(, PppoeList) list;
 };
 
-int PppoeIfCount=0;
-struct PppoeIf PppoeIfs[PPPOE_MAXPARENTIFS];
+static struct PppoeIf PppoeIfs[PPPOE_MAXPARENTIFS];
 
 struct tagname {
     int		tag;
@@ -551,7 +550,8 @@ PppoeCtrlReadEvent(int type, void *arg)
 	PppoeInfo pi = NULL;
 	
 	struct PppoeIf  *PIf = (struct PppoeIf*)arg;
-	
+
+	(void)type;
 	/* Read control message. */
 	if (NgRecvMsg(PIf->csock, &u.resp, sizeof(u), path) < 0) {
 		Perror("PPPoE: error reading message from \"%s\"", path);
@@ -733,6 +733,7 @@ PppoeOriginated(Link l)
 static int
 PppoeIsSync(Link l)
 {
+	(void)l;
 	return (1);
 }
 
@@ -741,6 +742,8 @@ PppoePeerMacAddr(Link l, void *buf, size_t buf_len)
 {
 	PppoeInfo	const pppoe = (PppoeInfo)l->info;
 
+	if (buf_len < 18)
+		return (1);
 	ether_ntoa_r((struct ether_addr *)pppoe->peeraddr, buf);
 	return (0);
 }
@@ -1104,7 +1107,7 @@ get_vs_tag(const struct pppoe_hdr* ph, uint32_t idx)
 			return (NULL);
 		if (pt->tag_type == PTT_VENDOR &&
 		    ntohs(pt->tag_len) >= 4 &&
-		    *(const uint32_t*)(void *)(pt + 1) == idx)
+		    *(const uint32_t*)(const void *)(pt + 1) == idx)
 			return (pt);
 
 		pt = (const struct pppoe_tag*)ptn;
@@ -1163,7 +1166,7 @@ print_tags(const struct pppoe_hdr* ph)
 			break;
 		    case PTT_VENDOR:
 			if (len >= 4) {
-			    if ((uint8_t)*(uint8_t*)v != 0) {
+			    if ((const uint8_t)*(const uint8_t*)v != 0) {
 				snprintf(buf, sizeof(buf),
 				    "First byte of VENDOR is not zero! 0x%s",
 				    Bin2Hex(v, len));
@@ -1180,7 +1183,7 @@ print_tags(const struct pppoe_hdr* ph)
 			if (len != 2) {
 			    sprintf(buf, "TAG_LENGTH is not 2!");
 			} else {
-			    sprintf(buf, "%u", *(uint16_t*)(void *)(pt + 1));
+			    sprintf(buf, "%u", *(const uint16_t*)(const void *)(pt + 1));
 			}
 			break;
 		    case PTT_SRV_ERR:
@@ -1251,6 +1254,7 @@ PppoeListenEvent(int type, void *arg)
 	} u;
 	struct ngpppoe_init_data *const idata = &u.poeid;
 
+	(void)type;
 	switch (sz = NgRecvData(PIf->dsock, response, sizeof(response), rhook)) {
           case -1:
 	    Log(LG_ERR, ("NgRecvData: %d", sz));
@@ -1267,7 +1271,7 @@ PppoeListenEvent(int type, void *arg)
 
 	session = rhook + 7;
 
-	if (sz < sizeof(struct pppoe_full_hdr)) {
+	if ((size_t)sz < sizeof(struct pppoe_full_hdr)) {
 		Log(LG_PHYS, ("Incoming truncated PPPoE connection request via %s for "
 		    "service \"%s\"", PIf->ifnodepath, session));
 		return;
@@ -1276,7 +1280,7 @@ PppoeListenEvent(int type, void *arg)
 	wh = (struct pppoe_full_hdr *)response;
 	ph = &wh->ph;
 	if ((tag = get_tag(ph, PTT_SRV_NAME))) {
-	    int len = ntohs(tag->tag_len);
+	    size_t len = ntohs(tag->tag_len);
 	    if (len >= sizeof(real_session))
 		len = sizeof(real_session)-1;
 	    memcpy(real_session, tag + 1, len);
@@ -1287,10 +1291,10 @@ PppoeListenEvent(int type, void *arg)
 	bzero(agent_cid, sizeof(agent_cid));
 	bzero(agent_rid, sizeof(agent_rid));
 	if ((tag = get_vs_tag(ph, htonl(0x00000DE9)))) {
-	    int len = ntohs(tag->tag_len) - 4, pos = 0;
+	    size_t len = ntohs(tag->tag_len) - 4, pos = 0;
 	    const char *b = (const char *)(tag + 1) + 4;
 	    while (pos + 1 <= len) {
-		int len1 = b[pos + 1];
+		size_t len1 = b[pos + 1];
 		if (len1 > len - pos - 2)
 		    break;
 		if (len1 >= sizeof(agent_rid))
@@ -1309,7 +1313,7 @@ PppoeListenEvent(int type, void *arg)
 
 	Log(LG_PHYS, ("Incoming PPPoE connection request via %s for "
 	    "service \"%s\" from %s", PIf->ifnodepath, real_session,
-	    ether_ntoa((struct  ether_addr *)&wh->eh.ether_shost)));
+	    ether_ntoa((const struct ether_addr *)&wh->eh.ether_shost)));
 
 	if (gLogOptions & LG_PHYS3)
 	    print_tags(ph);
