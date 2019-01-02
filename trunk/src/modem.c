@@ -161,7 +161,7 @@
       ModemSetCommand, NULL, 2, (void *) SET_SCRIPT_VAR },
     { "watch [+|-cd] [+|-dsr]", 	"Set signals to monitor",
       ModemSetCommand, NULL, 2, (void *) SET_WATCH },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
 /*
@@ -901,6 +901,7 @@ ModemOriginated(Link l)
 static int
 ModemIsSync(Link l)
 {
+    (void)l;
     return (0);
 }
 
