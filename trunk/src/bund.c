@@ -115,7 +115,7 @@
 	BundSetCommand, NULL, 2, (void *) SET_YES },
     { "no {opt ...}",			"Disable and deny option",
 	BundSetCommand, NULL, 2, (void *) SET_NO },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
 /*
@@ -923,6 +923,8 @@ BundCommand(Context ctx, int ac, char *av[], void *arg)
     Bund	sb;
     int		j, k;
 
+    (void)arg;
+
     if (ac > 1)
 	return (-1);
 
@@ -965,6 +967,8 @@ int
 MSessionCommand(Context ctx, int ac, char *av[], void *arg)
 {
     int		k;
+
+    (void)arg;
 
     if (ac > 1)
 	return (-1);
@@ -1009,6 +1013,8 @@ int
 IfaceCommand(Context ctx, int ac, char *av[], void *arg)
 {
     int		k;
+
+    (void)arg;
 
     if (ac > 1)
 	return (-1);
@@ -1056,6 +1062,8 @@ BundCreate(Context ctx, int ac, char *av[], void *arg)
     u_char	tmpl = 0;
     u_char	stay = 0;
     int	k;
+
+    (void)arg;
 
     RESETREF(ctx->lnk, NULL);
     RESETREF(ctx->bund, NULL);
@@ -1157,6 +1165,8 @@ int
 BundDestroy(Context ctx, int ac, char *av[], void *arg)
 {
     Bund 	b;
+
+    (void)arg;
 
     if (ac > 1)
 	return(-1);
@@ -1281,6 +1291,8 @@ BundStat(Context ctx, int ac, char *av[], void *arg)
   Bund	sb;
   int	k, bw, tbw, nup;
   char	buf[64];
+
+  (void)arg;
 
   /* Find bundle they're talking about */
   switch (ac) {
