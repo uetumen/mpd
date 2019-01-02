@@ -2168,8 +2168,8 @@ PptpOutCallRequest(PptpCtrl c, struct pptpOutCallRequest *req)
 
   /* Ask link layer about making the outgoing call */
   PptpCtrlInitCinfo(ch, &cinfo);
-  linfo = (*gGetOutLink)(&cinfo, &c->self_addr, &c->peer_addr, c->peer_port, req->bearType,
-    req->frameType, req->minBps, req->maxBps, calledNum, subAddress);
+  linfo = (*gGetOutLink)(&cinfo, &c->self_addr, &c->peer_addr, c->peer_port,
+    calledNum);
   if (linfo.cookie == NULL)
     goto denied;
 
@@ -2281,7 +2281,7 @@ PptpInCallRequest(PptpCtrl c, struct pptpInCallRequest *req)
   linfo.cancel = NULL;
   if (gGetInLink)
     linfo = (*gGetInLink)(&cinfo, &c->self_addr, &c->peer_addr, c->peer_port,
-      req->bearType, callingNum, calledNum, subAddress);
+      callingNum, calledNum);
   ch->linfo = linfo;
   if (linfo.cookie == NULL) {
     Log(LG_PHYS2, ("pptp%d: incoming call request denied", c->id));
