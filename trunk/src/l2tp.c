@@ -220,7 +220,7 @@
 	L2tpSetCommand, NULL, 2, (void *) SET_ENABLE },
     { "disable [opt ...]",		"Disable option",
 	L2tpSetCommand, NULL, 2, (void *) SET_DISABLE },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
 /*
@@ -236,12 +236,9 @@
     { 0,	0,			NULL		},
   };
 
-int L2tpListenUpdateSheduled = 0;
-struct pppTimer L2tpListenUpdateTimer;
-
-struct ghash	*gL2tpServers;
-struct ghash	*gL2tpTuns;
-int		one = 1;
+static struct ghash	*gL2tpServers;
+static struct ghash	*gL2tpTuns;
+static int	one = 1;
 
 /*
  * L2tpTInit()
@@ -860,6 +857,8 @@ L2tpPeerMacAddr(Link l, void *buf, size_t buf_len)
 {
     L2tpInfo	const l2tp = (L2tpInfo) l->info;
 
+    if (buf_len < 18)
+    	return 1;
     if (l2tp->tun && l2tp->tun->peer_iface[0]) {
 	ether_ntoa_r((struct ether_addr *)l2tp->tun->peer_mac_addr, buf);
 	return (0);
@@ -1057,6 +1056,7 @@ ppp_l2tp_ctrl_terminated_cb(struct ppp_l2tp_ctrl *ctrl,
 	struct l2tp_tun *tun = ppp_l2tp_ctrl_get_cookie(ctrl);
 	int	k;
 
+	(void)result;
 	Log(LG_PHYS, ("L2TP: Control connection %p terminated: %d (%s)", 
 	    ctrl, error, errmsg));
 
@@ -1389,6 +1389,7 @@ L2tpServerEvent(int type, void *arg)
 	u_int16_t	win;
 	int	k;
 
+	(void)type;
 	/* Allocate buffer */
 	buf = Malloc(MB_PHYS, bufsize);
 
@@ -1807,6 +1808,10 @@ L2tpsStat(Context ctx, int ac, char *av[], void *arg)
     struct l2tp_tun	*tun;
     struct ghash_walk	walk;
     char	buf1[64], buf2[64], buf3[64];
+
+    (void)ac;
+    (void)av;
+    (void)arg;
 
     Printf("Active L2TP tunnels:\r\n");
     ghash_walk_init(gL2tpTuns, &walk);
