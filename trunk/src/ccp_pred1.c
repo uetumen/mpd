@@ -385,12 +385,25 @@ Pred1Decompress(Bund b, Mbuf mbcomp)
 static Mbuf
 Pred1RecvResetReq(Bund b, int id, Mbuf bp, int *noAck)
 {
+  (void)id;
+  (void)bp;
+  (void)noAck;
 #ifndef USE_NG_PRED1
   Pred1Info     p = &b->ccp.pred1;
+
+  (void)id;
+  (void)bp;
+  (void)noAck;
+
   Pred1Init(b, COMP_DIR_XMIT);
   p->xmit_stats.Errors++;
 #else
     char		path[NG_PATHSIZ];
+
+    (void)id;
+    (void)bp;
+    (void)noAck;
+
     /* Forward ResetReq to the Predictor1 compression node */
     snprintf(path, sizeof(path), "[%x]:", b->ccp.comp_node_id);
     if (NgSendMsg(gCcpCsock, path,
@@ -398,7 +411,7 @@ Pred1RecvResetReq(Bund b, int id, Mbuf bp, int *noAck)
 	Perror("[%s] reset to %s node", b->name, NG_PRED1_NODE_TYPE);
     }
 #endif
-return(NULL);
+    return(NULL);
 }
 
 /*
@@ -410,6 +423,8 @@ Pred1SendResetReq(Bund b)
 {
 #ifndef USE_NG_PRED1
     Pred1Init(b, COMP_DIR_RECV);
+#else
+    (void)b;
 #endif
     return(NULL);
 }
@@ -422,9 +437,15 @@ static void
 Pred1RecvResetAck(Bund b, int id, Mbuf bp)
 {
 #ifndef USE_NG_PRED1
+    (void)id;
+    (void)bp;
     Pred1Init(b, COMP_DIR_RECV);
 #else
     char		path[NG_PATHSIZ];
+
+    (void)id;
+    (void)bp;
+
     /* Forward ResetReq to the Predictor1 decompression node */
     snprintf(path, sizeof(path), "[%x]:", b->ccp.decomp_node_id);
     if (NgSendMsg(gCcpCsock, path,
@@ -441,6 +462,7 @@ Pred1RecvResetAck(Bund b, int id, Mbuf bp)
 static u_char *
 Pred1BuildConfigReq(Bund b, u_char *cp, int *ok)
 {
+  (void)b;
   cp = FsmConfValue(cp, CCP_TY_PRED1, 0, NULL);
   *ok = 1;
   return (cp);
@@ -471,6 +493,9 @@ Pred1DecodeConfigReq(Fsm fp, FsmOption opt, int mode)
 static int
 Pred1Negotiated(Bund b, int dir)
 {
+  (void)b;
+  (void)dir;
+
   return 1;
 }
 
@@ -481,6 +506,7 @@ Pred1Negotiated(Bund b, int dir)
 static int
 Pred1SubtractBloat(Bund b, int size)
 {
+  (void)b;
   return(size - 4);
 }
 
