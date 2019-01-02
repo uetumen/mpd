@@ -75,7 +75,7 @@
 	NgSetCommand, NULL, 2, (void *) SET_NODE },
     { "hook {hook}",		"Set hook to attach to",
 	NgSetCommand, NULL, 2, (void *) SET_HOOK },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
 /*
@@ -225,6 +225,7 @@ NgSetCommand(Context ctx, int ac, char *av[], void *arg)
 static int
 NgIsSync(Link l)
 {
+    (void)l;
     return (1);
 }
 
