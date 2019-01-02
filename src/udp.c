@@ -129,7 +129,7 @@
 	UdpSetCommand, NULL, 2, (void *) SET_ENABLE },
     { "disable [opt ...]",		"Disable option",
 	UdpSetCommand, NULL, 2, (void *) SET_DISABLE },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
 struct UdpIf {
@@ -139,10 +139,7 @@ struct UdpIf {
     int		csock;                  /* netgraph Control socket */
     EventRef	ctrlEvent;		/* listen for ctrl messages */
 };
-struct UdpIf UdpIfs[UDP_MAXPARENTIFS];
-
-int UdpListenUpdateSheduled=0;
-struct pppTimer UdpListenUpdateTimer;
+static struct UdpIf UdpIfs[UDP_MAXPARENTIFS];
 
  /*
  * INTERNAL VARIABLES
@@ -416,6 +413,7 @@ UdpOrigination(Link l)
 static int
 UdpIsSync(Link l)
 {
+    (void)l;
     return (1);
 }
 
