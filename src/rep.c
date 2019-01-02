@@ -208,6 +208,8 @@ RepCommand(Context ctx, int ac, char *av[], void *arg)
     Rep	r;
     int	k;
 
+    (void)arg;
+
     if (ac > 1)
 	return (-1);
 
@@ -330,6 +332,8 @@ int
 RepStat(Context ctx, int ac, char *av[], void *arg)
 {
     Rep	r;
+
+    (void)arg;
 
     /* Find repeater they're talking about */
     switch (ac) {
