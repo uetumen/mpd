@@ -104,6 +104,7 @@ DesConfigure(Bund b)
 static int
 DesSubtractBloat(Bund b, int size)
 {
+  (void)b;
   size -= DES_OVERHEAD;	/* reserve space for header */
   size &= ~0x7;
   return(size);
