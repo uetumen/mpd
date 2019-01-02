@@ -138,7 +138,7 @@ ChapSendChallenge(Link l)
     default:
       assert(0);
   }
-  assert(cp->chal_len <= sizeof(cp->chal_data));
+  assert(cp->chal_len <= (int)sizeof(cp->chal_data));
 
 send_pkt:
   /* Build a challenge packet */
@@ -287,7 +287,7 @@ ChapInput(Link l, AuthData auth, const u_char *pkt, u_short len)
 	  int	chalOrig;
 
 	  /* Check challenge length */
-	  if (value_len < sizeof(buf))
+	  if (value_len < (int)sizeof(buf))
 	    break;
 
 	  /* Copy challenge bits and extract origination value */
@@ -448,7 +448,7 @@ ChapInput(Link l, AuthData auth, const u_char *pkt, u_short len)
       }
 
       /* Log message */
-      ShowMesg(LG_AUTH, l->name, (char *) pkt, len);
+      ShowMesg(LG_AUTH, l->name, pkt, len);
       AuthFinish(l, AUTH_SELF_TO_PEER, auth->code == CHAP_SUCCESS);
       break;
       
@@ -644,7 +644,7 @@ ChapGenRandom(Link l, u_char *buf, int len)
   int	k;
 
   /* Prefix with our unique ID plus origination value */
-  for (k = 0; k < sizeof(gIdBytes) && k < len; k++)
+  for (k = 0; k < (int)sizeof(gIdBytes) && k < len; k++)
     buf[k] = gIdBytes[k];
   buf[0] |= (l->originate & 0x03) << 6;
 
@@ -730,8 +730,8 @@ ChapHashAgree(int alg, const u_char *self, int slen,
 
     case CHAP_ALG_MSOFT:
       {
-	struct mschapvalue	*const sv = (struct mschapvalue *) self;
-	struct mschapvalue	*const pv = (struct mschapvalue *) peer;
+	const struct mschapvalue *const sv = (const struct mschapvalue *) self;
+	const struct mschapvalue *const pv = (const struct mschapvalue *) peer;
 
 	if (slen != 49 || plen != 49)
 	  return(0);
@@ -741,8 +741,8 @@ ChapHashAgree(int alg, const u_char *self, int slen,
       }
     case CHAP_ALG_MSOFTv2:
       {
-	struct mschapv2value	*const sv =(struct mschapv2value *) self;
-	struct mschapv2value	*const pv =(struct mschapv2value *) peer;
+	const struct mschapv2value *const sv =(const struct mschapv2value *) self;
+	const struct mschapv2value *const pv =(const struct mschapv2value *) peer;
 
 	if (slen != 49 || plen != 49)
 	  return(0);
