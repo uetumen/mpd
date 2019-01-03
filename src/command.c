@@ -124,7 +124,7 @@
  * INTERNAL VARIABLES
  */
 
-  const struct cmdtab GlobalSetCmds[] = {
+  static const struct cmdtab GlobalSetCmds[] = {
     { "enable {opt ...}", 		"Enable option" ,
        	GlobalSetCommand, NULL, 2, (void *) SET_ENABLE },
     { "disable {opt ...}", 		"Disable option" ,
@@ -159,7 +159,7 @@
     { "filter {num} add|clear [\"{flt}\"]",	"Global traffic filters management",
 	GlobalSetCommand, NULL, 2, (void *) SET_FILTER },
 #endif
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
   static const struct confinfo	gGlobalConfList[] = {
@@ -177,7 +177,7 @@
 	LinkCreate, NULL, 2, NULL },
     { "bundle [template|static] {name} {template}",	"Create bundle/template",
 	BundCreate, NULL, 2, NULL },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
   static const struct cmdtab DestroyCommands[] = {
@@ -185,7 +185,7 @@
 	LinkDestroy, NULL, 2, NULL },
     { "bundle [{name}]",		"Destroy bundle/template",
 	BundDestroy, NULL, 2, NULL },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
   static const struct cmdtab ShowSessCmds[] = {
@@ -205,7 +205,7 @@
 	ShowSessions, NULL, 0, (void *) SHOW_LINK },
     { "peer {name}",			"Filter by peer name",
 	ShowSessions, NULL, 0, (void *) SHOW_PEER },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
   static const struct cmdtab ShowCommands[] = {
@@ -289,7 +289,7 @@
     { "netflow",			"Netflow settings",
 	ShowNetflow, NULL, 0, NULL },
 #endif
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
   static const struct cmdtab UnSetCommands[] = {
@@ -299,7 +299,7 @@
    { "nat ...",			"NAT specific stuff",
 	CMD_SUBMENU, AdmitBund, 2, (void *) NatUnSetCmds },
 #endif
-	{ NULL },
+   { NULL, NULL, NULL, NULL, 0, NULL },
   };
   
   static const struct cmdtab SetCommands[] = {
@@ -355,7 +355,7 @@
 	SetDebugCommand, NULL, 2, NULL },
 #define _WANT_DEVICE_CMDS
 #include "devices.h"
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
   const struct cmdtab gCommands[] = {
@@ -397,7 +397,7 @@
 	CMD_SUBMENU, NULL, 0, (void *) UnSetCommands },
     { "show ...",			"Show status",
 	CMD_SUBMENU, NULL, 0, (void *) ShowCommands },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
 
@@ -406,7 +406,7 @@
  * Layers
  */
 
-  struct layer	gLayers[] = {
+  static struct layer	gLayers[] = {
     { "iface",
       IfaceOpenCmd,
       IfaceCloseCmd,
@@ -860,6 +860,9 @@ HelpCommand(Context ctx, int ac, char *av[], void *arg)
 static int
 SetDebugCommand(Context ctx, int ac, char *av[], void *arg)
 {
+  (void)arg;
+  (void)ctx;
+
   switch (ac) {
     case 1:
       NgSetDebug(atoi(av[0]));
@@ -877,6 +880,10 @@ SetDebugCommand(Context ctx, int ac, char *av[], void *arg)
 static int
 ShowVersion(Context ctx, int ac, char *av[], void *arg)
 {
+  (void)ac;
+  (void)av;
+  (void)arg;
+
   Printf("MPD version: %s\r\n", gVersion);
   Printf("  Available features:\r\n");
 #ifdef	USE_IPFW
@@ -961,6 +968,10 @@ ShowVersion(Context ctx, int ac, char *av[], void *arg)
 static int
 ShowEvents(Context ctx, int ac, char *av[], void *arg)
 {
+  (void)ac;
+  (void)av;
+  (void)arg;
+
   EventDump(ctx, "mpd events");
   return(0);
 }
@@ -975,6 +986,10 @@ ShowGlobal(Context ctx, int ac, char *av[], void *arg)
 #ifdef USE_NG_BPF
     int	k;
 #endif
+
+    (void)ac;
+    (void)av;
+    (void)arg;
 
     Printf("Global settings:\r\n");
 #ifdef USE_IPFW
@@ -1018,6 +1033,11 @@ ShowGlobal(Context ctx, int ac, char *av[], void *arg)
 static int
 ExitCommand(Context ctx, int ac, char *av[], void *arg)
 {
+
+    (void)ac;
+    (void)av;
+    (void)arg;
+
     if (ctx->cs)
 	ctx->cs->exit = TRUE;
     return(0);
@@ -1030,6 +1050,10 @@ ExitCommand(Context ctx, int ac, char *av[], void *arg)
 static int
 QuitCommand(Context ctx, int ac, char *av[], void *arg)
 {
+    (void)ac;
+    (void)av;
+    (void)arg;
+
     if (ctx->cs)
 	ctx->cs->exit = TRUE;
     SendSignal(SIGTERM);
@@ -1051,6 +1075,7 @@ LoadCommand(Context ctx, int ac, char *av[], void *arg)
     int fetch = 0;
 #endif
 
+    (void)arg;
     if (ac < 1 || ac > 2)
 	return(-1);
     else {
@@ -1112,6 +1137,7 @@ OpenCommand(Context ctx, int ac, char *av[], void *arg)
     Layer	layer;
     const char	*name;
 
+    (void)arg;
     switch (ac) {
     case 0:
         name = DEFAULT_OPEN_LAYER;
@@ -1142,6 +1168,7 @@ CloseCommand(Context ctx, int ac, char *av[], void *arg)
     Layer	layer;
     const char	*name;
 
+    (void)arg;
     switch (ac) {
     case 0:
       name = DEFAULT_OPEN_LAYER;
@@ -1199,6 +1226,10 @@ ShowLayers(Context ctx, int ac, char *av[], void *arg)
 {
   size_t	k;
 
+  (void)ac;
+  (void)av;
+  (void)arg;
+
   Printf("\tName\t\tDescription\r\n");
   Printf("\t----\t\t-----------\r\n");
   for (k = 0; k < NUM_LAYERS; k++)
@@ -1215,6 +1246,10 @@ ShowTypes(Context ctx, int ac, char *av[], void *arg)
 {
   PhysType	pt;
   int		k;
+
+  (void)ac;
+  (void)av;
+  (void)arg;
 
   Printf("\tName\t\tDescription\r\n");
   Printf("\t----\t\t-----------\r\n");
@@ -1235,6 +1270,10 @@ ShowSummary(Context ctx, int ac, char *av[], void *arg)
   Link  	L;
   Rep		R;
   char	buf[64];
+
+  (void)ac;
+  (void)av;
+  (void)arg;
 
   Printf("Current daemon status summary\r\n");
   Printf("Iface\tBund\t\tLink\tLCP\tDevice\t\tUser\t\tFrom\r\n");
@@ -1418,6 +1457,10 @@ ShowCustomer(Context ctx, int ac, char *av[], void *arg)
     struct acl	*a;
 #endif
 
+    (void)ac;
+    (void)av;
+    (void)arg;
+
     if (b && b->iface.ifname[0]) {
 	iface = &b->iface;
 	Printf("Interface:\r\n");
@@ -1546,7 +1589,6 @@ ShowCustomer(Context ctx, int ac, char *av[], void *arg)
 	else if (j != 0)
 	    l = NULL;
 	if (l) {
-	    char	buf[64];
 	    Printf("Link %s:\r\n", l->name);
 	    Printf("\tDevice type     : %s\r\n", l->type?l->type->name:"");
 	    Printf("\tStatus          : %s/%s\r\n",
@@ -1597,6 +1639,7 @@ ShowCustomer(Context ctx, int ac, char *av[], void *arg)
 int
 AdmitBund(Context ctx, CmdTab cmd)
 {
+    (void)cmd;
     if (!ctx->bund)
 	return(FALSE);
     return(TRUE);
@@ -1609,6 +1652,7 @@ AdmitBund(Context ctx, CmdTab cmd)
 int
 AdmitLink(Context ctx, CmdTab cmd)
 {
+    (void)cmd;
     if (!ctx->lnk)
 	return(FALSE);
     return(TRUE);
@@ -1621,6 +1665,7 @@ AdmitLink(Context ctx, CmdTab cmd)
 int
 AdmitRep(Context ctx, CmdTab cmd)
 {
+    (void)cmd;
     if (!ctx->rep)
 	return(FALSE);
     return(TRUE);
