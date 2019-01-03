@@ -16,7 +16,7 @@
  * DEFINITIONS
  */
 
-  #define CMD_SUBMENU	((int (*)(Context ctx, int ac, char *av[], void *arg)) 1)
+  #define CMD_SUBMENU	((int (*)(Context ctx, int ac, char *av[], const void *arg)) 1)
   
   #define CMD_ERR_USAGE	-1
   #define CMD_ERR_UNDEF	-2
@@ -46,7 +46,7 @@
   {
     const char	*name;
     const char	*desc;
-    int		(*func)(Context ctx, int ac, char *av[], void *arg);
+    int		(*func)(Context ctx, int ac, char *av[], const void *arg);
     int		(*admit)(Context ctx, CmdTab cmd);
     int		priv;
     void	*arg;
