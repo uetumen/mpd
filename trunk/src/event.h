@@ -49,7 +49,7 @@
   extern int	EventUnRegister2(EventRef *ref, const char *file, int line);
   extern int	EventIsRegistered(EventRef *ref);
   extern int	EventTimerRemain(EventRef *ref);
-  extern void	EventDump(Context ctx, const char *msg);
+  extern void	EventDump(Context ctx);
 
 #endif
 

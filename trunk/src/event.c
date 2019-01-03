@@ -55,7 +55,7 @@ EventStop(void)
  */
 
 void
-EventDump(Context ctx, const char *msg)
+EventDump(Context ctx)
 {
   u_int	n;
 
