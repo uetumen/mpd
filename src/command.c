@@ -972,7 +972,7 @@ ShowEvents(Context ctx, int ac, char *av[], const void *arg)
   (void)av;
   (void)arg;
 
-  EventDump(ctx, "mpd events");
+  EventDump(ctx);
   return(0);
 }
 
