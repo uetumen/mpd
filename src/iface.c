@@ -99,9 +99,9 @@
   static void	IfaceNgIpv6Shutdown(Bund b);
 
 #ifdef USE_NG_NETFLOW
-  static int	IfaceInitNetflow(Bund b, char *path, char *hook, char in, char out, int v6);
+  static int	IfaceInitNetflow(Bund b, char *path, char *hook, char out, int v6);
   static int	IfaceSetupNetflow(Bund b, char in, char out, int v6);
-  static void	IfaceShutdownNetflow(Bund b, char in, char out, int v6);
+  static void	IfaceShutdownNetflow(Bund b, char out, int v6);
 #endif
 
 #ifdef USE_NG_IPACCT
@@ -145,7 +145,7 @@
   static char *	IfaceFixAclForDelete(char *r, char *buf, size_t len);
 #endif
 
-  static int	IfaceSetName(Bund b, const char * ifname);
+  static int	IfaceSetName(Bund b, char * ifname);
 #ifdef SIOCSIFDESCR
   static int	IfaceSetDescr(Bund b, const char * ifdescr);
   static void	IfaceFreeDescr(IfaceState iface);
@@ -189,7 +189,7 @@
 	IfaceSetCommand, NULL, 2, (void *) SET_ENABLE },
     { "disable [opt ...]",		"Disable option",
 	IfaceSetCommand, NULL, 2, (void *) SET_DISABLE },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
 /*
@@ -1546,24 +1546,24 @@ IfaceSetCommand(Context ctx, int ac, char *av[], const void *arg)
 	struct u_range	self_addr;
 	struct u_addr	peer_addr;
 	int	self_addr_force = 0, peer_addr_force = 0;
-	char	*arg;
+	char	*arg1;
 
 	/* Parse */
 	if (ac != 2)
 	  return(-1);
-	arg = av[0];
-	if (arg[0] == '!') {
+	arg1 = av[0];
+	if (arg1[0] == '!') {
 	    self_addr_force = 1;
-	    arg++;
+	    arg1++;
 	}
-	if (!ParseRange(arg, &self_addr, ALLOW_IPV4|ALLOW_IPV6))
+	if (!ParseRange(arg1, &self_addr, ALLOW_IPV4|ALLOW_IPV6))
 	  Error("Bad IP address \"%s\"", av[0]);
-	arg = av[1];
-	if (arg[0] == '!') {
+	arg1 = av[1];
+	if (arg1[0] == '!') {
 	    peer_addr_force = 1;
-	    arg++;
+	    arg1++;
 	}
-	if (!ParseAddr(arg, &peer_addr, ALLOW_IPV4|ALLOW_IPV6))
+	if (!ParseAddr(arg1, &peer_addr, ALLOW_IPV4|ALLOW_IPV6))
 	  Error("Bad IP address \"%s\"", av[1]);
 	if (self_addr.addr.family != peer_addr.family)
 	  Error("Addresses must be from the same protocol family");
@@ -1647,9 +1647,9 @@ IfaceSetCommand(Context ctx, int ac, char *av[], const void *arg)
 	    break;
 	  case 1:
 	    if (strcmp(iface->ifname, av[0]) != 0) {
-		int ifmaxlen = IF_NAMESIZE - ctx->bund->tmpl * IFNUMLEN;
+		unsigned ifmaxlen = IF_NAMESIZE - ctx->bund->tmpl * IFNUMLEN;
 		if (strlen(av[0]) >= ifmaxlen)
-		    Error("Interface name too long, >%d characters", ifmaxlen-1);
+		    Error("Interface name too long, >%u characters", ifmaxlen-1);
 		if ((strncmp(av[0], "ng", 2) == 0) &&
 		  ((ctx->bund->tmpl && av[0][2] == 0) ||
 		  (av[0][2] >= '0' && av[0][2] <= '9')))
@@ -1750,6 +1750,10 @@ IfaceStat(Context ctx, int ac, char *av[], const void *arg)
 #if defined(USE_NG_BPF) || defined(USE_IPFW)
     struct acl	*a;
 #endif
+
+    (void)ac;
+    (void)av;
+    (void)arg;
 
     Printf("Interface configuration:\r\n");
     Printf("\tName            : %s\r\n", iface->conf.ifname);
@@ -2257,7 +2261,6 @@ IfaceNgIpInit(Bund b, int ready)
 	if (Enabled(&b->iface.options, IFACE_CONF_NETFLOW_IN) ||
 	    Enabled(&b->iface.options, IFACE_CONF_NETFLOW_OUT)) {
 	    if (IfaceInitNetflow(b, path, hook, 
-		Enabled(&b->iface.options, IFACE_CONF_NETFLOW_IN)?1:0,
 		Enabled(&b->iface.options, IFACE_CONF_NETFLOW_OUT)?1:0, 0))
 		goto fail;
 	    if (Enabled(&b->iface.options, IFACE_CONF_NETFLOW_IN))
@@ -2268,13 +2271,13 @@ IfaceNgIpInit(Bund b, int ready)
 #else	/* NG_NETFLOW_CONF_INGRESS */
 	/* Connect a netflow node if configured */
 	if (Enabled(&b->iface.options, IFACE_CONF_NETFLOW_IN)) {
-	    if (IfaceInitNetflow(b, path, hook, 1, 0, 0))
+	    if (IfaceInitNetflow(b, path, hook, 0, 0))
 		goto fail;
 	    b->iface.nfin_up = 1;
 	}
 
 	if (Enabled(&b->iface.options, IFACE_CONF_NETFLOW_OUT)) {
-	    if (IfaceInitNetflow(b, path, hook, 0, 1, 0))
+	    if (IfaceInitNetflow(b, path, hook, 1, 0))
 		goto fail;
 	    b->iface.nfout_up = 1;
 	}
@@ -2362,15 +2365,15 @@ IfaceNgIpShutdown(Bund b)
 #ifdef USE_NG_NETFLOW
 #ifdef NG_NETFLOW_CONF_INGRESS
     if (b->iface.nfin_up || b->iface.nfout_up)
-	IfaceShutdownNetflow(b, b->iface.nfin_up, b->iface.nfout_up, 0);
+	IfaceShutdownNetflow(b, b->iface.nfout_up, 0);
     b->iface.nfin_up = 0;
     b->iface.nfout_up = 0;
 #else /* NG_NETFLOW_CONF_INGRESS */
     if (b->iface.nfin_up)
-	IfaceShutdownNetflow(b, 1, 0, 0);
+	IfaceShutdownNetflow(b, 0, 0);
     b->iface.nfin_up = 0;
     if (b->iface.nfout_up)
-	IfaceShutdownNetflow(b, 0, 1, 0);
+	IfaceShutdownNetflow(b, 1, 0);
     b->iface.nfout_up = 0;
 #endif /* NG_NETFLOW_CONF_INGRESS */
 #endif
@@ -2421,7 +2424,6 @@ IfaceNgIpv6Init(Bund b, int ready)
 	if (Enabled(&b->iface.options, IFACE_CONF_NETFLOW_IN) ||
 	    Enabled(&b->iface.options, IFACE_CONF_NETFLOW_OUT)) {
 	    if (IfaceInitNetflow(b, path, hook, 
-		Enabled(&b->iface.options, IFACE_CONF_NETFLOW_IN)?1:0,
 		Enabled(&b->iface.options, IFACE_CONF_NETFLOW_OUT)?1:0, 1))
 		goto fail;
 	    if (Enabled(&b->iface.options, IFACE_CONF_NETFLOW_IN))
@@ -2432,13 +2434,13 @@ IfaceNgIpv6Init(Bund b, int ready)
 #else	/* NG_NETFLOW_CONF_INGRESS */
 	/* Connect a netflow node if configured */
 	if (Enabled(&b->iface.options, IFACE_CONF_NETFLOW_IN)) {
-	    if (IfaceInitNetflow(b, path, hook, 1, 0, 1))
+	    if (IfaceInitNetflow(b, path, hook, 0, 1))
 		goto fail;
 	    b->iface.nfin_up = 1;
 	}
 
 	if (Enabled(&b->iface.options, IFACE_CONF_NETFLOW_OUT)) {
-	    if (IfaceInitNetflow(b, path, hook, 0, 1, 1))
+	    if (IfaceInitNetflow(b, path, hook, 1, 1))
 		goto fail;
 	    b->iface.nfout_up = 1;
 	}
@@ -2506,15 +2508,15 @@ IfaceNgIpv6Shutdown(Bund b)
 #ifdef USE_NG_NETFLOW
 #ifdef NG_NETFLOW_CONF_INGRESS
     if (b->iface.nfin_up || b->iface.nfout_up)
-	IfaceShutdownNetflow(b, b->iface.nfin_up, b->iface.nfout_up, 1);
+	IfaceShutdownNetflow(b, b->iface.nfout_up, 1);
     b->iface.nfin_up = 0;
     b->iface.nfout_up = 0;
 #else /* NG_NETFLOW_CONF_INGRESS */
     if (b->iface.nfin_up)
-	IfaceShutdownNetflow(b, 1, 0, 1);
+	IfaceShutdownNetflow(b, 0, 1);
     b->iface.nfin_up = 0;
     if (b->iface.nfout_up)
-	IfaceShutdownNetflow(b, 0, 1, 1);
+	IfaceShutdownNetflow(b, 1, 1);
     b->iface.nfout_up = 0;
 #endif /* NG_NETFLOW_CONF_INGRESS */
 #endif
@@ -2843,7 +2845,7 @@ IfaceShutdownIpacct(Bund b)
 
 #ifdef USE_NG_NETFLOW
 static int
-IfaceInitNetflow(Bund b, char *path, char *hook, char in, char out, int v6)
+IfaceInitNetflow(Bund b, char *path, char *hook, char out, int v6)
 {
     struct ngm_connect	cn;
     int nif;
@@ -2957,13 +2959,14 @@ fail:
 }
 
 static void
-IfaceShutdownNetflow(Bund b, char in, char out, int v6)
+IfaceShutdownNetflow(Bund b, char out, int v6)
 {
     char	path[NG_PATHSIZ];
     char	hook[NG_HOOKSIZ];
     int nif;
 
 #ifdef NG_NETFLOW_CONF_INGRESS
+    (void)out;
     nif = gNetflowIface + b->id*2;
 #else
     nif = gNetflowIface + b->id*4 + out*2;
@@ -3740,7 +3743,7 @@ IfaceFreeStats(struct svcstat *stat)
  */
 
 int
-IfaceSetName(Bund b, const char * ifname)
+IfaceSetName(Bund b, char * ifname)
 {
     IfaceState	const iface = &b->iface;
     struct ifreq ifr;
@@ -3763,7 +3766,7 @@ IfaceSetName(Bund b, const char * ifname)
     /* Set name of interface */
     memset(&ifr, 0, sizeof(ifr));
     strlcpy(ifr.ifr_name, iface->ifname, sizeof(ifr.ifr_name));
-    ifr.ifr_data = (caddr_t)ifname;
+    ifr.ifr_data = ifname;
     Log(LG_IFACE2, ("[%s] IFACE: setting \"%s\" name to \"%s\"",
 	b->name, iface->ifname, ifname));
 
