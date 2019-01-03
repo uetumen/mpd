@@ -94,7 +94,7 @@
 	EcpSetCommand, NULL, 2, (void *) SET_YES },
     { "no [opt ...]",			"Disable and deny option",
 	EcpSetCommand, NULL, 2, (void *) SET_NO },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
 /*
@@ -141,6 +141,7 @@
     EcpFailure,
     EcpRecvResetReq,
     EcpRecvResetAck,
+    NULL, NULL, NULL, NULL
   };
 
 /* Names for different types of encryption */
@@ -161,7 +162,7 @@
 
     int		gEcpCsock = -1;		/* Socket node control socket */
     int		gEcpDsock = -1;		/* Socket node data socket */
-    EventRef	gEcpDataEvent;
+    static EventRef gEcpDataEvent;
 
 int
 EcpsInit(void)
@@ -214,7 +215,7 @@ EcpInit(Bund b)
   if (gConfList == NULL)
   {
     struct confinfo	*ci;
-    int			k;
+    unsigned		k;
 
     ci = Malloc(MB_CRYPT, (ECP_NUM_PROTOS + 1) * sizeof(*ci));
     for (k = 0; k < ECP_NUM_PROTOS; k++)
@@ -251,7 +252,7 @@ EcpConfigure(Fsm fp)
 {
     Bund 	b = (Bund)fp->arg;
   EcpState	const ecp = &b->ecp;
-  int		k;
+  unsigned	k;
 
   for (k = 0; k < ECP_NUM_PROTOS; k++)
   {
@@ -275,7 +276,7 @@ EcpUnConfigure(Fsm fp)
 {
     Bund 	b = (Bund)fp->arg;
   EcpState	const ecp = &b->ecp;
-  int		k;
+  unsigned	k;
 
   for (k = 0; k < ECP_NUM_PROTOS; k++)
   {
@@ -305,6 +306,8 @@ EcpNgDataEvent(int type, void *cookie)
     char                *bundname, *rest, *b1;
     int                 id;
 		
+    (void)type;
+    (void)cookie;
     while (1) {
 	/* Protect from bundle shutdown and DoS */
 	if (num > 100)
@@ -507,6 +510,8 @@ static void
 EcpFailure(Fsm fp, enum fsmfail reason)
 {
     Bund 	b = (Bund)fp->arg;
+
+    (void)reason;
     if (Enabled(&b->conf.options, BUND_CONF_CRYPT_REQD)) {
 	FsmFailure(&b->ipcp.fsm, FAIL_CANT_ENCRYPT);
 	FsmFailure(&b->ipv6cp.fsm, FAIL_CANT_ENCRYPT);
@@ -521,6 +526,10 @@ int
 EcpStat(Context ctx, int ac, char *av[], const void *arg)
 {
   EcpState	const ecp = &ctx->bund->ecp;
+
+  (void)ac;
+  (void)av;
+  (void)arg;
 
   Printf("[%s] %s [%s]\r\n", Pref(&ecp->fsm), Fsm(&ecp->fsm), FsmStateName(ecp->fsm.state));
   Printf("Enabled protocols:\r\n");
@@ -609,7 +618,7 @@ EcpBuildConfigReq(Fsm fp, u_char *cp)
 {
     Bund 	b = (Bund)fp->arg;
   EcpState	const ecp = &b->ecp;
-  int		type;
+  unsigned	type;
 
 /* Put in all options that peer hasn't rejected */
 
@@ -880,7 +889,7 @@ EcpSetCommand(Context ctx, int ac, char *av[], const void *arg)
 static EncType
 EcpFindType(int type, int *indexp)
 {
-  int	k;
+  unsigned k;
 
   for (k = 0; k < ECP_NUM_PROTOS; k++)
     if (gEncTypes[k]->type == type)
