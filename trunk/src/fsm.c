@@ -841,6 +841,7 @@ FsmRecvConfigRej(Fsm fp, FsmHeader lhp, Mbuf bp)
 static void
 FsmRecvTermReq(Fsm fp, FsmHeader lhp, Mbuf bp)
 {
+  (void)lhp;
   if (fp->type->link_layer) {
     RecordLinkUpDownReason(NULL, (Link)(fp->arg), 0, STR_PEER_DISC, NULL);
   }
@@ -879,6 +880,7 @@ FsmRecvTermReq(Fsm fp, FsmHeader lhp, Mbuf bp)
 static void
 FsmRecvTermAck(Fsm fp, FsmHeader lhp, Mbuf bp)
 {
+  (void)lhp;
   switch (fp->state) {
     case ST_CLOSING:
       FsmNewState(fp, ST_CLOSED);
@@ -914,6 +916,7 @@ FsmRecvCodeRej(Fsm fp, FsmHeader lhp, Mbuf bp)
   u_char	code = 0;
   int		fatal;
 
+  (void)lhp;
   /* Get code and log it */
   bp = mbread(bp, &code, sizeof(code));
   Log(fp->log, ("[%s] %s: code %s was rejected", Pref(fp), Fsm(fp), FsmCodeName(code)));
@@ -967,6 +970,7 @@ FsmRecvProtoRej(Fsm fp, FsmHeader lhp, Mbuf bp)
   u_short	proto = 0;
   int		fatal = FALSE;
 
+  (void)lhp;
   bp = mbread(bp, &proto, sizeof(proto));
   proto = ntohs(proto);
   Log(fp->log, ("[%s] %s: protocol %s was rejected", Pref(fp), Fsm(fp), ProtoName(proto)));
@@ -1213,6 +1217,7 @@ FsmRecvEchoReq(Fsm fp, FsmHeader lhp, Mbuf bp)
 static void
 FsmRecvEchoRep(Fsm fp, FsmHeader lhp, Mbuf bp)
 {
+  (void)lhp;
   bp = FsmCheckMagic(fp, bp);
   mbfree(bp);
 }
@@ -1224,6 +1229,7 @@ FsmRecvEchoRep(Fsm fp, FsmHeader lhp, Mbuf bp)
 static void
 FsmRecvDiscReq(Fsm fp, FsmHeader lhp, Mbuf bp)
 {
+  (void)lhp;
   bp = FsmCheckMagic(fp, bp);
   if (fp->type->RecvDiscReq)
     (*fp->type->RecvDiscReq)(fp, bp);
@@ -1237,6 +1243,7 @@ FsmRecvDiscReq(Fsm fp, FsmHeader lhp, Mbuf bp)
 static void
 FsmRecvIdent(Fsm fp, FsmHeader lhp, Mbuf bp)
 {
+    (void)lhp;
     bp = FsmCheckMagic(fp, bp);
     if (bp)
         ShowMesg(fp->log, Pref(fp), (char *) MBDATA(bp), MBLEN(bp));
@@ -1252,6 +1259,7 @@ FsmRecvIdent(Fsm fp, FsmHeader lhp, Mbuf bp)
 static void
 FsmRecvVendor(Fsm fp, FsmHeader lhp, Mbuf bp)
 {
+    (void)lhp;
     bp = FsmCheckMagic(fp, bp);
     if (fp->type->RecvVendor)
 	(*fp->type->RecvVendor)(fp, bp);
@@ -1265,6 +1273,7 @@ FsmRecvVendor(Fsm fp, FsmHeader lhp, Mbuf bp)
 static void
 FsmRecvTimeRemain(Fsm fp, FsmHeader lhp, Mbuf bp)
 {
+    (void)lhp;
     bp = FsmCheckMagic(fp, bp);
     if (bp) {
 	u_int32_t	remain = 0;
@@ -1455,12 +1464,13 @@ FsmEchoTimeout(void *arg)
 void
 FsmInput(Fsm fp, Mbuf bp)
 {
-    int			log, recd_len, length;
+    int			log;
+    unsigned		length, recd_len;
     struct fsmheader	hdr;
 
     /* Check for runt frames; discard them */
     if ((recd_len = MBLEN(bp)) < sizeof(hdr)) {
-	Log(fp->log, ("[%s] %s: runt packet: %d bytes", Pref(fp), Fsm(fp), recd_len));
+	Log(fp->log, ("[%s] %s: runt packet: %u bytes", Pref(fp), Fsm(fp), recd_len));
 	mbfree(bp);
 	return;
     }
@@ -1471,7 +1481,7 @@ FsmInput(Fsm fp, Mbuf bp)
 
     /* Make sure length is sensible; discard otherwise */
     if (length < sizeof(hdr) || length > recd_len) {
-	Log(fp->log, ("[%s] %s: bad length: says %d, rec'd %d",
+	Log(fp->log, ("[%s] %s: bad length: says %u, rec'd %u",
     	    Pref(fp), Fsm(fp), length, recd_len));
 	mbfree(bp);
 	return;
@@ -1514,7 +1524,7 @@ FsmInput(Fsm fp, Mbuf bp)
 u_char *
 FsmConfValue(u_char *cp, int type, int len, const void *data)
 {
-  u_char	*bytes = (u_char *) data;
+  const u_char	*bytes = (const u_char *) data;
   u_int16_t	sv;
   u_int32_t	lv;
 
@@ -1522,12 +1532,12 @@ FsmConfValue(u_char *cp, int type, int len, const void *data)
   switch (len) {
     case -2:
       len = 2;
-      sv = htons(*((u_int16_t *) data));
+      sv = htons(*((const u_int16_t *) data));
       bytes = (u_char *) &sv;
       break;
     case -4:
       len = 4;
-      lv = htonl(*((u_int32_t *) data));
+      lv = htonl(*((const u_int32_t *) data));
       bytes = (u_char *) &lv;
       break;
     default:
@@ -1656,7 +1666,7 @@ FsmRej(Fsm fp, const struct fsmoption *opt)
 const char *
 FsmCodeName(int code)
 {
-  if (code >= 0 && code < NUM_FSM_CODES)
+  if (code >= 0 && code < (int)NUM_FSM_CODES)
     return (FsmCodes[code].name);
   return ("UNKNOWN");
 }
