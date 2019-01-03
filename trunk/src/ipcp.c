@@ -119,7 +119,7 @@
 	IpcpSetCommand, NULL, 2, (void *) SET_YES},
     { "no [opt ...]",			"Disable and deny option",
 	IpcpSetCommand, NULL, 2, (void *) SET_NO},
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
 /*
@@ -137,7 +137,7 @@
     { "PRINBNS",	TY_PRIMARYNBNS,		4, 4, TRUE },
     { "SECDNS",		TY_SECONDARYDNS,	4, 4, TRUE },
     { "SECNBNS",	TY_SECONDARYNBNS,	4, 4, TRUE },
-    { NULL }
+    { NULL, 0, 0, 0, 0 }
   };
 
   static const struct confinfo gConfList[] = {
@@ -174,7 +174,7 @@
     IpcpFailure,
     NULL,
     NULL,
-    NULL,
+    NULL, NULL, NULL, NULL
   };
 
 /*
@@ -197,6 +197,10 @@ IpcpStat(Context ctx, int ac, char *av[], const void *arg)
   struct slcompress	*const sls = (struct slcompress *)(void *)u.reply.data;
 #endif
   char			buf[48];
+
+  (void)ac;
+  (void)av;
+  (void)arg;
 
   Printf("[%s] %s [%s]\r\n", Pref(fp), Fsm(fp), FsmStateName(fp->state));
   Printf("Allowed IP address ranges:\r\n");
