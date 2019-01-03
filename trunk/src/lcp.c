@@ -100,7 +100,7 @@
     { "MULTILINKHEADERFMT", TY_MULTILINKHEADERFMT, 0, 0, FALSE },
     { "INTERNAT", TY_INTERNAT, 0, 0, FALSE },
     { "SDATALINKSONET", TY_SDATALINKSONET, 0, 0, FALSE },
-    { NULL }
+    { NULL, 0, 0, 0, 0 }
   };
 
   static struct fsmtype gLcpFsmType = {
@@ -126,6 +126,7 @@
     NULL,
     NULL,
     LcpRecvIdent,
+    NULL, NULL, NULL
   };
 
   /* List of possible Authentication Protocols */
@@ -533,6 +534,10 @@ LcpStat(Context ctx, int ac, char *av[], const void *arg)
     LcpState	const lcp = &l->lcp;
     char	buf[64];
 
+    (void)ac;
+    (void)av;
+    (void)arg;
+
     Printf("%s [%s]\r\n", lcp->fsm.type->name, FsmStateName(lcp->fsm.state));
 
     Printf("Self:\r\n");
@@ -716,9 +721,11 @@ void LcpDown(Link l)
 static int
 LcpRecvProtoRej(Fsm fp, int proto, Mbuf bp)
 {
-    Link	l = (Link)fp->arg;
+  Link	l = (Link)fp->arg;
   int	fatal = FALSE;
   Fsm	rej = NULL;
+
+  (void)bp;
 
   /* Which protocol? */
   switch (proto) {
@@ -754,7 +761,7 @@ static void
 LcpRecvIdent(Fsm fp, Mbuf bp)
 {
     Link	l = (Link)fp->arg;
-    int		len, clen;
+    unsigned	len, clen;
 
     if (bp == NULL)
 	return;
@@ -1254,29 +1261,29 @@ LcpInput(Link l, Mbuf bp)
 static const struct fsmoption *
 LcpAuthProtoNak(ushort proto, u_char alg)
 {
-  static const u_char	chapmd5cf[] =
+  static u_char	chapmd5cf[] =
     { PROTO_CHAP >> 8, PROTO_CHAP & 0xff, CHAP_ALG_MD5 };
   static const struct	fsmoption chapmd5Nak =
     { TY_AUTHPROTO, 2 + sizeof(chapmd5cf), (u_char *) chapmd5cf };
 
-  static const u_char	chapmsv1cf[] =
+  static u_char	chapmsv1cf[] =
     { PROTO_CHAP >> 8, PROTO_CHAP & 0xff, CHAP_ALG_MSOFT };
   static const struct	fsmoption chapmsv1Nak =
     { TY_AUTHPROTO, 2 + sizeof(chapmsv1cf), (u_char *) chapmsv1cf };
 
-  static const u_char	chapmsv2cf[] =
+  static u_char	chapmsv2cf[] =
     { PROTO_CHAP >> 8, PROTO_CHAP & 0xff, CHAP_ALG_MSOFTv2 };
-  static const struct	fsmoption chapmsv2Nak =
+  static struct	fsmoption chapmsv2Nak =
     { TY_AUTHPROTO, 2 + sizeof(chapmsv2cf), (u_char *) chapmsv2cf };
 
-  static const u_char	papcf[] =
+  static u_char	papcf[] =
     { PROTO_PAP >> 8, PROTO_PAP & 0xff };
-  static const struct	fsmoption papNak =
+  static struct	fsmoption papNak =
     { TY_AUTHPROTO, 2 + sizeof(papcf), (u_char *) papcf };
 
-  static const u_char	eapcf[] =
+  static u_char	eapcf[] =
     { PROTO_EAP >> 8, PROTO_EAP & 0xff };
-  static const struct	fsmoption eapNak =
+  static struct	fsmoption eapNak =
     { TY_AUTHPROTO, 2 + sizeof(eapcf), (u_char *) eapcf };
 
   if (proto == PROTO_PAP) {
