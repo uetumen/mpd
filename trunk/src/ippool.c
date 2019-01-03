@@ -32,7 +32,7 @@ SLIST_HEAD(, ippool)	gIPPools;
 pthread_mutex_t		gIPPoolMutex;
 
 static void	IPPoolAdd(char *pool, struct in_addr begin, struct in_addr end);
-static int	IPPoolSetCommand(Context ctx, int ac, char *av[], void *arg);
+static int	IPPoolSetCommand(Context ctx, int ac, char *av[], const void *arg);
 
   const struct cmdtab IPPoolSetCmds[] = {
     { "add {pool} {start} {end}",	"Add IP range to the pool",
@@ -162,7 +162,7 @@ IPPoolAdd(char *pool, struct in_addr begin, struct in_addr end)
  */
 
 int
-IPPoolStat(Context ctx, int ac, char *av[], void *arg)
+IPPoolStat(Context ctx, int ac, char *av[], const void *arg)
 {
     IPPool 	p;
 
@@ -190,7 +190,7 @@ IPPoolStat(Context ctx, int ac, char *av[], void *arg)
  */
 
 static int
-IPPoolSetCommand(Context ctx, int ac, char *av[], void *arg)
+IPPoolSetCommand(Context ctx, int ac, char *av[], const void *arg)
 {
     switch ((intptr_t)arg) {
     case SET_ADD:

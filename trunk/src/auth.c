@@ -72,7 +72,7 @@ static void AuthOpie(AuthData auth);
 
 #endif
 static const char *AuthCode(int proto, u_char code, char *buf, size_t len);
-static int AuthSetCommand(Context ctx, int ac, char *av[], void *arg);
+static int AuthSetCommand(Context ctx, int ac, char *av[], const void *arg);
 
  /* Set menu options */
 enum {
@@ -718,7 +718,7 @@ AuthStop(Link l)
  */
 
 int
-AuthStat(Context ctx, int ac, char *av[], void *arg)
+AuthStat(Context ctx, int ac, char *av[], const void *arg)
 {
 	Auth const au = &ctx->lnk->lcp.auth;
 	AuthConf const conf = &au->conf;
@@ -1958,7 +1958,7 @@ AuthCode(int proto, u_char code, char *buf, size_t len)
  */
 
 static int
-AuthSetCommand(Context ctx, int ac, char *av[], void *arg)
+AuthSetCommand(Context ctx, int ac, char *av[], const void *arg)
 {
 	AuthConf const autc = &ctx->lnk->lcp.auth.conf;
 	int val;

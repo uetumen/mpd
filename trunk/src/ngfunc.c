@@ -82,7 +82,7 @@
  */
 
 #ifdef USE_NG_NETFLOW
-  static int	NetflowSetCommand(Context ctx, int ac, char *av[], void *arg);
+  static int	NetflowSetCommand(Context ctx, int ac, char *av[], const void *arg);
 #endif
 
 /*
@@ -760,7 +760,7 @@ NgFuncErr(const char *fmt, ...)
  */
        
 static int
-NetflowSetCommand(Context ctx, int ac, char *av[], void *arg)
+NetflowSetCommand(Context ctx, int ac, char *av[], const void *arg)
 {
     struct sockaddr_storage *sin;
 
@@ -846,7 +846,7 @@ NetflowSetCommand(Context ctx, int ac, char *av[], void *arg)
  */
 
 int
-ShowNetflow(Context ctx, int ac, char *av[], void *arg)
+ShowNetflow(Context ctx, int ac, char *av[], const void *arg)
 {
     struct u_addr addr;
     in_port_t port;

@@ -49,7 +49,7 @@
     int		(*func)(Context ctx, int ac, char *av[], const void *arg);
     int		(*admit)(Context ctx, CmdTab cmd);
     int		priv;
-    void	*arg;
+    const void	*arg;
   };
 
   extern const struct cmdtab gCommands[];
@@ -61,7 +61,7 @@
   extern int	DoConsole(void);
   extern int	DoCommand(Context ctx, int ac, char *av[], const char *file, int line);
   extern int	DoCommandTab(Context ctx, CmdTab cmdlist, int ac, char *av[]);
-  extern int	HelpCommand(Context ctx, int ac, char *av[], void *arg);
+  extern int	HelpCommand(Context ctx, int ac, char *av[], const void *arg);
   extern int	FindCommand(Context ctx, CmdTab cmds, char* str, CmdTab *cp);
   extern int	AdmitBund(Context ctx, CmdTab cmd);
   extern int	AdmitLink(Context ctx, CmdTab cmd);

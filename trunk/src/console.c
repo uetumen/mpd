@@ -58,7 +58,7 @@
   static int		ConsoleUserHashEqual(struct ghash *g, const void *item1, 
 		  		const void *item2);
   static u_int32_t	ConsoleUserHash(struct ghash *g, const void *item);
-  static int	ConsoleSetCommand(Context ctx, int ac, char *av[], void *arg);
+  static int	ConsoleSetCommand(Context ctx, int ac, char *av[], const void *arg);
 
 
 /*
@@ -188,7 +188,7 @@ ConsoleCancelCleanup(void *rwlock)
  */
 
 int
-ConsoleStat(Context ctx, int ac, char *av[], void *arg)
+ConsoleStat(Context ctx, int ac, char *av[], const void *arg)
 {
   Console		c = &gConsole;
   ConsoleSession	s;
@@ -808,7 +808,7 @@ ConsoleUserHashEqual(struct ghash *g, const void *item1, const void *item2)
  */
 
 static int
-ConsoleSetCommand(Context ctx, int ac, char *av[], void *arg) 
+ConsoleSetCommand(Context ctx, int ac, char *av[], const void *arg) 
 {
   Console	 	c = &gConsole;
   ConsoleSession	cs = ctx->cs;
@@ -883,7 +883,7 @@ ConsoleShutdown(Console c)
  */
 
 int
-UserCommand(Context ctx, int ac, char *av[], void *arg) 
+UserCommand(Context ctx, int ac, char *av[], const void *arg) 
 {
     ConsoleUser		u;
 
@@ -920,7 +920,7 @@ UserCommand(Context ctx, int ac, char *av[], void *arg)
  */
 
 int
-UserStat(Context ctx, int ac, char *av[], void *arg)
+UserStat(Context ctx, int ac, char *av[], const void *arg)
 {
     struct ghash_walk	walk;
     ConsoleUser		u;

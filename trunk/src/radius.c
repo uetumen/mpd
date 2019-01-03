@@ -37,7 +37,7 @@
 
 /* Global variables */
 
-  static int	RadiusSetCommand(Context ctx, int ac, char *av[], void *arg);
+  static int	RadiusSetCommand(Context ctx, int ac, char *av[], const void *arg);
   static int	RadiusAddServer(AuthData auth, short request_type);
   static int	RadiusOpen(AuthData auth, short request_type);
   static int	RadiusStart(AuthData auth, short request_type);  
@@ -253,7 +253,7 @@ RadiusClose(AuthData auth)
 }
 
 int
-RadStat(Context ctx, int ac, char *av[], void *arg)
+RadStat(Context ctx, int ac, char *av[], const void *arg)
 {
   Auth		const a = &ctx->lnk->lcp.auth;
   RadConf	const conf = &a->conf.radius;
@@ -357,7 +357,7 @@ RadiusAddServer(AuthData auth, short request_type)
   
 /* Set menu options */
 static int
-RadiusSetCommand(Context ctx, int ac, char *av[], void *arg) 
+RadiusSetCommand(Context ctx, int ac, char *av[], const void *arg) 
 {
   RadConf	const conf = &ctx->lnk->lcp.auth.conf.radius;
   RadServe_Conf	server;

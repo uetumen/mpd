@@ -112,7 +112,7 @@
   extern void		PhysSetDeviceType(Link l, char *typename);
   extern int		PhysGetOriginate(Link l);
   extern int		PhysIsSync(Link l);
-  extern int		PhysStat(Context ctx, int ac, char *av[], void *arg);
+  extern int		PhysStat(Context ctx, int ac, char *av[], const void *arg);
 
 #endif
 

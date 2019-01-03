@@ -28,7 +28,7 @@
  * INTERNAL FUNCTIONS
  */
 
-  static int	WebSetCommand(Context ctx, int ac, char *av[], void *arg);
+  static int	WebSetCommand(Context ctx, int ac, char *av[], const void *arg);
 
   static int	WebServletRun(struct http_servlet *servlet,
                          struct http_request *req, struct http_response *resp);
@@ -157,7 +157,7 @@ WebClose(Web w)
  */
 
 int
-WebStat(Context ctx, int ac, char *av[], void *arg)
+WebStat(Context ctx, int ac, char *av[], const void *arg)
 {
   Web		w = &gWeb;
   char		addrstr[64];
@@ -841,7 +841,7 @@ WebLogger(int sev, const char *fmt, ...)
  */
 
 static int
-WebSetCommand(Context ctx, int ac, char *av[], void *arg) 
+WebSetCommand(Context ctx, int ac, char *av[], const void *arg) 
 {
   Web	 		w = &gWeb;
   int			port;

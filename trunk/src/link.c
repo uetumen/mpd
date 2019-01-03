@@ -58,7 +58,7 @@
  * INTERNAL FUNCTIONS
  */
 
-  static int	LinkSetCommand(Context ctx, int ac, char *av[], void *arg);
+  static int	LinkSetCommand(Context ctx, int ac, char *av[], const void *arg);
   static void	LinkMsg(int type, void *cookie);
   static void	LinkNgDataEvent(int type, void *cookie);
   static void	LinkReopenTimeout(void *arg);
@@ -81,7 +81,7 @@
 
   const struct cmdtab LinkSetCmds[] = {
     { "action ...",			"Set action on incoming",
-	CMD_SUBMENU,	NULL, 2, (void *) LinkSetActionCmds },
+	CMD_SUBMENU,	NULL, 2, LinkSetActionCmds },
     { "bandwidth {bps}",		"Link bandwidth",
 	LinkSetCommand, NULL, 2, (void *) SET_BANDWIDTH },
     { "latency {microsecs}",		"Link latency",
@@ -349,7 +349,7 @@ LinkMsg(int type, void *arg)
  */
 
 int
-LinkCreate(Context ctx, int ac, char *av[], void *arg)
+LinkCreate(Context ctx, int ac, char *av[], const void *arg)
 {
     Link 	l, lt = NULL;
     PhysType    pt = NULL;
@@ -487,7 +487,7 @@ LinkCreate(Context ctx, int ac, char *av[], void *arg)
  */
 
 int
-LinkDestroy(Context ctx, int ac, char *av[], void *arg)
+LinkDestroy(Context ctx, int ac, char *av[], const void *arg)
 {
     Link 	l;
 
@@ -1012,7 +1012,7 @@ LinkFind(const char *name)
  */
 
 int
-LinkCommand(Context ctx, int ac, char *av[], void *arg)
+LinkCommand(Context ctx, int ac, char *av[], const void *arg)
 {
     Link	l;
     int		k;
@@ -1058,7 +1058,7 @@ LinkCommand(Context ctx, int ac, char *av[], void *arg)
  */
 
 int
-SessionCommand(Context ctx, int ac, char *av[], void *arg)
+SessionCommand(Context ctx, int ac, char *av[], const void *arg)
 {
     int		k;
 
@@ -1100,7 +1100,7 @@ SessionCommand(Context ctx, int ac, char *av[], void *arg)
  */
 
 int
-AuthnameCommand(Context ctx, int ac, char *av[], void *arg)
+AuthnameCommand(Context ctx, int ac, char *av[], const void *arg)
 {
     int		k;
 
@@ -1262,7 +1262,7 @@ LinkMatchAction(Link l, int stage, char *login)
  */
 
 int
-LinkStat(Context ctx, int ac, char *av[], void *arg)
+LinkStat(Context ctx, int ac, char *av[], const void *arg)
 {
     Link 	l = ctx->lnk;
     struct linkaction *a;
@@ -1387,7 +1387,7 @@ LinkResetStats(Link l)
  */
 
 static int
-LinkSetCommand(Context ctx, int ac, char *av[], void *arg)
+LinkSetCommand(Context ctx, int ac, char *av[], const void *arg)
 {
     Link	l = ctx->lnk;
     int		val, nac = 0;
