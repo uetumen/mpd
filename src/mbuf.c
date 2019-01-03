@@ -329,7 +329,7 @@ mbsplit(Mbuf bp, int cnt)
  */
 
 int
-MemStat(Context ctx, int ac, char *av[], void *arg)
+MemStat(Context ctx, int ac, char *av[], const void *arg)
 {
     struct typed_mem_stats stats;
     u_int	i;

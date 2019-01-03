@@ -56,7 +56,7 @@ extern const struct cmdtab WebSetCmds[];
 extern int WebInit(Web c);
 extern int WebOpen(Web c);
 extern int WebClose(Web c);
-extern int WebStat(Context ctx, int ac, char *av[], void *arg);
+extern int WebStat(Context ctx, int ac, char *av[], const void *arg);
 
 
 #endif

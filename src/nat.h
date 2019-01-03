@@ -53,7 +53,7 @@
 #endif
 
   extern void	NatInit(Bund b);
-  extern int	NatStat(Context ctx, int ac, char *av[], void *arg);
+  extern int	NatStat(Context ctx, int ac, char *av[], const void *arg);
 
 #endif
 

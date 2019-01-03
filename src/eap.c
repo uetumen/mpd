@@ -23,7 +23,7 @@
   static void	EapRadiusProxyFinish(Link l, AuthData auth);
   static void	EapRadiusSendMsg(void *ptr);
   static void	EapRadiusSendMsgTimeout(void *ptr);
-  static int	EapSetCommand(Context ctx, int ac, char *av[], void *arg);
+  static int	EapSetCommand(Context ctx, int ac, char *av[], const void *arg);
 
   /* Set menu options */
   enum {
@@ -555,7 +555,7 @@ EapIdentTimeout(void *ptr)
  */
 
 int
-EapStat(Context ctx, int ac, char *av[], void *arg)
+EapStat(Context ctx, int ac, char *av[], const void *arg)
 {
   EapInfo	const eap = &ctx->lnk->lcp.auth.eap;
 
@@ -647,7 +647,7 @@ EapTypeSupported(u_char type)
  */
 
 static int
-EapSetCommand(Context ctx, int ac, char *av[], void *arg)
+EapSetCommand(Context ctx, int ac, char *av[], const void *arg)
 {
   EapInfo	const eap = &ctx->lnk->lcp.auth.eap;
 

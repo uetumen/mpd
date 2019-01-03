@@ -527,7 +527,7 @@ LcpAuthResult(Link l, int success)
  */
 
 int
-LcpStat(Context ctx, int ac, char *av[], void *arg)
+LcpStat(Context ctx, int ac, char *av[], const void *arg)
 {
     Link	const l = ctx->lnk;
     LcpState	const lcp = &l->lcp;

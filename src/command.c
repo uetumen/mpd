@@ -101,21 +101,21 @@
  */
 
   /* Commands */
-  static int	ShowVersion(Context ctx, int ac, char *av[], void *arg);
-  static int	ShowLayers(Context ctx, int ac, char *av[], void *arg);
-  static int	ShowTypes(Context ctx, int ac, char *av[], void *arg);
-  static int	ShowSummary(Context ctx, int ac, char *av[], void *arg);
-  static int	ShowSessions(Context ctx, int ac, char *av[], void *arg);
-  static int	ShowCustomer(Context ctx, int ac, char *av[], void *arg);
-  static int	ShowEvents(Context ctx, int ac, char *av[], void *arg);
-  static int	ShowGlobal(Context ctx, int ac, char *av[], void *arg);
-  static int	OpenCommand(Context ctx, int ac, char *av[], void *arg);
-  static int	CloseCommand(Context ctx, int ac, char *av[], void *arg);
-  static int	LoadCommand(Context ctx, int ac, char *av[], void *arg);
-  static int	ExitCommand(Context ctx, int ac, char *av[], void *arg);
-  static int	QuitCommand(Context ctx, int ac, char *av[], void *arg);
-  static int	GlobalSetCommand(Context ctx, int ac, char *av[], void *arg);
-  static int	SetDebugCommand(Context ctx, int ac, char *av[], void *arg);
+  static int	ShowVersion(Context ctx, int ac, char *av[], const void *arg);
+  static int	ShowLayers(Context ctx, int ac, char *av[], const void *arg);
+  static int	ShowTypes(Context ctx, int ac, char *av[], const void *arg);
+  static int	ShowSummary(Context ctx, int ac, char *av[], const void *arg);
+  static int	ShowSessions(Context ctx, int ac, char *av[], const void *arg);
+  static int	ShowCustomer(Context ctx, int ac, char *av[], const void *arg);
+  static int	ShowEvents(Context ctx, int ac, char *av[], const void *arg);
+  static int	ShowGlobal(Context ctx, int ac, char *av[], const void *arg);
+  static int	OpenCommand(Context ctx, int ac, char *av[], const void *arg);
+  static int	CloseCommand(Context ctx, int ac, char *av[], const void *arg);
+  static int	LoadCommand(Context ctx, int ac, char *av[], const void *arg);
+  static int	ExitCommand(Context ctx, int ac, char *av[], const void *arg);
+  static int	QuitCommand(Context ctx, int ac, char *av[], const void *arg);
+  static int	GlobalSetCommand(Context ctx, int ac, char *av[], const void *arg);
+  static int	SetDebugCommand(Context ctx, int ac, char *av[], const void *arg);
 
   /* Other stuff */
   static Layer	GetLayer(const char *name);
@@ -282,7 +282,7 @@
     { "version",			"Version string",
 	ShowVersion, NULL, 0, NULL },
     { "sessions [ {param} {value} ]",	"Active sessions",
-	CMD_SUBMENU, NULL, 0, (void *) ShowSessCmds},
+	CMD_SUBMENU, NULL, 0, ShowSessCmds},
     { "summary",			"Daemon status summary",
 	ShowSummary, NULL, 0, NULL },
 #ifdef USE_NG_NETFLOW
@@ -294,62 +294,62 @@
 
   static const struct cmdtab UnSetCommands[] = {
    { "radius ...",			"RADIUS specific stuff",
-	CMD_SUBMENU, AdmitLink, 2, (void *) RadiusUnSetCmds },
+	CMD_SUBMENU, AdmitLink, 2, RadiusUnSetCmds },
 #ifdef NG_NAT_DESC_LENGTH
    { "nat ...",			"NAT specific stuff",
-	CMD_SUBMENU, AdmitBund, 2, (void *) NatUnSetCmds },
+	CMD_SUBMENU, AdmitBund, 2, NatUnSetCmds },
 #endif
    { NULL, NULL, NULL, NULL, 0, NULL },
   };
   
   static const struct cmdtab SetCommands[] = {
     { "bundle ...",			"Bundle specific stuff",
-	CMD_SUBMENU, AdmitBund, 2, (void *) BundSetCmds },
+	CMD_SUBMENU, AdmitBund, 2, BundSetCmds },
     { "link ...",			"Link specific stuff",
-	CMD_SUBMENU, AdmitLink, 2, (void *) LinkSetCmds },
+	CMD_SUBMENU, AdmitLink, 2, LinkSetCmds },
     { "iface ...",			"Interface specific stuff",
-	CMD_SUBMENU, AdmitBund, 2, (void *) IfaceSetCmds },
+	CMD_SUBMENU, AdmitBund, 2, IfaceSetCmds },
     { "ipcp ...",			"IPCP specific stuff",
-	CMD_SUBMENU, AdmitBund, 2, (void *) IpcpSetCmds },
+	CMD_SUBMENU, AdmitBund, 2, IpcpSetCmds },
     { "ipv6cp ...",			"IPV6CP specific stuff",
-	CMD_SUBMENU, AdmitBund, 2, (void *) Ipv6cpSetCmds },
+	CMD_SUBMENU, AdmitBund, 2, Ipv6cpSetCmds },
     { "ippool ...",			"IP pool specific stuff",
-	CMD_SUBMENU, NULL, 2, (void *) IPPoolSetCmds },
+	CMD_SUBMENU, NULL, 2, IPPoolSetCmds },
     { "ccp ...",			"CCP specific stuff",
-	CMD_SUBMENU, AdmitBund, 2, (void *) CcpSetCmds },
+	CMD_SUBMENU, AdmitBund, 2, CcpSetCmds },
 #ifdef CCP_MPPC
     { "mppc ...",			"MPPC specific stuff",
-	CMD_SUBMENU, AdmitBund, 2, (void *) MppcSetCmds },
+	CMD_SUBMENU, AdmitBund, 2, MppcSetCmds },
 #endif
     { "ecp ...",			"ECP specific stuff",
-	CMD_SUBMENU, AdmitBund, 2, (void *) EcpSetCmds },
+	CMD_SUBMENU, AdmitBund, 2, EcpSetCmds },
     { "eap ...",			"EAP specific stuff",
-	CMD_SUBMENU, AdmitLink, 2, (void *) EapSetCmds },
+	CMD_SUBMENU, AdmitLink, 2, EapSetCmds },
     { "auth ...",			"Auth specific stuff",
-	CMD_SUBMENU, AdmitLink, 2, (void *) AuthSetCmds },
+	CMD_SUBMENU, AdmitLink, 2, AuthSetCmds },
     { "radius ...",			"RADIUS specific stuff",
-	CMD_SUBMENU, AdmitLink, 2, (void *) RadiusSetCmds },
+	CMD_SUBMENU, AdmitLink, 2, RadiusSetCmds },
 #ifdef RAD_COA_REQUEST
     { "radsrv ...",			"RADIUS server specific stuff",
-	CMD_SUBMENU, NULL, 2, (void *) RadsrvSetCmds },
+	CMD_SUBMENU, NULL, 2, RadsrvSetCmds },
 #endif
     { "console ...",			"Console specific stuff",
-	CMD_SUBMENU, NULL, 0, (void *) ConsoleSetCmds },
+	CMD_SUBMENU, NULL, 0, ConsoleSetCmds },
 #ifndef NOWEB
     { "web ...",			"Web specific stuff",
-	CMD_SUBMENU, NULL, 2, (void *) WebSetCmds },
+	CMD_SUBMENU, NULL, 2, WebSetCmds },
 #endif
     { "user {name} {password} [{priv}]",	"Add console user" ,
       	UserCommand, NULL, 2, NULL },
     { "global ...",			"Global settings",
-	CMD_SUBMENU, NULL, 2, (void *) GlobalSetCmds },
+	CMD_SUBMENU, NULL, 2, GlobalSetCmds },
 #ifdef USE_NG_NETFLOW
     { "netflow ...", 			"NetFlow settings",
-	CMD_SUBMENU, NULL, 2, (void *) NetflowSetCmds },
+	CMD_SUBMENU, NULL, 2, NetflowSetCmds },
 #endif
 #ifdef	USE_NG_NAT
     { "nat ...", 			"Nat settings",
-	CMD_SUBMENU, NULL, 2, (void *) NatSetCmds },
+	CMD_SUBMENU, NULL, 2, NatSetCmds },
 #endif
     { "debug level",			"Set netgraph debug level",
 	SetDebugCommand, NULL, 2, NULL },
@@ -366,9 +366,9 @@
     { "close [{layer}]",		"Close a layer",
 	CloseCommand, NULL, 1, NULL },
     { "create ...",			"Create new item",
-    	CMD_SUBMENU, NULL, 2, (void *) CreateCommands },
+    	CMD_SUBMENU, NULL, 2, CreateCommands },
     { "destroy ...",			"Destroy item",
-    	CMD_SUBMENU, NULL, 2, (void *) DestroyCommands },
+    	CMD_SUBMENU, NULL, 2, DestroyCommands },
     { "exit",				"Exit console",
 	ExitCommand, NULL, 0, NULL },
     { "iface {iface}",			"Choose bundle by iface",
@@ -392,11 +392,11 @@
     { "session {sesid}",		"Choose link by session-id",
 	SessionCommand, NULL, 0, NULL },
     { "set ...",			"Set parameters",
-	CMD_SUBMENU, NULL, 0, (void *) SetCommands },
+	CMD_SUBMENU, NULL, 0, SetCommands },
 	{ "unset ...",			"Unset parameters",
-	CMD_SUBMENU, NULL, 0, (void *) UnSetCommands },
+	CMD_SUBMENU, NULL, 0, UnSetCommands },
     { "show ...",			"Show status",
-	CMD_SUBMENU, NULL, 0, (void *) ShowCommands },
+	CMD_SUBMENU, NULL, 0, ShowCommands },
     { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
@@ -597,7 +597,7 @@ FindCommand(Context ctx, CmdTab cmds, char *str, CmdTab *cmdp)
  */
 
 static int
-GlobalSetCommand(Context ctx, int ac, char *av[], void *arg) 
+GlobalSetCommand(Context ctx, int ac, char *av[], const void *arg) 
 {
     int val;
 
@@ -791,7 +791,7 @@ GlobalSetCommand(Context ctx, int ac, char *av[], void *arg)
  */
 
 int
-HelpCommand(Context ctx, int ac, char *av[], void *arg)
+HelpCommand(Context ctx, int ac, char *av[], const void *arg)
 {
   int		depth, i;
   CmdTab	menu, cmd;
@@ -814,7 +814,7 @@ HelpCommand(Context ctx, int ac, char *av[], void *arg)
       else 
           errfmt = "%sUnknown command: '%s'.\r\n";
       if (arg) {
-        Printf(errfmt, (char*)arg, buf);
+        Printf(errfmt, (const char*)arg, buf);
       } else {
         Printf(errfmt, "", buf);
       }
@@ -858,7 +858,7 @@ HelpCommand(Context ctx, int ac, char *av[], void *arg)
  */
 
 static int
-SetDebugCommand(Context ctx, int ac, char *av[], void *arg)
+SetDebugCommand(Context ctx, int ac, char *av[], const void *arg)
 {
   (void)arg;
   (void)ctx;
@@ -878,7 +878,7 @@ SetDebugCommand(Context ctx, int ac, char *av[], void *arg)
  */
 
 static int
-ShowVersion(Context ctx, int ac, char *av[], void *arg)
+ShowVersion(Context ctx, int ac, char *av[], const void *arg)
 {
   (void)ac;
   (void)av;
@@ -966,7 +966,7 @@ ShowVersion(Context ctx, int ac, char *av[], void *arg)
  */
 
 static int
-ShowEvents(Context ctx, int ac, char *av[], void *arg)
+ShowEvents(Context ctx, int ac, char *av[], const void *arg)
 {
   (void)ac;
   (void)av;
@@ -981,7 +981,7 @@ ShowEvents(Context ctx, int ac, char *av[], void *arg)
  */
 
 static int
-ShowGlobal(Context ctx, int ac, char *av[], void *arg)
+ShowGlobal(Context ctx, int ac, char *av[], const void *arg)
 {
 #ifdef USE_NG_BPF
     int	k;
@@ -1031,7 +1031,7 @@ ShowGlobal(Context ctx, int ac, char *av[], void *arg)
  */
 
 static int
-ExitCommand(Context ctx, int ac, char *av[], void *arg)
+ExitCommand(Context ctx, int ac, char *av[], const void *arg)
 {
 
     (void)ac;
@@ -1048,7 +1048,7 @@ ExitCommand(Context ctx, int ac, char *av[], void *arg)
  */
 
 static int
-QuitCommand(Context ctx, int ac, char *av[], void *arg)
+QuitCommand(Context ctx, int ac, char *av[], const void *arg)
 {
     (void)ac;
     (void)av;
@@ -1065,7 +1065,7 @@ QuitCommand(Context ctx, int ac, char *av[], void *arg)
  */
 
 static int
-LoadCommand(Context ctx, int ac, char *av[], void *arg)
+LoadCommand(Context ctx, int ac, char *av[], const void *arg)
 {
     char filename[128];
 #ifdef USE_FETCH
@@ -1132,7 +1132,7 @@ out:	if (fetch)
  */
 
 static int
-OpenCommand(Context ctx, int ac, char *av[], void *arg)
+OpenCommand(Context ctx, int ac, char *av[], const void *arg)
 {
     Layer	layer;
     const char	*name;
@@ -1163,7 +1163,7 @@ OpenCommand(Context ctx, int ac, char *av[], void *arg)
  */
 
 static int
-CloseCommand(Context ctx, int ac, char *av[], void *arg)
+CloseCommand(Context ctx, int ac, char *av[], const void *arg)
 {
     Layer	layer;
     const char	*name;
@@ -1222,7 +1222,7 @@ GetLayer(const char *name)
  */
 
 static int
-ShowLayers(Context ctx, int ac, char *av[], void *arg)
+ShowLayers(Context ctx, int ac, char *av[], const void *arg)
 {
   size_t	k;
 
@@ -1242,7 +1242,7 @@ ShowLayers(Context ctx, int ac, char *av[], void *arg)
  */
 
 static int
-ShowTypes(Context ctx, int ac, char *av[], void *arg)
+ShowTypes(Context ctx, int ac, char *av[], const void *arg)
 {
   PhysType	pt;
   int		k;
@@ -1263,7 +1263,7 @@ ShowTypes(Context ctx, int ac, char *av[], void *arg)
  */
 
 static int
-ShowSummary(Context ctx, int ac, char *av[], void *arg)
+ShowSummary(Context ctx, int ac, char *av[], const void *arg)
 {
   int		b, l, f;
   Bund		B;
@@ -1353,7 +1353,7 @@ ShowSummary(Context ctx, int ac, char *av[], void *arg)
  */
 
 static int
-ShowSessions(Context ctx, int ac, char *av[], void *arg)
+ShowSessions(Context ctx, int ac, char *av[], const void *arg)
 {
     int		l;
     Bund	B;
@@ -1445,7 +1445,7 @@ out:
  */
 
 static int
-ShowCustomer(Context ctx, int ac, char *av[], void *arg)
+ShowCustomer(Context ctx, int ac, char *av[], const void *arg)
 {
     Link	l = ctx->lnk;
     Bund	b = ctx->bund;
