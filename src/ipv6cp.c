@@ -84,7 +84,7 @@
 	Ipv6cpSetCommand, NULL, 2, (void *) SET_YES},
     { "no [opt ...]",			"Disable and deny option",
 	Ipv6cpSetCommand, NULL, 2, (void *) SET_NO},
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
 /*
@@ -94,7 +94,7 @@
   static const struct fsmoptinfo	gIpv6cpConfOpts[] = {
     { "INTIDENT",	TY_INTIDENT,		8, 8, TRUE },
     { "COMPPROTO",	TY_COMPPROTO,		4, 4, FALSE },
-    { NULL }
+    { NULL, 0, 0, 0, 0 }
   };
 
   static const struct confinfo gConfList[] = {
@@ -124,7 +124,7 @@
     Ipv6cpFailure,
     NULL,
     NULL,
-    NULL,
+    NULL, NULL, NULL, NULL
   };
 
 /*
@@ -136,6 +136,10 @@ Ipv6cpStat(Context ctx, int ac, char *av[], const void *arg)
 {
   Ipv6cpState		const ipv6cp = &ctx->bund->ipv6cp;
   Fsm			fp = &ipv6cp->fsm;
+
+  (void)ac;
+  (void)av;
+  (void)arg;
 
   Printf("[%s] %s [%s]\r\n", Pref(fp), Fsm(fp), FsmStateName(fp->state));
   Printf("Interface identificators:\r\n");
@@ -236,6 +240,7 @@ Ipv6cpConfigure(Fsm fp)
 static void
 Ipv6cpUnConfigure(Fsm fp)
 {
+  (void)fp;
 }
 
 /*
