@@ -12,6 +12,8 @@
 
 #include "ip.h"
 #include <net/ethernet.h>
+#include <net/if_dl.h>
+#include <stdio.h>
 #include <osreldate.h>
  /*-
   * The following macro is used to update an
