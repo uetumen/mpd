@@ -123,8 +123,8 @@ PapInput(Link l, AuthData auth, const u_char *pkt, u_short len)
   switch (auth->code) {
     case PAP_REQUEST:
       {
-	char		*name_ptr, name[256];
-	char		*pass_ptr, pass[256];
+	char		name[256], pass[256];
+	const char	*name_ptr, *pass_ptr;
 	int		name_len, pass_len;
 
 	/* Is this appropriate? */
@@ -133,7 +133,7 @@ PapInput(Link l, AuthData auth, const u_char *pkt, u_short len)
 		Log(LG_AUTH, ("[%s] PAP: retransmitting ACK",
 		    l->name));
 		AuthOutput(l, PROTO_PAP, PAP_ACK, auth->id,
-		    (u_char *) AUTH_MSG_WELCOME, strlen(AUTH_MSG_WELCOME), 1, 0);
+		    (const u_char *) AUTH_MSG_WELCOME, strlen(AUTH_MSG_WELCOME), 1, 0);
 		break;
 	    }
 	    Log(LG_AUTH, ("[%s] PAP: %s not expected",
@@ -148,13 +148,13 @@ PapInput(Link l, AuthData auth, const u_char *pkt, u_short len)
 	    goto error;
 
 	name_len = pkt[0];
-	name_ptr = (char *)pkt + 1;
+	name_ptr = pkt + 1;
 
 	if (1 + name_len >= len)
 	    goto error;
 
 	pass_len = pkt[1 + name_len];
-	pass_ptr = (char *)pkt + 1 + name_len + 1;
+	pass_ptr = pkt + 1 + name_len + 1;
 
 	if (name_len + 1 + pass_len + 1 > len)
 	    goto error;
@@ -191,7 +191,7 @@ PapInput(Link l, AuthData auth, const u_char *pkt, u_short len)
 	/* Show reply message */
 	if (len > 0) {
 	    int		msg_len = pkt[0];
-	    char	*msg = (char *) &pkt[1];
+	    const char	*msg = &pkt[1];
 	    if (msg_len < len - 1)
 		msg_len = len - 1;
 	    ShowMesg(LG_AUTH, l->name, msg, msg_len);
@@ -259,7 +259,7 @@ goodRequest:
 	Mesg = AUTH_MSG_WELCOME;
     }
     Log(LG_AUTH, ("[%s] PAP: Reply message: %s", l->name, Mesg));
-    AuthOutput(l, PROTO_PAP, PAP_ACK, auth->id, (u_char *) Mesg, strlen(Mesg), 1, 0);
+    AuthOutput(l, PROTO_PAP, PAP_ACK, auth->id, (const u_char *) Mesg, strlen(Mesg), 1, 0);
     AuthFinish(l, AUTH_PEER_TO_SELF, TRUE);  
     AuthDataDestroy(auth);
     return;
@@ -270,7 +270,7 @@ badRequest:
 
     Mesg = AuthFailMsg(auth, failMesg, sizeof(failMesg));
     Log(LG_AUTH, ("[%s] PAP: Reply message: %s", l->name, Mesg));
-    AuthOutput(l, PROTO_PAP, PAP_NAK, auth->id, (u_char *) Mesg, strlen(Mesg), 1, 0);
+    AuthOutput(l, PROTO_PAP, PAP_NAK, auth->id, (const u_char *) Mesg, strlen(Mesg), 1, 0);
     AuthFinish(l, AUTH_PEER_TO_SELF, FALSE);
     AuthDataDestroy(auth);  
   }
