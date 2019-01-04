@@ -619,6 +619,10 @@ PhysStat(Context ctx, int ac, const char *av[], const void *arg)
 {
     Link	const l = ctx->lnk;
 
+    (void)ac;
+    (void)av;
+    (void)arg;
+
     Printf("Device '%s' (%s)\r\n", l->name, (l->tmpl)?"template":"instance");
     Printf("\tType         : %s\r\n", l->type->name);
     if (!l->tmpl) {
