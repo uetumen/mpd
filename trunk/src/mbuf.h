@@ -75,7 +75,7 @@
   extern void	*Mdup(const char *type, const void *src, size_t size) __malloc_like;
   extern void	*Mdup2(const char *type, const void *src, size_t oldsize, size_t newsize) __malloc_like;
   extern void	*Mstrdup(const char *type, const void *src) __malloc_like;
-  extern void	Freee(void *ptr);
+  extern void	Freee(const void *ptr);
 
 /* Mbuf manipulation */
 
@@ -90,7 +90,7 @@
 
 /* Etc */
 
-  extern int	MemStat(Context ctx, int ac, char *av[], const void *arg);
+  extern int	MemStat(Context ctx, int ac, const char *av[], const void *arg);
   extern void	DumpBp(Mbuf bp);
 
 #endif

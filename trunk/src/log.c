@@ -176,7 +176,7 @@ LogClose(void)
  */
 
 int
-LogCommand(Context ctx, int ac, char *av[], const void *arg)
+LogCommand(Context ctx, int ac, const char *av[], const void *arg)
 {
     u_int	k;
     int		bits, add;

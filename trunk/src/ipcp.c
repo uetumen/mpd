@@ -94,7 +94,7 @@
   static void	IpcpNgShutdownVJ(Bund b);
 #endif
 
-  static int	IpcpSetCommand(Context ctx, int ac, char *av[], const void *arg);
+  static int	IpcpSetCommand(Context ctx, int ac, const char *av[], const void *arg);
 
 /*
  * GLOBAL VARIABLES
@@ -182,7 +182,7 @@
  */
 
 int
-IpcpStat(Context ctx, int ac, char *av[], const void *arg)
+IpcpStat(Context ctx, int ac, const char *av[], const void *arg)
 {
 #ifdef USE_NG_VJC
   char			path[NG_PATHSIZ];
@@ -980,7 +980,7 @@ IpcpNgShutdownVJ(Bund b)
  */
 
 static int
-IpcpSetCommand(Context ctx, int ac, char *av[], const void *arg)
+IpcpSetCommand(Context ctx, int ac, const char *av[], const void *arg)
 {
   IpcpState		const ipcp = &ctx->bund->ipcp;
   struct in_addr	*ips;

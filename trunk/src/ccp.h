@@ -114,7 +114,7 @@
   extern int	CcpSubtractBloat(Bund b, int size);
   extern void	CcpSendResetReq(Bund b);
   extern void	CcpRecvMsg(Bund b, struct ng_mesg *msg, int len);
-  extern int	CcpStat(Context ctx, int ac, char *av[], const void *arg);
+  extern int	CcpStat(Context ctx, int ac, const char *av[], const void *arg);
 
 #endif
 

@@ -203,7 +203,7 @@ RepGetHook(Link l, char *path, char *hook)
  */
 
 int
-RepCommand(Context ctx, int ac, char *av[], const void *arg)
+RepCommand(Context ctx, int ac, const char *av[], const void *arg)
 {
     Rep	r;
     int	k;
@@ -329,7 +329,7 @@ RepShutdown(Rep r)
  */
 
 int
-RepStat(Context ctx, int ac, char *av[], const void *arg)
+RepStat(Context ctx, int ac, const char *av[], const void *arg)
 {
     Rep	r;
 
@@ -381,7 +381,7 @@ RepShowLinks(Context ctx, Rep r)
  */
 
 Rep
-RepFind(char *name)
+RepFind(const char *name)
 {
     int	k;
 

@@ -116,7 +116,7 @@
   static void		ModemChatIdleResult(void *arg, int rslt,
 				const char *msg);
 
-  static int		ModemSetCommand(Context ctx, int ac, char *av[], const void *arg);
+  static int		ModemSetCommand(Context ctx, int ac, const char *av[], const void *arg);
   static int		ModemInstallNodes(Link l);
   static int		ModemGetNgStats(Link l, struct ng_async_stat *sp);
 
@@ -792,7 +792,7 @@ ModemGetNgStats(Link l, struct ng_async_stat *sp)
  */
 
 static int
-ModemSetCommand(Context ctx, int ac, char *av[], const void *arg)
+ModemSetCommand(Context ctx, int ac, const char *av[], const void *arg)
 {
     Link	const l = ctx->lnk;
     ModemInfo	const m = (ModemInfo) l->info;

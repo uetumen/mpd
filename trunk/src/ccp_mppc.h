@@ -46,7 +46,7 @@
   extern int	MPPCPresent;
   extern int	MPPEPresent;
 
-  extern int	MppcStat(Context ctx, int ac, char *av[], const void *arg);
+  extern int	MppcStat(Context ctx, int ac, const char *av[], const void *arg);
   extern int 	MppcTestCap(void);
 
 #endif

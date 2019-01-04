@@ -43,7 +43,7 @@
 
 static void AuthTimeout(void *arg);
 static int 
-AuthGetExternalPassword(char *extcmd, char *authname,
+AuthGetExternalPassword(const char *extcmd, char *authname,
     char *password, size_t passlen);
 static void AuthAsync(void *arg);
 static void AuthAsyncFinish(void *arg, int was_canceled);
@@ -72,7 +72,7 @@ static void AuthOpie(AuthData auth);
 
 #endif
 static const char *AuthCode(int proto, u_char code, char *buf, size_t len);
-static int AuthSetCommand(Context ctx, int ac, char *av[], const void *arg);
+static int AuthSetCommand(Context ctx, int ac, const char *av[], const void *arg);
 
  /* Set menu options */
 enum {
@@ -718,7 +718,7 @@ AuthStop(Link l)
  */
 
 int
-AuthStat(Context ctx, int ac, char *av[], const void *arg)
+AuthStat(Context ctx, int ac, const char *av[], const void *arg)
 {
 	Auth const au = &ctx->lnk->lcp.auth;
 	AuthConf const conf = &au->conf;
@@ -1043,7 +1043,7 @@ AuthGetData(char *authname, char *password, size_t passlen,
 {
 	FILE *fp;
 	int ac;
-	char *av[20];
+	const char *av[20];
 	char *line;
 
 	/* Check authname, must be non-empty */
@@ -1900,7 +1900,7 @@ AuthMPPETypesname(int types, char *buf, size_t len)
  * -1 on error (can't fork, no data read, whatever)
  */
 static int
-AuthGetExternalPassword(char *extcmd, char *authname, char *password, size_t passlen)
+AuthGetExternalPassword(const char *extcmd, char *authname, char *password, size_t passlen)
 {
 	char cmd[AUTH_MAX_PASSWORD + 5 + AUTH_MAX_AUTHNAME];
 	int ok = 0;
@@ -1958,7 +1958,7 @@ AuthCode(int proto, u_char code, char *buf, size_t len)
  */
 
 static int
-AuthSetCommand(Context ctx, int ac, char *av[], const void *arg)
+AuthSetCommand(Context ctx, int ac, const char *av[], const void *arg)
 {
 	AuthConf const autc = &ctx->lnk->lcp.auth.conf;
 	int val;

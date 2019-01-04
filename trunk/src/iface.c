@@ -130,7 +130,7 @@
   static void	IfaceShutdownLimits(Bund b);
 #endif
 
-  static int	IfaceSetCommand(Context ctx, int ac, char *av[], const void *arg);
+  static int	IfaceSetCommand(Context ctx, int ac, const char *av[], const void *arg);
   static void	IfaceSessionTimeout(void *arg);
   static void	IfaceIdleTimeout(void *arg);
 
@@ -145,7 +145,7 @@
   static char *	IfaceFixAclForDelete(char *r, char *buf, size_t len);
 #endif
 
-  static int	IfaceSetName(Bund b, char * ifname);
+  static int	IfaceSetName(Bund b, const char * ifname);
 #ifdef SIOCSIFDESCR
   static int	IfaceSetDescr(Bund b, const char * ifdescr);
   static void	IfaceFreeDescr(IfaceState iface);
@@ -1513,7 +1513,7 @@ IfaceIsDemand(int proto, Mbuf pkt)
  */
 
 static int
-IfaceSetCommand(Context ctx, int ac, char *av[], const void *arg)
+IfaceSetCommand(Context ctx, int ac, const char *av[], const void *arg)
 {
   IfaceState	const iface = &ctx->bund->iface;
   int		empty_arg;
@@ -1546,7 +1546,7 @@ IfaceSetCommand(Context ctx, int ac, char *av[], const void *arg)
 	struct u_range	self_addr;
 	struct u_addr	peer_addr;
 	int	self_addr_force = 0, peer_addr_force = 0;
-	char	*arg1;
+	const char	*arg1;
 
 	/* Parse */
 	if (ac != 2)
@@ -1738,7 +1738,7 @@ IfaceSetCommand(Context ctx, int ac, char *av[], const void *arg)
  */
 
 int
-IfaceStat(Context ctx, int ac, char *av[], const void *arg)
+IfaceStat(Context ctx, int ac, const char *av[], const void *arg)
 {
     Bund	const b = ctx->bund;
     IfaceState	const iface = &b->iface;
@@ -3271,7 +3271,7 @@ IfaceSetupLimits(Bund b)
 	        char		str[ACL_LEN];
 #define	ACL_MAX_PARAMS	7	/* one more then max number of arguments */
 	        int		ac;
-	        char		*av[ACL_MAX_PARAMS];
+	        const char	*av[ACL_MAX_PARAMS];
 		int		p;
 		char		stathook[NG_HOOKSIZ];
 		struct svcs	*ss = NULL;
@@ -3743,7 +3743,7 @@ IfaceFreeStats(struct svcstat *stat)
  */
 
 int
-IfaceSetName(Bund b, char * ifname)
+IfaceSetName(Bund b, const char * ifname)
 {
     IfaceState	const iface = &b->iface;
     struct ifreq ifr;

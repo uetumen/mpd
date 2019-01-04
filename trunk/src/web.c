@@ -28,7 +28,7 @@
  * INTERNAL FUNCTIONS
  */
 
-  static int	WebSetCommand(Context ctx, int ac, char *av[], const void *arg);
+  static int	WebSetCommand(Context ctx, int ac, const char *av[], const void *arg);
 
   static int	WebServletRun(struct http_servlet *servlet,
                          struct http_request *req, struct http_response *resp);
@@ -157,7 +157,7 @@ WebClose(Web w)
  */
 
 int
-WebStat(Context ctx, int ac, char *av[], const void *arg)
+WebStat(Context ctx, int ac, const char *av[], const void *arg)
 {
   Web		w = &gWeb;
   char		addrstr[64];
@@ -641,7 +641,7 @@ WebRunBinCmd(FILE *f, const char *query, int priv)
 
     for (k = 0; k < argc; k++) {
 	int	ac, rtn;
-	char	*av[MAX_CONSOLE_ARGS];
+	const char *av[MAX_CONSOLE_ARGS];
 	char	*buf1;
 
 	buf1 = Malloc(MB_WEB, strlen(argv[k]) + 1);
@@ -700,7 +700,7 @@ WebRunCmd(FILE *f, const char *query, int priv)
     fprintf(f, "<pre>\n");
     for (k = 0; k < argc; k++) {
 	int	ac;
-	char	*av[MAX_CONSOLE_ARGS];
+	const char *av[MAX_CONSOLE_ARGS];
 	char	*buf1;
 
 	buf1 = Malloc(MB_WEB, strlen(argv[k]) + 1);
@@ -841,7 +841,7 @@ WebLogger(int sev, const char *fmt, ...)
  */
 
 static int
-WebSetCommand(Context ctx, int ac, char *av[], const void *arg) 
+WebSetCommand(Context ctx, int ac, const char *av[], const void *arg) 
 {
   Web	 		w = &gWeb;
   int			port;

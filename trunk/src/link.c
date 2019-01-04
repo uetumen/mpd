@@ -58,7 +58,7 @@
  * INTERNAL FUNCTIONS
  */
 
-  static int	LinkSetCommand(Context ctx, int ac, char *av[], const void *arg);
+  static int	LinkSetCommand(Context ctx, int ac, const char *av[], const void *arg);
   static void	LinkMsg(int type, void *cookie);
   static void	LinkNgDataEvent(int type, void *cookie);
   static void	LinkReopenTimeout(void *arg);
@@ -349,7 +349,7 @@ LinkMsg(int type, void *arg)
  */
 
 int
-LinkCreate(Context ctx, int ac, char *av[], const void *arg)
+LinkCreate(Context ctx, int ac, const char *av[], const void *arg)
 {
     Link 	l, lt = NULL;
     PhysType    pt = NULL;
@@ -487,7 +487,7 @@ LinkCreate(Context ctx, int ac, char *av[], const void *arg)
  */
 
 int
-LinkDestroy(Context ctx, int ac, char *av[], const void *arg)
+LinkDestroy(Context ctx, int ac, const char *av[], const void *arg)
 {
     Link 	l;
 
@@ -528,7 +528,7 @@ LinkDestroy(Context ctx, int ac, char *av[], const void *arg)
  */
 
 Link
-LinkInst(Link lt, char *name, int tmpl, int stay)
+LinkInst(Link lt, const char *name, int tmpl, int stay)
 {
     Link 	l;
     int		k;
@@ -1012,7 +1012,7 @@ LinkFind(const char *name)
  */
 
 int
-LinkCommand(Context ctx, int ac, char *av[], const void *arg)
+LinkCommand(Context ctx, int ac, const char *av[], const void *arg)
 {
     Link	l;
     int		k;
@@ -1058,7 +1058,7 @@ LinkCommand(Context ctx, int ac, char *av[], const void *arg)
  */
 
 int
-SessionCommand(Context ctx, int ac, char *av[], const void *arg)
+SessionCommand(Context ctx, int ac, const char *av[], const void *arg)
 {
     int		k;
 
@@ -1100,7 +1100,7 @@ SessionCommand(Context ctx, int ac, char *av[], const void *arg)
  */
 
 int
-AuthnameCommand(Context ctx, int ac, char *av[], const void *arg)
+AuthnameCommand(Context ctx, int ac, const char *av[], const void *arg)
 {
     int		k;
 
@@ -1262,7 +1262,7 @@ LinkMatchAction(Link l, int stage, char *login)
  */
 
 int
-LinkStat(Context ctx, int ac, char *av[], const void *arg)
+LinkStat(Context ctx, int ac, const char *av[], const void *arg)
 {
     Link 	l = ctx->lnk;
     struct linkaction *a;
@@ -1387,12 +1387,12 @@ LinkResetStats(Link l)
  */
 
 static int
-LinkSetCommand(Context ctx, int ac, char *av[], const void *arg)
+LinkSetCommand(Context ctx, int ac, const char *av[], const void *arg)
 {
     Link	l = ctx->lnk;
     int		val, nac = 0;
     const char	*name;
-    char	*nav[ac];
+    const char	*nav[ac];
     const char	*av2[] = { "chap-md5", "chap-msv1", "chap-msv2" };
 
     /* make "chap" as an alias for all chap-variants, this should keep BC */
@@ -1407,7 +1407,7 @@ LinkSetCommand(Context ctx, int ac, char *av[], const void *arg)
 	    int	i = 0;
             for ( ; i < ac; i++) {
     		if (strcasecmp(av[i], "chap") == 0) {
-    		    LinkSetCommand(ctx, 3, (char **)av2, arg);
+    		    LinkSetCommand(ctx, 3, (const char **)av2, arg);
 		} else {
 		    nav[nac++] = av[i];
 		} 

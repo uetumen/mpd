@@ -58,7 +58,7 @@
   static void		CcpRecvResetAck(Fsm fp, int id, Mbuf bp);
 
   static int		CcpCheckEncryption(Bund b);
-  static int		CcpSetCommand(Context ctx, int ac, char *av[], const void *arg);
+  static int		CcpSetCommand(Context ctx, int ac, const char *av[], const void *arg);
   static CompType	CcpFindComp(int type, int *indexp);
   static const char	*CcpTypeName(int type, char *buf, size_t len);
 
@@ -580,7 +580,7 @@ CcpFailure(Fsm fp, enum fsmfail reason)
  */
 
 int
-CcpStat(Context ctx, int ac, char *av[], const void *arg)
+CcpStat(Context ctx, int ac, const char *av[], const void *arg)
 {
   CcpState	const ccp = &ctx->bund->ccp;
   char		buf[64];
@@ -1046,7 +1046,7 @@ fail:
  */
 
 static int
-CcpSetCommand(Context ctx, int ac, char *av[], const void *arg)
+CcpSetCommand(Context ctx, int ac, const char *av[], const void *arg)
 {
   CcpState	const ccp = &ctx->bund->ccp;
 

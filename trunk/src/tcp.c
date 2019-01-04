@@ -92,7 +92,7 @@ static void	TcpDoClose(Link l);
 static void	TcpAcceptEvent(int type, void *cookie);
 static void	TcpConnectEvent(int type, void *cookie);
 
-static int	TcpSetCommand(Context ctx, int ac, char *av[], const void *arg);
+static int	TcpSetCommand(Context ctx, int ac, const char *av[], const void *arg);
 static void	TcpNodeUpdate(Link l);
 static int 	TcpListen(Link l);
 static void	TcpUnListen(Link l);
@@ -872,7 +872,7 @@ TcpNodeUpdate(Link l)
  */
 
 static int
-TcpSetCommand(Context ctx, int ac, char *av[], const void *arg)
+TcpSetCommand(Context ctx, int ac, const char *av[], const void *arg)
 {
     TcpInfo		const pi = (TcpInfo) ctx->lnk->info;
     char		**fqdn_peer_addr = &pi->conf.fqdn_peer_addr;

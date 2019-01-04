@@ -45,7 +45,7 @@
   static void	NgClose(Link l);
   static void	NgShutdown(Link l);
   static void	NgStat(Context ctx);
-  static int	NgSetCommand(Context ctx, int ac, char *av[], const void *arg);
+  static int	NgSetCommand(Context ctx, int ac, const char *av[], const void *arg);
   static int	NgIsSync(Link l);
   static int	NgPeerAddr(Link l, void *buf, size_t buf_len);
 
@@ -197,7 +197,7 @@ NgStat(Context ctx)
  */
 
 static int
-NgSetCommand(Context ctx, int ac, char *av[], const void *arg)
+NgSetCommand(Context ctx, int ac, const char *av[], const void *arg)
 {
     NgInfo	const ng = (NgInfo) ctx->lnk->info;
 
