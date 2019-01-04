@@ -71,7 +71,7 @@
   const struct cmdtab RadiusUnSetCmds[] = {
 	  { "server {name} [{auth port}] [{acct port}]", "Unset (remove) radius server" ,
 		  RadiusSetCommand, NULL, 2, (void *) UNSET_SERVER },
-	  { NULL },
+	  { NULL, NULL, NULL, NULL, 0, NULL },
   };
   
   const struct cmdtab RadiusSetCmds[] = {
@@ -97,7 +97,7 @@
 	RadiusSetCommand, NULL, 2, (void *) SET_ENABLE },
     { "disable [opt ...]",		"Disable option",
 	RadiusSetCommand, NULL, 2, (void *) SET_DISABLE },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
 /*
@@ -261,6 +261,10 @@ RadStat(Context ctx, int ac, const char *av[], const void *arg)
   char		*buf;
   RadServe_Conf	server;
   char		buf1[64];
+
+  (void)ac;
+  (void)av;
+  (void)arg;
 
   Printf("Configuration:\r\n");
   Printf("\tTimeout      : %d\r\n", conf->radius_timeout);
@@ -1767,7 +1771,6 @@ RadiusGetParams(AuthData auth, int eap_proxy)
 
 	      case RAD_MICROSOFT_MS_MPPE_ENCRYPTION_TYPES:
 	        {
-		    char	buf[48];
 		    auth->params.msoft.types = rad_cvt_int(data);
 		    Log(LG_RADIUS2, ("[%s] RADIUS: Get RAD_MICROSOFT_MS_MPPE_ENCRYPTION_TYPES: %d (%s)",
 			auth->info.lnkname, auth->params.msoft.types, 
