@@ -243,7 +243,7 @@
 const char *
 ProtoName(int proto)
 {
-  int			k;
+  unsigned			k;
   static char		buf[20];
   struct protoname	key, *pn;
 
@@ -272,8 +272,8 @@ ProtoName(int proto)
 static int
 ProtoNameCmp(const void *v1, const void *v2)
 {
-  struct protoname	*const p1 = (struct protoname *) v1;
-  struct protoname	*const p2 = (struct protoname *) v2;
+  const struct protoname *const p1 = (const struct protoname *) v1;
+  const struct protoname *const p2 = (const struct protoname *) v2;
 
   return(p1->proto - p2->proto);
 }
