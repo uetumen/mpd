@@ -67,7 +67,7 @@
  * GLOBAL VARIABLES
  */
 
-  const struct cmdtab LinkSetActionCmds[] = {
+  static const struct cmdtab LinkSetActionCmds[] = {
     { "bundle {bundle} [{regex}]",	"Terminate incomings locally",
 	LinkSetCommand, NULL, 2, (void *) SET_BUNDLE },
     { "forward {link} [{regex}]",	"Forward incomings",
@@ -76,7 +76,7 @@
 	LinkSetCommand, NULL, 2, (void *) SET_DROP },
     { "clear",				"Clear actions",
 	LinkSetCommand, NULL, 2, (void *) SET_CLEAR },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
   const struct cmdtab LinkSetCmds[] = {
@@ -118,7 +118,7 @@
 	LinkSetCommand, NULL, 2, (void *) SET_YES },
     { "no {opt ...}",			"Disable and deny option",
 	LinkSetCommand, NULL, 2, (void *) SET_NO },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
 /*
@@ -151,7 +151,7 @@
 
     int		gLinksCsock = -1;		/* Socket node control socket */
     int		gLinksDsock = -1;		/* Socket node data socket */
-    EventRef	gLinksDataEvent;
+    static EventRef gLinksDataEvent;
 
 int
 LinksInit(void)
@@ -357,6 +357,7 @@ LinkCreate(Context ctx, int ac, const char *av[], const void *arg)
     u_char 	stay = 0;
     int 	k;
 
+    (void)arg;
     RESETREF(ctx->lnk, NULL);
     RESETREF(ctx->bund, NULL);
     RESETREF(ctx->rep, NULL);
@@ -491,6 +492,7 @@ LinkDestroy(Context ctx, int ac, const char *av[], const void *arg)
 {
     Link 	l;
 
+    (void)arg;
     if (ac > 1)
 	return(-1);
 
@@ -815,12 +817,15 @@ LinkNgDataEvent(int type, void *cookie)
     Bund		b;
     u_char		*buf;
     u_int16_t		proto;
-    int			ptr;
+    unsigned		ptr;
     Mbuf		bp;
     struct sockaddr_ng	naddr;
     socklen_t		nsize;
     char		*name, *rest;
     int			id, num = 0;
+
+    (void)cookie;
+    (void)type;
 
     /* Read all available packets */
     while (1) {
@@ -905,8 +910,8 @@ LinkNgDataEvent(int type, void *cookie)
 
 	    /* A PPP frame from the bypass hook? */
 	    if (naddr.sg_data[0] == 'b') {
-    		Link		l;
-		u_int16_t	linkNum, proto;
+    		Link		ll;
+		u_int16_t	linkNum, lproto;
 
 		if (MBLEN(bp) <= 4) {
 		    LogDumpBp(LG_FRAME|LG_ERR, bp,
@@ -918,23 +923,23 @@ LinkNgDataEvent(int type, void *cookie)
 		/* Extract link number and protocol */
 		bp = mbread(bp, &linkNum, 2);
 		linkNum = ntohs(linkNum);
-	        bp = mbread(bp, &proto, 2);
-		proto = ntohs(proto);
+	        bp = mbread(bp, &lproto, 2);
+		lproto = ntohs(lproto);
 
 		/* Debugging */
 		LogDumpBp(LG_FRAME, bp,
     		    "[%s] rec'd %zu bytes bypass frame link=%d proto=0x%04x",
-    		    b->name, MBLEN(bp), (int16_t)linkNum, proto);
+    		    b->name, MBLEN(bp), (int16_t)linkNum, lproto);
 
 		/* Set link */
 		assert(linkNum == NG_PPP_BUNDLE_LINKNUM || linkNum < NG_PPP_MAX_LINKS);
 
 		if (linkNum != NG_PPP_BUNDLE_LINKNUM)
-		    l = b->links[linkNum];
+		    ll = b->links[linkNum];
 		else
-		    l = NULL;
+		    ll = NULL;
 
-		InputFrame(b, l, proto, bp);
+		InputFrame(b, ll, lproto, bp);
 		continue;
 	    }
 
@@ -1017,6 +1022,7 @@ LinkCommand(Context ctx, int ac, const char *av[], const void *arg)
     Link	l;
     int		k;
 
+    (void)arg;
     if (ac > 1)
 	return (-1);
 
@@ -1062,6 +1068,7 @@ SessionCommand(Context ctx, int ac, const char *av[], const void *arg)
 {
     int		k;
 
+    (void)arg;
     if (ac > 1)
 	return (-1);
 
@@ -1104,6 +1111,7 @@ AuthnameCommand(Context ctx, int ac, const char *av[], const void *arg)
 {
     int		k;
 
+    (void)arg;
     if (ac > 2)
 	return (-1);
 
@@ -1266,6 +1274,10 @@ LinkStat(Context ctx, int ac, const char *av[], const void *arg)
 {
     Link 	l = ctx->lnk;
     struct linkaction *a;
+
+    (void)ac;
+    (void)av;
+    (void)arg;
 
     Printf("Link %s%s:\r\n", l->name, l->tmpl?" (template)":(l->stay?" (static)":""));
 
