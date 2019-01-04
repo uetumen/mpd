@@ -10,6 +10,7 @@
 
 #include <sys/types.h>
 #include <sys/param.h>
+#include <netinet/in.h>
 #include <netinet/in_systm.h>
 #include <netinet/ip.h>
 
