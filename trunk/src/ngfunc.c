@@ -109,7 +109,7 @@
         NetflowSetCommand, NULL, 2, (void *) SET_NODE },
     { "hook {number}", "Set initial hook number" ,
         NetflowSetCommand, NULL, 2, (void *) SET_HOOK },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 #endif
 
@@ -131,10 +131,10 @@
   uint32_t gNetflowInactive = 0;
   uint32_t gNetflowActive = 0;
 #if NGM_NETFLOW_COOKIE >= 1309868867
-  uint16_t gNetflowTime = 0;
-  uint16_t gNetflowPackets = 0;
-  uint16_t gNetflowMTU = 0;
-  u_int gNetflowVer = 5;
+  static uint16_t gNetflowTime = 0;
+  static uint16_t gNetflowPackets = 0;
+  static uint16_t gNetflowMTU = 0;
+  static u_int gNetflowVer = 5;
 #endif
 #endif
   
@@ -803,7 +803,7 @@ NetflowSetCommand(Context ctx, int ac, const char *av[], const void *arg)
 	case SET_MTU:
     	    if (ac != 1)
 		return (-1);
-    	    if (atoi(av[0]) < MIN_MTU || atoi(av[0]) > MAX_MTU)
+    	    if (atoi(av[0]) < (int)MIN_MTU || atoi(av[0]) > (int)MAX_MTU)
 		Error("Bad netflow v9 MTU \"%s\"", av[0]);
     	    gNetflowMTU = atoi(av[0]);		/* Default 1500 */
     	    break;
@@ -866,6 +866,10 @@ ShowNetflow(Context ctx, int ac, const char *av[], const void *arg)
     struct ng_netflow_v9info *const niv9 = \
         (struct ng_netflow_v9info *)(void *)uv9.reply.data;
 #endif /* NGM_NETFLOW_V9_COOKIE */
+
+    (void)ac;
+    (void)av;
+    (void)arg;
 
     if (gNetflowNodeID>0) {
         snprintf(path, sizeof(path), "[%x]:", gNetflowNodeID);
