@@ -45,7 +45,7 @@
 
   extern int	ParseAddr(const char *s, struct u_addr *addr, u_char allow);
   extern int	ParseRange(const char *s, struct u_range *range, u_char allow);
-  extern struct sockaddr_storage * ParseAddrPort(int ac, char *av[], u_char allow);
+  extern struct sockaddr_storage * ParseAddrPort(int ac, const char *av[], u_char allow);
 
   extern sa_family_t	u_addrfamily(struct u_addr *addr);
   extern sa_family_t	u_rangefamily(struct u_range *range);

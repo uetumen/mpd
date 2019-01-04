@@ -183,7 +183,7 @@ ParseRange(const char *s, struct u_range *range, u_char allow)
  */
 
 struct sockaddr_storage *
-ParseAddrPort(int ac, char *av[], u_char allow)
+ParseAddrPort(int ac, const char *av[], u_char allow)
 {
   static struct sockaddr_storage ss;
   struct u_addr addr;
