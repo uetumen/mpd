@@ -285,7 +285,7 @@ struct authdata {
 #endif
 		char   *downReason;	/* Reason for link going down */
 		time_t	last_up;	/* Time this link last got up */
-		PhysType phys_type;	/* Device type descriptor */
+		const struct phystype *phys_type; /* Device type descriptor */
 		int	linkID;		/* Absolute link number */
 		char	peer_ident[64];	/* LCP ident received from peer */
 		struct in_addr peer_addr;	/* currently assigned

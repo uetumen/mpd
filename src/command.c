@@ -1244,7 +1244,7 @@ ShowLayers(Context ctx, int ac, const char *av[], const void *arg)
 static int
 ShowTypes(Context ctx, int ac, const char *av[], const void *arg)
 {
-  PhysType	pt;
+  const struct phystype	*pt;
   int		k;
 
   (void)ac;

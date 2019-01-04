@@ -352,7 +352,7 @@ int
 LinkCreate(Context ctx, int ac, const char *av[], const void *arg)
 {
     Link 	l, lt = NULL;
-    PhysType    pt = NULL;
+    const struct phystype *pt = NULL;
     u_char 	tmpl = 0;
     u_char 	stay = 0;
     int 	k;

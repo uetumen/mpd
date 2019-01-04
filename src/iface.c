@@ -3937,7 +3937,7 @@ IfaceSetDescr(Bund b, const char * template)
 	  /* peer MAC address */
 	  case 'M':
 	    if (b->links[0]) {
-	      PhysType const pt = b->links[0]->type;
+	      const struct phystype * pt = b->links[0]->type;
 	      if (pt && pt->peermacaddr) {
 		(*pt->peermacaddr)(b->links[0], buf, sizeof(buf));
 		DST_COPY(buf);

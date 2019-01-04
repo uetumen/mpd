@@ -153,7 +153,7 @@
     char		msession_id[AUTH_MAX_SESSIONID]; /* a uniq msession-id */
     char		session_id[AUTH_MAX_SESSIONID];	/* a uniq session-id */
 
-    PhysType		type;			/* Device type descriptor */
+    const struct phystype *type;		/* Device type descriptor */
     void		*info;			/* Type specific info */
     MsgHandler		pmsgs;			/* Message channel */
     struct pppTimer	openTimer;		/* Open retry timer */

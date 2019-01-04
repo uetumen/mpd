@@ -51,7 +51,7 @@
  * GLOBAL VARIABLES
  */
 
-  const PhysType gPhysTypes[] = {
+  const struct phystype *gPhysTypes[] = {
 #define _WANT_DEVICE_TYPES
 #include "devices.h"
     NULL,
@@ -246,7 +246,7 @@ PhysGetUpperHook(Link l, char *path, char *hook)
 int
 PhysGetOriginate(Link l)
 {
-  PhysType	const pt = l->type;
+  const struct phystype *pt = l->type;
 
   return((pt && pt->originate) ? (*pt->originate)(l) : LINK_ORIGINATE_UNKNOWN);
 }
@@ -260,7 +260,7 @@ PhysGetOriginate(Link l)
 int
 PhysIsSync(Link l)
 {
-  PhysType	const pt = l->type;
+  const struct phystype *pt = l->type;
 
   return((pt && pt->issync) ? (*pt->issync)(l) : 0);
 }
@@ -272,7 +272,7 @@ PhysIsSync(Link l)
 int
 PhysSetCallingNum(Link l, char *buf)
 {
-    PhysType	const pt = l->type;
+    const struct phystype *pt = l->type;
 
     if (pt && pt->setcallingnum)
 	return ((*pt->setcallingnum)(l, buf));
@@ -287,7 +287,7 @@ PhysSetCallingNum(Link l, char *buf)
 int
 PhysSetCalledNum(Link l, char *buf)
 {
-    PhysType	const pt = l->type;
+    const struct phystype *pt = l->type;
 
     if (pt && pt->setcallednum)
 	return ((*pt->setcallednum)(l, buf));
@@ -302,7 +302,7 @@ PhysSetCalledNum(Link l, char *buf)
 int
 PhysGetSelfName(Link l, char *buf, size_t buf_len)
 {
-    PhysType	const pt = l->type;
+    const struct phystype *pt = l->type;
 
     buf[0] = 0;
 
@@ -319,7 +319,7 @@ PhysGetSelfName(Link l, char *buf, size_t buf_len)
 int
 PhysGetPeerName(Link l, char *buf, size_t buf_len)
 {
-    PhysType	const pt = l->type;
+    const struct phystype *pt = l->type;
 
     buf[0] = 0;
 
@@ -336,7 +336,7 @@ PhysGetPeerName(Link l, char *buf, size_t buf_len)
 int
 PhysGetSelfAddr(Link l, char *buf, size_t buf_len)
 {
-    PhysType	const pt = l->type;
+    const struct phystype *pt = l->type;
 
     buf[0] = 0;
 
@@ -353,7 +353,7 @@ PhysGetSelfAddr(Link l, char *buf, size_t buf_len)
 int
 PhysGetPeerAddr(Link l, char *buf, size_t buf_len)
 {
-    PhysType	const pt = l->type;
+    const struct phystype *pt = l->type;
 
     buf[0] = 0;
 
@@ -370,7 +370,7 @@ PhysGetPeerAddr(Link l, char *buf, size_t buf_len)
 int
 PhysGetPeerPort(Link l, char *buf, size_t buf_len)
 {
-    PhysType	const pt = l->type;
+    const struct phystype *pt = l->type;
 
     buf[0] = 0;
 
@@ -387,7 +387,7 @@ PhysGetPeerPort(Link l, char *buf, size_t buf_len)
 int
 PhysGetPeerMacAddr(Link l, char *buf, size_t buf_len)
 {
-    PhysType	const pt = l->type;
+    const struct phystype *pt = l->type;
 
     buf[0] = 0;
 
@@ -404,7 +404,7 @@ PhysGetPeerMacAddr(Link l, char *buf, size_t buf_len)
 int
 PhysGetPeerIface(Link l, char *buf, size_t buf_len)
 {
-    PhysType	const pt = l->type;
+    const struct phystype *pt = l->type;
 
     buf[0] = 0;
 
@@ -421,7 +421,7 @@ PhysGetPeerIface(Link l, char *buf, size_t buf_len)
 int
 PhysGetCallingNum(Link l, char *buf, size_t buf_len)
 {
-    PhysType	const pt = l->type;
+    const struct phystype *pt = l->type;
 
     buf[0] = 0;
 
@@ -455,7 +455,7 @@ PhysGetCallingNum(Link l, char *buf, size_t buf_len)
 int
 PhysGetCalledNum(Link l, char *buf, size_t buf_len)
 {
-    PhysType	const pt = l->type;
+    const struct phystype *pt = l->type;
 
     buf[0] = 0;
 
@@ -472,7 +472,7 @@ PhysGetCalledNum(Link l, char *buf, size_t buf_len)
 u_short
 PhysGetMtu(Link l, int conf)
 {
-    PhysType	const pt = l->type;
+    const struct phystype *pt = l->type;
 
     if (pt) {
 	if (pt->getmtu)
@@ -495,7 +495,7 @@ PhysGetMtu(Link l, int conf)
 u_short
 PhysGetMru(Link l, int conf)
 {
-    PhysType	const pt = l->type;
+    const struct phystype *pt = l->type;
 
     if (pt) {
 	if (pt->getmru)
@@ -532,7 +532,7 @@ PhysIsBusy(Link l)
 void
 PhysShutdown(Link l)
 {
-    PhysType	const pt = l->type;
+    const struct phystype *pt = l->type;
 
     MsgUnRegister(&l->pmsgs);
 
@@ -547,7 +547,7 @@ PhysShutdown(Link l)
 void
 PhysSetDeviceType(Link l, char *typename)
 {
-  PhysType	pt;
+  const struct phystype *pt;
   int		k;
 
   /* Make sure device type not already set */
