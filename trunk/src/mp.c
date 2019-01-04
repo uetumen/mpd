@@ -96,7 +96,7 @@ MpDiscrimName(int class)
 char *
 MpDiscrimText(Discrim dis, char *buf, size_t len)
 {
-  int		k;
+  unsigned	k;
 
   snprintf(buf, len, "[%s]", MpDiscrimName(dis->class));
   for (k = 0; k < dis->len && k < sizeof(dis->bytes); k++)
