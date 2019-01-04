@@ -95,6 +95,7 @@ TimerExpires(int type, void *cookie)
     const char	*desc = timer->desc;
     const char	*dbg = timer->dbg;
 
+    (void)type;
     Log(LG_EVENTS, ("EVENT: Processing timer \"%s\" %s()", desc, dbg));
     (*timer->func)(timer->arg);
     Log(LG_EVENTS, ("EVENT: Processing timer \"%s\" %s() done", desc, dbg));
