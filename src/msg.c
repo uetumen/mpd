@@ -28,15 +28,15 @@
   };
   typedef struct mpmsg	*Msg;
 
-  struct mpmsg	msgqueue[MSG_QUEUE_LEN];
-  int		msgqueueh = 0;
-  int		msgqueuet = 0;
+  static struct mpmsg	msgqueue[MSG_QUEUE_LEN];
+  static int		msgqueueh = 0;
+  static int		msgqueuet = 0;
   #define	QUEUELEN()	((msgqueueh >= msgqueuet)?	\
 	(msgqueueh - msgqueuet):(msgqueueh + MSG_QUEUE_LEN - msgqueuet))
 
-  int           msgpipe[2];
-  int		msgpipesent = 0;
-  EventRef	msgevent;
+  static int		msgpipe[2];
+  static int		msgpipesent = 0;
+  static EventRef	msgevent;
 
 /*
  * GLOBAL VARIABLES
@@ -103,6 +103,9 @@ static void
 MsgEvent(int type, void *cookie)
 {
     char	buf[16];
+
+    (void)type;
+    (void)cookie;
     /* flush signaling pipe */
     msgpipesent = 0;
     while (read(msgpipe[PIPE_READ], buf, sizeof(buf)) == sizeof(buf));
