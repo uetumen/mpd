@@ -8,6 +8,9 @@
 #ifndef _NAT_H_
 #define _NAT_H_
 
+#include "command.h"
+#include "vars.h"
+
 #include <netgraph/ng_nat.h>
 
 #ifdef NG_NAT_DESC_LENGTH
