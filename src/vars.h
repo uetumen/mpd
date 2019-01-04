@@ -14,6 +14,8 @@
 #ifndef _VARS_H_
 #define	_VARS_H_
 
+#include "defs.h"
+
 #include <sys/types.h>
 
 /*
