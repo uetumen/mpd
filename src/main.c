@@ -325,6 +325,7 @@ ConfigRead(int type, void *arg)
     Context	c = (Context)arg;
     int		err;
 
+    (void)type;
     /* Read startup configuration section */
     err = ReadFile(gConfigFile, STARTUP_CONF, DoCommand, c);
 
@@ -448,6 +449,8 @@ SignalHandler(int type, void *arg)
 {
     u_char	sig;
 
+    (void)type;
+    (void)arg;
     read(gSignalPipe[0], &sig, sizeof(sig));
 
     switch(sig) {
