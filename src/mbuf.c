@@ -84,7 +84,7 @@ void
 Freee(const void *ptr)
 {
     if (ptr) {
-	char	**memory = ptr;
+	char	*const *memory = ptr;
 	memory--;
 	FREE(memory[0], memory);
     }
