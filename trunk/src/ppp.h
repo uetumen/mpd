@@ -211,7 +211,7 @@
 
   extern struct globalconf	gGlobalConf;	/* Global config settings */
 
-#ifdef USE_NG_BPF
+#if defined(USE_NG_BPF) && !defined(RADSRV)
   extern struct acl		*acl_filters[ACL_FILTERS]; /* mpd's internal bpf filters */
 #endif
 
