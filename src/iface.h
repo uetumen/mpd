@@ -13,6 +13,7 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/ioctl.h>
+#include <net/if.h>
 #include <net/if_dl.h>
 #include <net/bpf.h>
 #include <netinet/ip.h>
