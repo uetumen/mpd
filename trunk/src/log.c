@@ -181,6 +181,7 @@ LogCommand(Context ctx, int ac, const char *av[], const void *arg)
     u_int	k;
     int		bits, add;
 
+    (void)arg;
     if (ac == 0) {
 #define LG_FMT	"    %-12s  %-10s  %s\r\n"
 
@@ -297,7 +298,8 @@ LogPrintf2(const char *fmt, ...)
 void
 LogDumpBp2(Mbuf bp, const char *fmt, ...)
 {
-    int		k, total;
+    int		k;
+    unsigned	total;
     u_char	bytes[DUMP_BYTES_PER_LINE];
     char	line[128];
     int		linelen;
@@ -317,7 +319,8 @@ LogDumpBp2(Mbuf bp, const char *fmt, ...)
   
         total = 0;
 	if (bp) {
-    	    int	start, stop, last = 0;
+    	    int	start, last = 0;
+    	    unsigned stop;
 
     	    stop = ROUNDUP(total + MBLEN(bp), DUMP_BYTES_PER_LINE);
     	    for (start = total; total < stop; ) {
