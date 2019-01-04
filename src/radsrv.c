@@ -5,9 +5,12 @@
  * Written by Alexander Motin <mav@FreeBSD.org>
  */
 
+#define RADSRV
+
 #include "ppp.h"
 #include "radsrv.h"
 #include "util.h"
+
 #include <stdint.h>
 #include <radlib.h>
 #include <radlib_vs.h>
@@ -52,7 +55,7 @@
   	RadsrvSetCommand, NULL, 2, (void *) SET_ENABLE },
     { "disable [opt ...]",	"Disable radsrv option" ,
   	RadsrvSetCommand, NULL, 2, (void *) SET_DISABLE },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
 
@@ -123,6 +126,7 @@ RadsrvEvent(int type, void *cookie)
     struct acl		*acl_limits[ACL_DIRS];	/* traffic limits based on mpd's filters */
     char 		std_acct[ACL_DIRS][ACL_NAME_LEN]; /* Names of ACL returned in standard accounting */
 
+    (void)type;
     bzero(acl_filters, sizeof(acl_filters));
     bzero(acl_limits, sizeof(acl_limits));
     bzero(std_acct, sizeof(std_acct));
@@ -730,6 +734,10 @@ RadsrvStat(Context ctx, int ac, const char *av[], const void *arg)
     Radsrv	w = &gRadsrv;
     char	addrstr[64];
     struct radiusclient_conf *client;
+
+    (void)ac;
+    (void)av;
+    (void)arg;
 
     Printf("Radsrv configuration:\r\n");
     Printf("\tState         : %s\r\n", w->handle ? "OPENED" : "CLOSED");
