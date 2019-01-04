@@ -13,6 +13,7 @@
 #include "defs.h"
 #include "ip.h"
 #include "mp.h"
+#include "iface.h"
 #include "ipcp.h"
 #include "ipv6cp.h"
 #include "chap.h"
