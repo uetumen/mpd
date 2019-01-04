@@ -14,6 +14,10 @@
 #ifndef _LG_H_
 #define	_LG_H_
 
+#include "mbuf.h"
+
+#include <stdio.h>
+
 /*
  * DEFINITIONS
  */
