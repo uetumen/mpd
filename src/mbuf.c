@@ -313,7 +313,7 @@ mbsplit(Mbuf bp, int cnt)
     if (!bp)
 	return (NULL);
 
-    if (MBLEN(bp) <= cnt)
+    if ((int)MBLEN(bp) <= cnt)
 	return (NULL);
 
     nbp = mballoc(bp->cnt - cnt);
@@ -335,6 +335,10 @@ MemStat(Context ctx, int ac, const char *av[], const void *arg)
     u_int	i;
     u_int	total_allocs = 0;
     u_int	total_bytes = 0;
+
+    (void)ac;
+    (void)av;
+    (void)arg;
 
     if (typed_mem_usage(&stats))
 	Error("typed_mem_usage() error");
