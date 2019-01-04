@@ -100,7 +100,7 @@
     u_char		exact:1;	/* true if this is an exact match */
     union {
       struct cm_exact {
-	char	*pat;			/* exact string to match */
+	const char *pat;		/* exact string to match */
 	u_short	*fail;			/* failure function */
 	u_int	matched;		/* number of chars matched so far */
       }		exact;
@@ -187,7 +187,7 @@
   static void	ChatAddTimer(ChatInfo c, const char *set,
 			u_int secs, const char *label);
   static void	ChatAddMatch(ChatInfo c, int exact,
-			const char *set, char *pat, const char *label);
+			const char *set, const char *pat, const char *label);
   static void	ChatCancel(ChatInfo c, const char *set);
   static int	ChatGoto(ChatInfo c, const char *label);
   static void	ChatCall(ChatInfo c, const char *label);
@@ -198,13 +198,13 @@
   static void	ChatStop(ChatInfo c);
   static void	ChatSuccess(ChatInfo c);
   static void	ChatFailure(ChatInfo c);
-  static void	ChatIf(ChatInfo c, int ac, char *av[]);
+  static void	ChatIf(ChatInfo c, int ac, const char *av[]);
 
   static void	ChatRead(int type, void *cookie);
   static void	ChatWrite(int type, void *cookie);
   static void	ChatTimeout(int type, void *cookie);
   static int	ChatGetCmd(ChatInfo c, const char *token, int n_args);
-  static void	ChatDoCmd(ChatInfo c, int ac, char *av[]);
+  static void	ChatDoCmd(ChatInfo c, int ac, const char *av[]);
   static void	ChatDumpReadBuf(ChatInfo c);
 
   static int	ChatVarSet(ChatInfo c, const char *name,
@@ -221,12 +221,12 @@
   static void	ChatSetMatchVars(ChatInfo c, int exact, const char *input, ...);
   static void	ChatComputeFailure(struct cm_exact *ex);
 
-  static int	ChatDecodeTime(ChatInfo c, char *string, u_int *secsp);
+  static int	ChatDecodeTime(ChatInfo c, const char *string, u_int *secsp);
   static int	ChatSetBaudrate(ChatInfo c, const char *new);
   static char	*ChatExpandString(ChatInfo c, const char *string);
 
   static char	*ChatReadLine(ChatInfo c);
-  static int	ChatParseLine(char *line, char *av[], int max);
+  static int	ChatParseLine(char *line, const char *av[], int max);
   static int	ChatSeekToLabel(ChatInfo c, const char *label);
   static void	ChatDumpBuf(ChatInfo c, const char *buf,
 		  int len, const char *fmt, ...);
@@ -549,7 +549,7 @@ ChatRun(ChatInfo c)
     c->state == CHAT_RUNNING && (line = ChatReadLine(c)) != NULL; )
   {
     int		ac;
-    char	*av[CHAT_MAX_ARGS];
+    const char	*av[CHAT_MAX_ARGS];
 
   /* Skip labels */
 
@@ -597,7 +597,7 @@ ChatRun(ChatInfo c)
  */
 
 static void
-ChatDoCmd(ChatInfo c, int ac, char *av[])
+ChatDoCmd(ChatInfo c, int ac, const char *av[])
 {
   char	buf[200];
   u_int	secs;
@@ -765,7 +765,7 @@ ChatDoCmd(ChatInfo c, int ac, char *av[])
  */
 
 static void
-ChatIf(ChatInfo c, int ac, char *av[])
+ChatIf(ChatInfo c, int ac, const char *av[])
 {
   char	*const arg1 = ChatExpandString(c, av[1]);
   char	*const arg2 = ChatExpandString(c, av[3]);
@@ -904,7 +904,7 @@ ChatStop(ChatInfo c)
 
 static void
 ChatAddMatch(ChatInfo c, int exact, const char *set,
-	char *pat, const char *label)
+	const char *pat, const char *label)
 {
   ChatMatch	match, *mp;
   Link		const l = (Link) c->arg;
@@ -1665,7 +1665,7 @@ ChatComputeFailure(struct cm_exact *ex)
  */
 
 static int
-ChatDecodeTime(ChatInfo c, char *string, u_int *secsp)
+ChatDecodeTime(ChatInfo c, const char *string, u_int *secsp)
 {
   u_long	secs;
   char		*secstr, *mark;
@@ -1698,7 +1698,7 @@ ChatReadLine(ChatInfo c)
  */
 
 static int
-ChatParseLine(char *line, char *av[], int max)
+ChatParseLine(char *line, const char *av[], int max)
 {
   return ParseLine(line, av, max, 1);
 }

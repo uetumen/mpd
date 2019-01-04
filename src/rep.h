@@ -39,8 +39,8 @@ extern const struct cmdtab RepSetCmds[];
  * FUNCTIONS
  */
 
-extern int RepStat(Context ctx, int ac, char *av[], const void *arg);
-extern int RepCommand(Context ctx, int ac, char *av[], const void *arg);
+extern int RepStat(Context ctx, int ac, const char *av[], const void *arg);
+extern int RepCommand(Context ctx, int ac, const char *av[], const void *arg);
 extern int RepCreate(Link in, const char *out);
 extern void RepShutdown(Rep r);
 
@@ -50,6 +50,6 @@ extern void RepSetAccm(Link l, u_int32_t xmit, u_int32_t recv);	/* Set async acc
 extern void RepUp(Link l);
 extern void RepDown(Link l);
 extern int RepGetHook(Link l, char *path, char *hook);
-extern Rep RepFind(char *name);
+extern Rep RepFind(const char *name);
 
 #endif

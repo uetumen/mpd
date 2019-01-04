@@ -182,9 +182,9 @@
   extern int	LinkOpenCmd(Context ctx);
   extern int	LinkCloseCmd(Context ctx);
 
-  extern int	LinkCreate(Context ctx, int ac, char *av[], const void *arg);
-  extern int	LinkDestroy(Context ctx, int ac, char *av[], const void *arg);
-  extern Link	LinkInst(Link lt, char *name, int tmpl, int stay);
+  extern int	LinkCreate(Context ctx, int ac, const char *av[], const void *arg);
+  extern int	LinkDestroy(Context ctx, int ac, const char *av[], const void *arg);
+  extern Link	LinkInst(Link lt, const char *name, int tmpl, int stay);
   extern void	LinkShutdownCheck(Link l, short state);
   extern void	LinkShutdown(Link l);
   extern int	LinkNgInit(Link l);
@@ -193,13 +193,13 @@
   extern int	LinkNgLeave(Link l);
   extern void	LinkNgShutdown(Link l);
   extern int	LinkNuke(Link link);
-  extern int	LinkStat(Context ctx, int ac, char *av[], const void *arg);
+  extern int	LinkStat(Context ctx, int ac, const char *av[], const void *arg);
   extern void	LinkUpdateStats(Link l);
   extern void	LinkResetStats(Link l);
   extern Link	LinkFind(const char *name);
-  extern int	LinkCommand(Context ctx, int ac, char *av[], const void *arg);
-  extern int	SessionCommand(Context ctx, int ac, char *av[], const void *arg);
-  extern int	AuthnameCommand(Context ctx, int ac, char *av[], const void *arg);
+  extern int	LinkCommand(Context ctx, int ac, const char *av[], const void *arg);
+  extern int	SessionCommand(Context ctx, int ac, const char *av[], const void *arg);
+  extern int	AuthnameCommand(Context ctx, int ac, const char *av[], const void *arg);
   extern void	RecordLinkUpDownReason(Bund b, Link l, int up, const char *fmt,
 			  const char *arg, ...);
 

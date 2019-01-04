@@ -62,7 +62,7 @@ OptStat(Context ctx, Options opt, ConfInfo list)
  */
 
 void
-NoCommand(int ac, char *av[], Options opt, ConfInfo list)
+NoCommand(int ac, const char *av[], Options opt, ConfInfo list)
 {
   Do(DISABLE, ac, av, opt, list);
   Do(DENY | NO_SCOLD, ac, av, opt, list);
@@ -73,7 +73,7 @@ NoCommand(int ac, char *av[], Options opt, ConfInfo list)
  */
 
 void
-YesCommand(int ac, char *av[], Options opt, ConfInfo list)
+YesCommand(int ac, const char *av[], Options opt, ConfInfo list)
 {
   Do(ENABLE, ac, av, opt, list);
   Do(ACCEPT | NO_SCOLD, ac, av, opt, list);
@@ -84,7 +84,7 @@ YesCommand(int ac, char *av[], Options opt, ConfInfo list)
  */
 
 void
-EnableCommand(int ac, char *av[], Options opt, ConfInfo list)
+EnableCommand(int ac, const char *av[], Options opt, ConfInfo list)
 {
   Do(ENABLE, ac, av, opt, list);
 }
@@ -94,7 +94,7 @@ EnableCommand(int ac, char *av[], Options opt, ConfInfo list)
  */
 
 void
-DisableCommand(int ac, char *av[], Options opt, ConfInfo list)
+DisableCommand(int ac, const char *av[], Options opt, ConfInfo list)
 {
   Do(DISABLE, ac, av, opt, list);
 }
@@ -104,7 +104,7 @@ DisableCommand(int ac, char *av[], Options opt, ConfInfo list)
  */
 
 void
-AcceptCommand(int ac, char *av[], Options opt, ConfInfo list)
+AcceptCommand(int ac, const char *av[], Options opt, ConfInfo list)
 {
   Do(ACCEPT, ac, av, opt, list);
 }
@@ -114,7 +114,7 @@ AcceptCommand(int ac, char *av[], Options opt, ConfInfo list)
  */
 
 void
-DenyCommand(int ac, char *av[], Options opt, ConfInfo list)
+DenyCommand(int ac, const char *av[], Options opt, ConfInfo list)
 {
   Do(DENY, ac, av, opt, list);
 }

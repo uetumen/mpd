@@ -89,7 +89,7 @@
 
   static void	UdpDoClose(Link l);
   static void	UdpShutdown(Link l);
-  static int	UdpSetCommand(Context ctx, int ac, char *av[], const void *arg);
+  static int	UdpSetCommand(Context ctx, int ac, const char *av[], const void *arg);
   static void	UdpNodeUpdate(Link l);
   static int	UdpListen(Link l);
   static int	UdpUnListen(Link l);
@@ -732,7 +732,7 @@ UdpNodeUpdate(Link l)
  */
 
 static int
-UdpSetCommand(Context ctx, int ac, char *av[], const void *arg)
+UdpSetCommand(Context ctx, int ac, const char *av[], const void *arg)
 {
     UdpInfo		const pi = (UdpInfo) ctx->lnk->info;
     char		**fqdn_peer_addr = &pi->conf.fqdn_peer_addr;

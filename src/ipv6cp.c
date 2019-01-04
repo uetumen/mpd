@@ -64,7 +64,7 @@
   static void	Ipv6cpLayerDown(Fsm fp);
   static void	Ipv6cpFailure(Fsm fp, enum fsmfail reason);
 
-  static int	Ipv6cpSetCommand(Context ctx, int ac, char *av[], const void *arg);
+  static int	Ipv6cpSetCommand(Context ctx, int ac, const char *av[], const void *arg);
 
   void 		CreateInterfaceID(u_char *intid, int random);
 /*
@@ -132,7 +132,7 @@
  */
 
 int
-Ipv6cpStat(Context ctx, int ac, char *av[], const void *arg)
+Ipv6cpStat(Context ctx, int ac, const char *av[], const void *arg)
 {
   Ipv6cpState		const ipv6cp = &ctx->bund->ipv6cp;
   Fsm			fp = &ipv6cp->fsm;
@@ -503,7 +503,7 @@ Ipv6cpInput(Bund b, Mbuf bp)
  */
 
 static int
-Ipv6cpSetCommand(Context ctx, int ac, char *av[], const void *arg)
+Ipv6cpSetCommand(Context ctx, int ac, const char *av[], const void *arg)
 {
   Ipv6cpState		const ipv6cp = &ctx->bund->ipv6cp;
 

@@ -81,7 +81,7 @@ Mstrdup(const char *type, const void *src)
  */
 
 void
-Freee(void *ptr)
+Freee(const void *ptr)
 {
     if (ptr) {
 	char	**memory = ptr;
@@ -329,7 +329,7 @@ mbsplit(Mbuf bp, int cnt)
  */
 
 int
-MemStat(Context ctx, int ac, char *av[], const void *arg)
+MemStat(Context ctx, int ac, const char *av[], const void *arg)
 {
     struct typed_mem_stats stats;
     u_int	i;

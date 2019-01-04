@@ -157,7 +157,7 @@ static u_short	PppoeGetMru(Link l, int conf);
 static void	PppoeCtrlReadEvent(int type, void *arg);
 static void	PppoeConnectTimeout(void *arg);
 static void	PppoeStat(Context ctx);
-static int	PppoeSetCommand(Context ctx, int ac, char *av[], const void *arg);
+static int	PppoeSetCommand(Context ctx, int ac, const char *av[], const void *arg);
 static int	PppoeOriginated(Link l);
 static int	PppoeIsSync(Link l);
 static void	PppoeGetNode(Link l);
@@ -1673,7 +1673,7 @@ PppoeNodeUpdate(Link l)
  */
  
 static int
-PppoeSetCommand(Context ctx, int ac, char *av[], const void *arg)
+PppoeSetCommand(Context ctx, int ac, const char *av[], const void *arg)
 {
 	const PppoeInfo pi = (PppoeInfo) ctx->lnk->info;
 	const char *hookname = ETHER_DEFAULT_HOOK;

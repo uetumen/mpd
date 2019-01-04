@@ -33,7 +33,7 @@
  * INTERNAL FUNCTIONS
  */
 
-  static int	RadsrvSetCommand(Context ctx, int ac, char *av[], const void *arg);
+  static int	RadsrvSetCommand(Context ctx, int ac, const char *av[], const void *arg);
 
 /*
  * GLOBAL VARIABLES
@@ -725,7 +725,7 @@ RadsrvClose(Radsrv w)
  */
 
 int
-RadsrvStat(Context ctx, int ac, char *av[], const void *arg)
+RadsrvStat(Context ctx, int ac, const char *av[], const void *arg)
 {
     Radsrv	w = &gRadsrv;
     char	addrstr[64];
@@ -752,7 +752,7 @@ RadsrvStat(Context ctx, int ac, char *av[], const void *arg)
  */
 
 static int
-RadsrvSetCommand(Context ctx, int ac, char *av[], const void *arg) 
+RadsrvSetCommand(Context ctx, int ac, const char *av[], const void *arg) 
 {
     Radsrv	 w = &gRadsrv;
     int		port, count;

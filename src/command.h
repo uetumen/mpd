@@ -16,7 +16,7 @@
  * DEFINITIONS
  */
 
-  #define CMD_SUBMENU	((int (*)(Context ctx, int ac, char *av[], const void *arg)) 1)
+  #define CMD_SUBMENU	((int (*)(Context ctx, int ac, const char *av[], const void *arg)) 1)
   
   #define CMD_ERR_USAGE	-1
   #define CMD_ERR_UNDEF	-2
@@ -46,7 +46,7 @@
   {
     const char	*name;
     const char	*desc;
-    int		(*func)(Context ctx, int ac, char *av[], const void *arg);
+    int		(*func)(Context ctx, int ac, const char *av[], const void *arg);
     int		(*admit)(Context ctx, CmdTab cmd);
     int		priv;
     const void	*arg;
@@ -59,10 +59,10 @@
  */
 
   extern int	DoConsole(void);
-  extern int	DoCommand(Context ctx, int ac, char *av[], const char *file, int line);
-  extern int	DoCommandTab(Context ctx, CmdTab cmdlist, int ac, char *av[]);
-  extern int	HelpCommand(Context ctx, int ac, char *av[], const void *arg);
-  extern int	FindCommand(Context ctx, CmdTab cmds, char* str, CmdTab *cp);
+  extern int	DoCommand(Context ctx, int ac, const char *av[], const char *file, int line);
+  extern int	DoCommandTab(Context ctx, CmdTab cmdlist, int ac, const char *av[]);
+  extern int	HelpCommand(Context ctx, int ac, const char *av[], const void *arg);
+  extern int	FindCommand(Context ctx, CmdTab cmds, const char* str, CmdTab *cp);
   extern int	AdmitBund(Context ctx, CmdTab cmd);
   extern int	AdmitLink(Context ctx, CmdTab cmd);
   extern int	AdmitRep(Context ctx, CmdTab cmd);

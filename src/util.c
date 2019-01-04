@@ -241,7 +241,7 @@ ExecCmdNosh(int log, const char *label, const char *fmt, ...)
  */
 
 int
-ParseLine(char *line, char *av[], int max_args, int copy)
+ParseLine(char *line, const char *av[], int max_args, int copy)
 {
   int	ac;
   char	*s, *arg;
@@ -326,7 +326,7 @@ ParseLine(char *line, char *av[], int max_args, int copy)
  */
 
 void
-FreeArgs(int ac, char *av[])
+FreeArgs(int ac, const char *av[])
 {
   while (ac > 0)
     Freee(av[--ac]);
@@ -379,7 +379,7 @@ Escape(char *line)
 
 int
 ReadFile(const char *filename, const char *target,
-	int (*func)(Context ctx, int ac, char *av[], const char *file, int line), Context ctx)
+	int (*func)(Context ctx, int ac, const char *av[], const char *file, int line), Context ctx)
 {
   FILE	*fp;
   int	ac;
