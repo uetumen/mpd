@@ -73,7 +73,7 @@
  * VARIABLES
  */
 
-  extern const PhysType	gPhysTypes[];
+  extern const struct phystype *gPhysTypes[];
   extern const char *gPhysStateNames[];
 
 /*

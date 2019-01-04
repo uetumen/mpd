@@ -64,25 +64,25 @@
 
 #ifdef _WANT_DEVICE_TYPES
 #ifdef PHYSTYPE_MODEM
-    (const PhysType) &gModemPhysType,
+    &gModemPhysType,
 #endif
 #ifdef PHYSTYPE_NG_SOCKET
-    (const PhysType) &gNgPhysType,
+    &gNgPhysType,
 #endif
 #ifdef PHYSTYPE_TCP
-    (const PhysType) &gTcpPhysType,
+    &gTcpPhysType,
 #endif
 #ifdef PHYSTYPE_UDP
-    (const PhysType) &gUdpPhysType,
+    &gUdpPhysType,
 #endif
 #ifdef PHYSTYPE_PPTP
-    (const PhysType) &gPptpPhysType,
+    &gPptpPhysType,
 #endif
 #ifdef PHYSTYPE_L2TP
-    (const PhysType) &gL2tpPhysType,
+    &gL2tpPhysType,
 #endif
 #ifdef PHYSTYPE_PPPOE
-    (const PhysType) &gPppoePhysType,
+    &gPppoePhysType,
 #endif
 #endif
 

@@ -174,7 +174,7 @@ main(int ac, char *av[])
     int			ret, k;
     char		*args[MAX_ARGS];
     Context		c;
-    PhysType		pt;
+    const struct phystype *pt;
 
     gPid = getpid();
 
@@ -375,7 +375,7 @@ DoExit(int code)
     Bund	b;
     Rep		r;
     Link	l;
-    PhysType	pt;
+    const struct phystype *pt;
     int		k;
 
     gShutdownInProgress=1;
