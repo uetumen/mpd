@@ -3766,7 +3766,16 @@ IfaceSetName(Bund b, const char * ifname)
     /* Set name of interface */
     memset(&ifr, 0, sizeof(ifr));
     strlcpy(ifr.ifr_name, iface->ifname, sizeof(ifr.ifr_name));
-    ifr.ifr_data = ifname;
+
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wcast-qual"
+#endif
+    ifr.ifr_data = (char *)ifname;
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
+
     Log(LG_IFACE2, ("[%s] IFACE: setting \"%s\" name to \"%s\"",
 	b->name, iface->ifname, ifname));
 
