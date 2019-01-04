@@ -422,7 +422,7 @@ typed_mem_free(
 #if TYPED_MEM_TRACE
 	const char *file, u_int line,
 #endif
-	const char *typename, void *mem)
+	const char *typename, const void *mem)
 {
 	const int errno_save = errno;
 	struct mem_info *info;
