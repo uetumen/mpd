@@ -9,6 +9,7 @@
 #ifndef _EAP_H_
 #define	_EAP_H_
 
+#include "command.h"
 #include "mbuf.h"
 #include "timer.h"
 
