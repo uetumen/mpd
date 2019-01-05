@@ -81,7 +81,7 @@ static const u_int16_t Crc16Table[256] = {
  */
 
   static void		Escape(char *line);
-  static char		*ReadLine(FILE *fp, int *lineNum, char *result, int resultsize);
+  static char		*ReadLine(FILE *fp, int *lineNum, char *result, size_t resultsize);
 
   static char		HexVal(char c);
 
@@ -559,7 +559,8 @@ OpenConfFile(const char *name, struct configfile **cf)
 char *
 ReadFullLine(FILE *fp, int *lineNum, char *result, int resultsize)
 {
-  int		len, linelen, resultlinesize, continuation;
+  int		len, resultlinesize, continuation;
+  unsigned	linelen;
   char		line[BIG_LINE_SIZE];
   char		real_line[BIG_LINE_SIZE];
   char		*resultline;
@@ -627,7 +628,7 @@ ReadFullLine(FILE *fp, int *lineNum, char *result, int resultsize)
  */
 
 static char *
-ReadLine(FILE *fp, int *lineNum, char *result, int resultsize)
+ReadLine(FILE *fp, int *lineNum, char *result, size_t resultsize)
 {
   int		empty;
   char		*s;
@@ -1051,7 +1052,7 @@ ShowMesg(int log, const char *pref, const char *buf, int len)
 
   if (len > 0)
   {
-    if (len > sizeof(mesg) - 1)
+    if (len > (int)(sizeof(mesg) - 1))
       len = sizeof(mesg) - 1;
     memcpy(mesg, buf, len);
     mesg[len] = 0;
@@ -1094,7 +1095,7 @@ Bin2Hex(const unsigned char *bin, size_t len)
 u_char *
 Hex2Bin(char *hexstr)
 {
-  int		i;
+  unsigned	i;
   u_char	*binval;
 
   binval = Malloc(MB_UTIL, strlen(hexstr) / 2);
@@ -1197,7 +1198,7 @@ GetAnyIpAddress(struct u_addr *ipaddr, const char *ifname)
         }
         
         /* if used size is too close to allocated size retry with a larger buffer */
-        if (ifc.ifc_len + 128 < buffsize)
+        if ((unsigned)ifc.ifc_len + 128 < buffsize)
           break;
         
          Freee(ifs);
@@ -1297,7 +1298,7 @@ GetEther(struct u_addr *addr, struct sockaddr_dl *hwaddr)
 	}
 	 
 	/* if used size is too close to allocated size retry with a larger buffer */
-	if (ifc.ifc_len + 128 < buffsize)
+	if ((unsigned)ifc.ifc_len + 128 < buffsize)
 	    break;
 	 
 	Freee(ifs);
@@ -1452,7 +1453,7 @@ void
 ppp_util_ascify(char *buf, size_t bsiz, const char *data, size_t len)
 {
 	char *bp;
-	int i;
+	unsigned i;
 
 	for (bp = buf, i = 0; i < len; i++) {
 		const char ch = (char)data[i];
