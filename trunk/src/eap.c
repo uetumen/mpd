@@ -52,7 +52,7 @@
 	EapSetCommand, NULL, 2, (void *) SET_YES },
     { "no [opt ...]",			"Disable and deny option",
 	EapSetCommand, NULL, 2, (void *) SET_NO },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
 /*
@@ -225,6 +225,7 @@ EapSendNak(Link l, u_char id, u_char type)
   int		i = 0;
   u_char	nak_type = 0;
 
+  (void)type;
   for (i = 0; i < EAP_NUM_TYPES; i++) {
     if (eap->peer_types[i] != 0) {
       nak_type = eap->peer_types[i];
@@ -272,10 +273,11 @@ EapInput(Link l, AuthData auth, const u_char *pkt, u_short len)
   Auth		const a = &l->lcp.auth;
   EapInfo	const eap = &a->eap;
   int		data_len = len - 1, i, acc_type;
-  u_char	*data = NULL, type = 0;
+  const u_char	*data = NULL;
+  u_char	type = 0;
   
   if (pkt != NULL) {
-    data = data_len > 0 ? (u_char *) &pkt[1] : NULL;
+    data = data_len > 0 ? &pkt[1] : NULL;
     type = pkt[0];
   }
   
@@ -393,7 +395,8 @@ static void
 EapRadiusProxy(Link l, AuthData auth, const u_char *pkt, u_short len)
 {
   int		data_len = len - 1;
-  u_char	*data = NULL, type = 0;
+  const u_char	*data = NULL;
+  u_char	type = 0;
   Auth		const a = &l->lcp.auth;
   EapInfo	const eap = &a->eap;
   struct fsmheader	lh;
@@ -401,7 +404,7 @@ EapRadiusProxy(Link l, AuthData auth, const u_char *pkt, u_short len)
   Log(LG_AUTH, ("[%s] EAP: Proxying packet to RADIUS", l->name));
 
   if (pkt != NULL) {
-    data = data_len > 0 ? (u_char *) &pkt[1] : NULL;
+    data = data_len > 0 ? &pkt[1] : NULL;
     type = pkt[0];
   }
 
@@ -413,7 +416,7 @@ EapRadiusProxy(Link l, AuthData auth, const u_char *pkt, u_short len)
         data_len = AUTH_MAX_AUTHNAME - 1;
     }
     memset(eap->identity, 0, sizeof(eap->identity));
-    strncpy(eap->identity, (char *) data, data_len);
+    strncpy(eap->identity, data, data_len);
     Log(LG_AUTH, ("[%s] EAP: Identity: %s", l->name, eap->identity));
   }
 
@@ -558,6 +561,10 @@ int
 EapStat(Context ctx, int ac, const char *const av[], const void *arg)
 {
   EapInfo	const eap = &ctx->lnk->lcp.auth.eap;
+
+  (void)ac;
+  (void)av;
+  (void)arg;
 
   Printf("\tIdentity     : %s\r\n", eap->identity);
   Printf("EAP options\r\n");
