@@ -100,7 +100,7 @@
     u_char		exact:1;	/* true if this is an exact match */
     union {
       struct cm_exact {
-	const char *pat;		/* exact string to match */
+	char *pat;			/* exact string to match */
 	u_short	*fail;			/* failure function */
 	u_int	matched;		/* number of chars matched so far */
       }		exact;
@@ -187,7 +187,7 @@
   static void	ChatAddTimer(ChatInfo c, const char *set,
 			u_int secs, const char *label);
   static void	ChatAddMatch(ChatInfo c, int exact,
-			const char *set, const char *pat, const char *label);
+			const char *set, char *pat, const char *label);
   static void	ChatCancel(ChatInfo c, const char *set);
   static int	ChatGoto(ChatInfo c, const char *label);
   static void	ChatCall(ChatInfo c, const char *label);
@@ -904,7 +904,7 @@ ChatStop(ChatInfo c)
 
 static void
 ChatAddMatch(ChatInfo c, int exact, const char *set,
-	const char *pat, const char *label)
+	char *pat, const char *label)
 {
   ChatMatch	match, *mp;
   Link		const l = (Link) c->arg;

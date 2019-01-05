@@ -326,7 +326,7 @@ ParseLine(char *line, char *av[], int max_args, int copy)
  */
 
 void
-FreeArgs(int ac, const char *const av[])
+FreeArgs(int ac, char *av[])
 {
   while (ac > 0)
     Freee(av[--ac]);
