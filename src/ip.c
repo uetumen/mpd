@@ -16,7 +16,7 @@
  */
 
 int
-IpShowRoutes(Context ctx, int ac, const char *av[], const void *arg)
+IpShowRoutes(Context ctx, int ac, const char *const av[], const void *arg)
 {
   FILE	*fp;
   char	buf[256];
@@ -183,7 +183,7 @@ ParseRange(const char *s, struct u_range *range, u_char allow)
  */
 
 struct sockaddr_storage *
-ParseAddrPort(int ac, const char *av[], u_char allow)
+ParseAddrPort(int ac, const char *const av[], u_char allow)
 {
   static struct sockaddr_storage ss;
   struct u_addr addr;

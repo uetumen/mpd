@@ -66,7 +66,7 @@
   static Mbuf	MppcRecvResetReq(Bund b, int id, Mbuf bp, int *noAck);
   static char	*MppcDescribeBits(u_int32_t bits, char *buf, size_t len);
   static int	MppcNegotiated(Bund b, int xmit);
-  static int	MppcSetCommand(Context ctx, int ac, const char *av[], const void *arg);
+  static int	MppcSetCommand(Context ctx, int ac, const char *const av[], const void *arg);
 
   /* Encryption stuff */
   static void	MppeInitKey(Bund b, MppcInfo mppc, int dir);
@@ -814,7 +814,7 @@ done:
  */
 
 int
-MppcStat(Context ctx, int ac, const char *av[], const void *arg)
+MppcStat(Context ctx, int ac, const char *const av[], const void *arg)
 {
   MppcInfo	const mppc = &ctx->bund->ccp.mppc;
 
@@ -833,7 +833,7 @@ MppcStat(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 static int
-MppcSetCommand(Context ctx, int ac, const char *av[], const void *arg)
+MppcSetCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
   MppcInfo	const mppc = &ctx->bund->ccp.mppc;
 

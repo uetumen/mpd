@@ -198,13 +198,13 @@
   static void	ChatStop(ChatInfo c);
   static void	ChatSuccess(ChatInfo c);
   static void	ChatFailure(ChatInfo c);
-  static void	ChatIf(ChatInfo c, int ac, const char *av[]);
+  static void	ChatIf(ChatInfo c, int ac, char *av[]);
 
   static void	ChatRead(int type, void *cookie);
   static void	ChatWrite(int type, void *cookie);
   static void	ChatTimeout(int type, void *cookie);
   static int	ChatGetCmd(ChatInfo c, const char *token, int n_args);
-  static void	ChatDoCmd(ChatInfo c, int ac, const char *av[]);
+  static void	ChatDoCmd(ChatInfo c, int ac, char *av[]);
   static void	ChatDumpReadBuf(ChatInfo c);
 
   static int	ChatVarSet(ChatInfo c, const char *name,
@@ -226,7 +226,7 @@
   static char	*ChatExpandString(ChatInfo c, const char *string);
 
   static char	*ChatReadLine(ChatInfo c);
-  static int	ChatParseLine(char *line, const char *av[], int max);
+  static int	ChatParseLine(char *line, char *av[], int max);
   static int	ChatSeekToLabel(ChatInfo c, const char *label);
   static void	ChatDumpBuf(ChatInfo c, const char *buf,
 		  int len, const char *fmt, ...);
@@ -549,7 +549,7 @@ ChatRun(ChatInfo c)
     c->state == CHAT_RUNNING && (line = ChatReadLine(c)) != NULL; )
   {
     int		ac;
-    const char	*av[CHAT_MAX_ARGS];
+    char	*av[CHAT_MAX_ARGS];
 
   /* Skip labels */
 
@@ -597,7 +597,7 @@ ChatRun(ChatInfo c)
  */
 
 static void
-ChatDoCmd(ChatInfo c, int ac, const char *av[])
+ChatDoCmd(ChatInfo c, int ac, char *av[])
 {
   char	buf[200];
   u_int	secs;
@@ -765,7 +765,7 @@ ChatDoCmd(ChatInfo c, int ac, const char *av[])
  */
 
 static void
-ChatIf(ChatInfo c, int ac, const char *av[])
+ChatIf(ChatInfo c, int ac, char *av[])
 {
   char	*const arg1 = ChatExpandString(c, av[1]);
   char	*const arg2 = ChatExpandString(c, av[3]);
@@ -1698,7 +1698,7 @@ ChatReadLine(ChatInfo c)
  */
 
 static int
-ChatParseLine(char *line, const char *av[], int max)
+ChatParseLine(char *line, char *av[], int max)
 {
   return ParseLine(line, av, max, 1);
 }

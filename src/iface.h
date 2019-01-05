@@ -197,7 +197,7 @@
   extern void	IfaceIpv6IfaceDown(Bund b);
   extern void	IfaceUp(Bund b, int ready);
   extern void	IfaceDown(Bund b);
-  extern int	IfaceStat(Context ctx, int ac, const char *av[], const void *arg);
+  extern int	IfaceStat(Context ctx, int ac, const char *const av[], const void *arg);
 
   extern void	IfaceListenInput(Bund b, int proto, Mbuf pkt);
 #ifndef USE_NG_TCPMSS

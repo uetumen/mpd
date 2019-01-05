@@ -176,10 +176,11 @@ LogClose(void)
  */
 
 int
-LogCommand(Context ctx, int ac, const char *av[], const void *arg)
+LogCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
     u_int	k;
     int		bits, add;
+    const char	*s;
 
     (void)arg;
     if (ac == 0) {
@@ -196,28 +197,29 @@ LogCommand(Context ctx, int ac, const char *av[], const void *arg)
     }
 
     while (ac--) {
-	switch (**av) {
+	s = *av;
+	switch (*s) {
     	    case '+':
-		(*av)++;
+		s++;
     	    default:
 		add = TRUE;
 		break;
     	    case '-':
 		add = FALSE;
-		(*av)++;
+		s++;
 	    break;
 	}
 	for (k = 0;
-    	    k < NUM_LOG_LEVELS && strcasecmp(*av, LogOptionList[k].name);
+    	    k < NUM_LOG_LEVELS && strcasecmp(s, LogOptionList[k].name);
     	    k++);
 	if (k < NUM_LOG_LEVELS)
     	    bits = LogOptionList[k].mask;
 	else {
-    	    if (!strcasecmp(*av, "all")) {
+    	    if (!strcasecmp(s, "all")) {
 		for (bits = k = 0; k < NUM_LOG_LEVELS; k++)
 		    bits |= LogOptionList[k].mask;
     	    } else {
-		Printf("\"%s\" is unknown. Enter \"log\" for list.\r\n", *av);
+		Printf("\"%s\" is unknown. Enter \"log\" for list.\r\n", s);
 		bits = 0;
     	    }
 	}

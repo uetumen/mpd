@@ -116,7 +116,7 @@
   static void		ModemChatIdleResult(void *arg, int rslt,
 				const char *msg);
 
-  static int		ModemSetCommand(Context ctx, int ac, const char *av[], const void *arg);
+  static int		ModemSetCommand(Context ctx, int ac, const char *const av[], const void *arg);
   static int		ModemInstallNodes(Link l);
   static int		ModemGetNgStats(Link l, struct ng_async_stat *sp);
 
@@ -792,7 +792,7 @@ ModemGetNgStats(Link l, struct ng_async_stat *sp)
  */
 
 static int
-ModemSetCommand(Context ctx, int ac, const char *av[], const void *arg)
+ModemSetCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
     Link	const l = ctx->lnk;
     ModemInfo	const m = (ModemInfo) l->info;
@@ -847,25 +847,27 @@ ModemSetCommand(Context ctx, int ac, const char *av[], const void *arg)
 	case SET_WATCH:
 	    {
 		int	bit, add;
+		const char *s;
 
 		while (ac--) {
-		    switch (**av) {
+		    s = *av;
+		    switch (*s) {
 			case '+':
-			    (*av)++;
+			    s++;
 			default:
 			    add = TRUE;
 			    break;
 			case '-':
 			    add = FALSE;
-			    (*av)++;
+			    s++;
 			    break;
 		    }
-		    if (!strcasecmp(*av, "cd"))
+		    if (!strcasecmp(s, "cd"))
 			bit = TIOCM_CAR;
-		    else if (!strcasecmp(*av, "dsr"))
+		    else if (!strcasecmp(s, "dsr"))
 			bit = TIOCM_DSR;
 		    else {
-			Printf("[%s] modem signal \"%s\" is unknown\r\n", l->name, *av);
+			Printf("[%s] modem signal \"%s\" is unknown\r\n", l->name, s);
 			bit = 0;
 		    }
 		    if (add)

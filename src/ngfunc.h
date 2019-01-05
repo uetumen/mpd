@@ -93,7 +93,7 @@
 
   #ifdef USE_NG_NETFLOW
   extern int	NgFuncInitGlobalNetflow(void);
-  extern int	ShowNetflow(Context ctx, int ac, const char *av[], const void *arg);
+  extern int	ShowNetflow(Context ctx, int ac, const char *const av[], const void *arg);
   #endif
   
   extern int	NgFuncCreateIface(Bund b, char *buf, int max);

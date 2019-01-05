@@ -149,7 +149,7 @@
   /* Our physical channel ID */
   #define PHYS_CHAN(ch)		(((ch)->ctrl->id << 16) | (ch)->id)
 
-  int	PptpsStat(Context ctx, int ac, const char *av[], const void *arg);
+  int	PptpsStat(Context ctx, int ac, const char *const av[], const void *arg);
 
 /*
  * INTERNAL FUNCTIONS
@@ -2443,7 +2443,7 @@ PptpSetLinkInfo(PptpChan ch, struct pptpSetLinkInfo *info)
  */
 
 int
-PptpsStat(Context ctx, int ac, const char *av[], const void *arg)
+PptpsStat(Context ctx, int ac, const char *const av[], const void *arg)
 {
     int		k;
     char	buf1[48], buf2[48];

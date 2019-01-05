@@ -56,7 +56,7 @@
 #endif
 
   extern void	NatInit(Bund b);
-  extern int	NatStat(Context ctx, int ac, const char *av[], const void *arg);
+  extern int	NatStat(Context ctx, int ac, const char *const av[], const void *arg);
 
 #endif
 

@@ -72,7 +72,7 @@ static void AuthOpie(AuthData auth);
 
 #endif
 static const char *AuthCode(int proto, u_char code, char *buf, size_t len);
-static int AuthSetCommand(Context ctx, int ac, const char *av[], const void *arg);
+static int AuthSetCommand(Context ctx, int ac, const char *const av[], const void *arg);
 
  /* Set menu options */
 enum {
@@ -718,7 +718,7 @@ AuthStop(Link l)
  */
 
 int
-AuthStat(Context ctx, int ac, const char *av[], const void *arg)
+AuthStat(Context ctx, int ac, const char *const av[], const void *arg)
 {
 	Auth const au = &ctx->lnk->lcp.auth;
 	AuthConf const conf = &au->conf;
@@ -1043,7 +1043,7 @@ AuthGetData(char *authname, char *password, size_t passlen,
 {
 	FILE *fp;
 	int ac;
-	const char *av[20];
+	char *av[20];
 	char *line;
 
 	/* Check authname, must be non-empty */
@@ -1063,7 +1063,7 @@ AuthGetData(char *authname, char *password, size_t passlen,
 			if (av[1][0] == '!') {	/* external auth program */
 				if (AuthGetExternalPassword((av[1] + 1),
 				    authname, password, passlen) == -1) {
-					FreeArgs(ac, av);
+					FreeArgs(ac, (const char* const*)av);
 					fclose(fp);
 					return (-1);
 				}
@@ -1077,11 +1077,11 @@ AuthGetData(char *authname, char *password, size_t passlen,
 				else
 					*range_valid = FALSE;
 			}
-			FreeArgs(ac, av);
+			FreeArgs(ac, (const char* const*)av);
 			fclose(fp);
 			return (0);
 		}
-		FreeArgs(ac, av);
+		FreeArgs(ac, (const char* const*)av);
 	}
 	fclose(fp);
 
@@ -1958,7 +1958,7 @@ AuthCode(int proto, u_char code, char *buf, size_t len)
  */
 
 static int
-AuthSetCommand(Context ctx, int ac, const char *av[], const void *arg)
+AuthSetCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
 	AuthConf const autc = &ctx->lnk->lcp.auth.conf;
 	int val;

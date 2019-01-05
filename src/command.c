@@ -101,21 +101,21 @@
  */
 
   /* Commands */
-  static int	ShowVersion(Context ctx, int ac, const char *av[], const void *arg);
-  static int	ShowLayers(Context ctx, int ac, const char *av[], const void *arg);
-  static int	ShowTypes(Context ctx, int ac, const char *av[], const void *arg);
-  static int	ShowSummary(Context ctx, int ac, const char *av[], const void *arg);
-  static int	ShowSessions(Context ctx, int ac, const char *av[], const void *arg);
-  static int	ShowCustomer(Context ctx, int ac, const char *av[], const void *arg);
-  static int	ShowEvents(Context ctx, int ac, const char *av[], const void *arg);
-  static int	ShowGlobal(Context ctx, int ac, const char *av[], const void *arg);
-  static int	OpenCommand(Context ctx, int ac, const char *av[], const void *arg);
-  static int	CloseCommand(Context ctx, int ac, const char *av[], const void *arg);
-  static int	LoadCommand(Context ctx, int ac, const char *av[], const void *arg);
-  static int	ExitCommand(Context ctx, int ac, const char *av[], const void *arg);
-  static int	QuitCommand(Context ctx, int ac, const char *av[], const void *arg);
-  static int	GlobalSetCommand(Context ctx, int ac, const char *av[], const void *arg);
-  static int	SetDebugCommand(Context ctx, int ac, const char *av[], const void *arg);
+  static int	ShowVersion(Context ctx, int ac, const char *const av[], const void *arg);
+  static int	ShowLayers(Context ctx, int ac, const char *const av[], const void *arg);
+  static int	ShowTypes(Context ctx, int ac, const char *const av[], const void *arg);
+  static int	ShowSummary(Context ctx, int ac, const char *const av[], const void *arg);
+  static int	ShowSessions(Context ctx, int ac, const char *const av[], const void *arg);
+  static int	ShowCustomer(Context ctx, int ac, const char *const av[], const void *arg);
+  static int	ShowEvents(Context ctx, int ac, const char *const av[], const void *arg);
+  static int	ShowGlobal(Context ctx, int ac, const char *const av[], const void *arg);
+  static int	OpenCommand(Context ctx, int ac, const char *const av[], const void *arg);
+  static int	CloseCommand(Context ctx, int ac, const char *const av[], const void *arg);
+  static int	LoadCommand(Context ctx, int ac, const char *const av[], const void *arg);
+  static int	ExitCommand(Context ctx, int ac, const char *const av[], const void *arg);
+  static int	QuitCommand(Context ctx, int ac, const char *const av[], const void *arg);
+  static int	GlobalSetCommand(Context ctx, int ac, const char *const av[], const void *arg);
+  static int	SetDebugCommand(Context ctx, int ac, const char *const av[], const void *arg);
 
   /* Other stuff */
   static Layer	GetLayer(const char *name);
@@ -466,7 +466,7 @@
  */
 
 int
-DoCommand(Context ctx, int ac, const char *av[], const char *file, int line)
+DoCommand(Context ctx, int ac, const char *const av[], const char *file, int line)
 {
     int		rtn, i;
     char	filebuf[100], cmd[256];
@@ -530,7 +530,7 @@ DoCommand(Context ctx, int ac, const char *av[], const char *file, int line)
  */
 
 int
-DoCommandTab(Context ctx, CmdTab cmdlist, int ac, const char *av[])
+DoCommandTab(Context ctx, CmdTab cmdlist, int ac, const char *const av[])
 {
     CmdTab	cmd;
     int		rtn = 0;
@@ -597,7 +597,7 @@ FindCommand(Context ctx, CmdTab cmds, const char *str, CmdTab *cmdp)
  */
 
 static int
-GlobalSetCommand(Context ctx, int ac, const char *av[], const void *arg) 
+GlobalSetCommand(Context ctx, int ac, const char *const av[], const void *arg) 
 {
     int val;
 
@@ -791,7 +791,7 @@ GlobalSetCommand(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 int
-HelpCommand(Context ctx, int ac, const char *av[], const void *arg)
+HelpCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
   int		depth, i;
   CmdTab	menu, cmd;
@@ -858,7 +858,7 @@ HelpCommand(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 static int
-SetDebugCommand(Context ctx, int ac, const char *av[], const void *arg)
+SetDebugCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
   (void)arg;
   (void)ctx;
@@ -878,7 +878,7 @@ SetDebugCommand(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 static int
-ShowVersion(Context ctx, int ac, const char *av[], const void *arg)
+ShowVersion(Context ctx, int ac, const char *const av[], const void *arg)
 {
   (void)ac;
   (void)av;
@@ -966,7 +966,7 @@ ShowVersion(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 static int
-ShowEvents(Context ctx, int ac, const char *av[], const void *arg)
+ShowEvents(Context ctx, int ac, const char *const av[], const void *arg)
 {
   (void)ac;
   (void)av;
@@ -981,7 +981,7 @@ ShowEvents(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 static int
-ShowGlobal(Context ctx, int ac, const char *av[], const void *arg)
+ShowGlobal(Context ctx, int ac, const char *const av[], const void *arg)
 {
 #ifdef USE_NG_BPF
     int	k;
@@ -1031,7 +1031,7 @@ ShowGlobal(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 static int
-ExitCommand(Context ctx, int ac, const char *av[], const void *arg)
+ExitCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
 
     (void)ac;
@@ -1048,7 +1048,7 @@ ExitCommand(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 static int
-QuitCommand(Context ctx, int ac, const char *av[], const void *arg)
+QuitCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
     (void)ac;
     (void)av;
@@ -1065,7 +1065,7 @@ QuitCommand(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 static int
-LoadCommand(Context ctx, int ac, const char *av[], const void *arg)
+LoadCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
     char filename[128];
 #ifdef USE_FETCH
@@ -1132,7 +1132,7 @@ out:	if (fetch)
  */
 
 static int
-OpenCommand(Context ctx, int ac, const char *av[], const void *arg)
+OpenCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
     Layer	layer;
     const char	*name;
@@ -1163,7 +1163,7 @@ OpenCommand(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 static int
-CloseCommand(Context ctx, int ac, const char *av[], const void *arg)
+CloseCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
     Layer	layer;
     const char	*name;
@@ -1222,7 +1222,7 @@ GetLayer(const char *name)
  */
 
 static int
-ShowLayers(Context ctx, int ac, const char *av[], const void *arg)
+ShowLayers(Context ctx, int ac, const char *const av[], const void *arg)
 {
   size_t	k;
 
@@ -1242,7 +1242,7 @@ ShowLayers(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 static int
-ShowTypes(Context ctx, int ac, const char *av[], const void *arg)
+ShowTypes(Context ctx, int ac, const char *const av[], const void *arg)
 {
   const struct phystype	*pt;
   int		k;
@@ -1263,7 +1263,7 @@ ShowTypes(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 static int
-ShowSummary(Context ctx, int ac, const char *av[], const void *arg)
+ShowSummary(Context ctx, int ac, const char *const av[], const void *arg)
 {
   int		b, l, f;
   Bund		B;
@@ -1353,7 +1353,7 @@ ShowSummary(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 static int
-ShowSessions(Context ctx, int ac, const char *av[], const void *arg)
+ShowSessions(Context ctx, int ac, const char *const av[], const void *arg)
 {
     int		l;
     Bund	B;
@@ -1445,7 +1445,7 @@ out:
  */
 
 static int
-ShowCustomer(Context ctx, int ac, const char *av[], const void *arg)
+ShowCustomer(Context ctx, int ac, const char *const av[], const void *arg)
 {
     Link	l = ctx->lnk;
     Bund	b = ctx->bund;

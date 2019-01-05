@@ -72,7 +72,7 @@
   static void	BundBmTimeout(void *arg);
 
   static void	BundReasses(Bund b);
-  static int	BundSetCommand(Context ctx, int ac, const char *av[], const void *arg);
+  static int	BundSetCommand(Context ctx, int ac, const char *const av[], const void *arg);
 
   static void	BundNcpsUp(Bund b);
   static void	BundNcpsDown(Bund b);
@@ -918,7 +918,7 @@ BundUpdateParams(Bund b)
  */
 
 int
-BundCommand(Context ctx, int ac, const char *av[], const void *arg)
+BundCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
     Bund	sb;
     int		j, k;
@@ -964,7 +964,7 @@ BundCommand(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 int
-MSessionCommand(Context ctx, int ac, const char *av[], const void *arg)
+MSessionCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
     int		k;
 
@@ -1010,7 +1010,7 @@ MSessionCommand(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 int
-IfaceCommand(Context ctx, int ac, const char *av[], const void *arg)
+IfaceCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
     int		k;
 
@@ -1056,7 +1056,7 @@ IfaceCommand(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 int
-BundCreate(Context ctx, int ac, const char *av[], const void *arg)
+BundCreate(Context ctx, int ac, const char *const av[], const void *arg)
 {
     Bund	b, bt = NULL;
     u_char	tmpl = 0;
@@ -1162,7 +1162,7 @@ BundCreate(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 int
-BundDestroy(Context ctx, int ac, const char *av[], const void *arg)
+BundDestroy(Context ctx, int ac, const char *const av[], const void *arg)
 {
     Bund 	b;
 
@@ -1286,7 +1286,7 @@ BundShutdown(Bund b)
  */
 
 int
-BundStat(Context ctx, int ac, const char *av[], const void *arg)
+BundStat(Context ctx, int ac, const char *const av[], const void *arg)
 {
   Bund	sb;
   int	k, bw, tbw, nup;
@@ -1772,7 +1772,7 @@ BundNgShutdown(Bund b, int iface, int ppp)
  */
 
 static int
-BundSetCommand(Context ctx, int ac, const char *av[], const void *arg)
+BundSetCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
     Bund	b = ctx->bund;
     int		i, val;

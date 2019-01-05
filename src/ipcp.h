@@ -99,7 +99,7 @@
   extern int	IpcpCloseCmd(Context ctx);
   extern void	IpcpInput(Bund b, Mbuf bp);
   extern void	IpcpDefAddress(void);
-  extern int	IpcpStat(Context ctx, int ac, const char *av[], const void *arg);
+  extern int	IpcpStat(Context ctx, int ac, const char *const av[], const void *arg);
 
 #endif
 
