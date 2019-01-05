@@ -39,8 +39,8 @@ extern const struct cmdtab RepSetCmds[];
  * FUNCTIONS
  */
 
-extern int RepStat(Context ctx, int ac, const char *av[], const void *arg);
-extern int RepCommand(Context ctx, int ac, const char *av[], const void *arg);
+extern int RepStat(Context ctx, int ac, const char *const av[], const void *arg);
+extern int RepCommand(Context ctx, int ac, const char *const av[], const void *arg);
 extern int RepCreate(Link in, const char *out);
 extern void RepShutdown(Rep r);
 

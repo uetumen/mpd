@@ -55,6 +55,6 @@ extern const struct cmdtab RadsrvSetCmds[];
 extern int RadsrvInit(Radsrv c);
 extern int RadsrvOpen(Radsrv c);
 extern int RadsrvClose(Radsrv c);
-extern int RadsrvStat(Context ctx, int ac, const char *av[], const void *arg);
+extern int RadsrvStat(Context ctx, int ac, const char *const av[], const void *arg);
 
 #endif

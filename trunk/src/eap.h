@@ -107,7 +107,7 @@
   extern void	EapInput(Link l, struct authdata *auth, const u_char *pkt, u_short len);
   extern const	char *EapCode(u_char code, char *buf, size_t len);
   extern const	char *EapType(u_char type);
-  extern int	EapStat(Context ctx, int ac, const char *av[], const void *arg);
+  extern int	EapStat(Context ctx, int ac, const char *const av[], const void *arg);
 
 #endif
 

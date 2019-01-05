@@ -19,7 +19,7 @@
   extern const struct cmdtab	L2tpSetCmds[];
   extern const struct phystype	gL2tpPhysType;
 
-  extern int	L2tpsStat(Context ctx, int ac, const char *av[], const void *arg);
+  extern int	L2tpsStat(Context ctx, int ac, const char *const av[], const void *arg);
 
 #endif
 

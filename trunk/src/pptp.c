@@ -139,7 +139,7 @@
 				  const char *callingNum,
 				  const char *calledNum);
 
-  static int	PptpSetCommand(Context ctx, int ac, const char *av[], const void *arg);
+  static int	PptpSetCommand(Context ctx, int ac, const char *const av[], const void *arg);
   static int	PptpTunEQ(struct ghash *g, const void *item1, const void *item2);
   static u_int32_t	PptpTunHash(struct ghash *g, const void *item);
 
@@ -1168,7 +1168,7 @@ PptpListenUpdate(Link l)
  */
 
 static int
-PptpSetCommand(Context ctx, int ac, const char *av[], const void *arg)
+PptpSetCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
     PptpInfo		const pi = (PptpInfo) ctx->lnk->info;
     char		**fqdn_peer_addr = &pi->conf.fqdn_peer_addr;

@@ -68,7 +68,7 @@
   static void		EcpRecvResetReq(Fsm fp, int id, Mbuf bp);
   static void		EcpRecvResetAck(Fsm fp, int id, Mbuf bp);
 
-  static int		EcpSetCommand(Context ctx, int ac, const char *av[], const void *arg);
+  static int		EcpSetCommand(Context ctx, int ac, const char *const av[], const void *arg);
   static EncType	EcpFindType(int type, int *indexp);
   static const char	*EcpTypeName(int type);
 
@@ -523,7 +523,7 @@ EcpFailure(Fsm fp, enum fsmfail reason)
  */
 
 int
-EcpStat(Context ctx, int ac, const char *av[], const void *arg)
+EcpStat(Context ctx, int ac, const char *const av[], const void *arg)
 {
   EcpState	const ecp = &ctx->bund->ecp;
 
@@ -838,7 +838,7 @@ EcpSubtractBloat(Bund b, int size)
  */
 
 static int
-EcpSetCommand(Context ctx, int ac, const char *av[], const void *arg)
+EcpSetCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
   EcpState	const ecp = &ctx->bund->ecp;
 

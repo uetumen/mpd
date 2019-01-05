@@ -31,7 +31,7 @@
   extern void	IPPoolFree(char *pool, struct u_addr *ip);
   
   extern void	IPPoolInit(void);
-  extern int	IPPoolStat(Context ctx, int ac, const char *av[], const void *arg);
+  extern int	IPPoolStat(Context ctx, int ac, const char *const av[], const void *arg);
 
 #endif
 

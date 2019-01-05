@@ -615,7 +615,7 @@ PhysMsg(int type, void *arg)
  */
 
 int
-PhysStat(Context ctx, int ac, const char *av[], const void *arg)
+PhysStat(Context ctx, int ac, const char *const av[], const void *arg)
 {
     Link	const l = ctx->lnk;
 

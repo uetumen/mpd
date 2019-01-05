@@ -116,13 +116,13 @@
   extern int	ConsoleInit(Console c);
   extern int	ConsoleOpen(Console c);
   extern int	ConsoleClose(Console c);
-  extern int	ConsoleStat(Context ctx, int ac, const char *av[], const void *arg);
+  extern int	ConsoleStat(Context ctx, int ac, const char *const av[], const void *arg);
   extern Context	StdConsoleConnect(Console c);
   extern void	ConsoleShutdown(Console c);
   extern void	ConsoleCancelCleanup(void *rwlock);
 
-  extern int	UserCommand(Context ctx, int ac, const char *av[], const void *arg);
-  extern int	UserStat(Context ctx, int ac, const char *av[], const void *arg);
+  extern int	UserCommand(Context ctx, int ac, const char *const av[], const void *arg);
+  extern int	UserStat(Context ctx, int ac, const char *const av[], const void *arg);
 
 #endif
 

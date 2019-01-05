@@ -85,7 +85,7 @@
   extern Mbuf	EcpDataInput(Bund b, Mbuf bp);
   extern Mbuf	EcpDataOutput(Bund b, Mbuf bp);
   extern void	EcpSendResetReq(Fsm fp);
-  extern int	EcpStat(Context ctx, int ac, const char *av[], const void *arg);
+  extern int	EcpStat(Context ctx, int ac, const char *const av[], const void *arg);
 
   extern int	EcpsInit(void);
   extern void	EcpsShutdown(void);

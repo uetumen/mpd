@@ -322,7 +322,7 @@ AuthOutput(Link l, int proto, u_int code, u_int id,
     u_char eap_type);
 extern void AuthFinish(Link l, int which, int ok);
 extern void AuthCleanup(Link l);
-extern int AuthStat(Context ctx, int ac, const char *av[], const void *arg);
+extern int AuthStat(Context ctx, int ac, const char *const av[], const void *arg);
 extern void AuthAccountStart(Link l, int type);
 extern void AuthAccountTimeout(void *arg);
 extern AuthData AuthDataNew(Link l);

@@ -34,7 +34,7 @@
     UNSET_REDIRECT_PROTO
   };
 
-static int	NatSetCommand(Context ctx, int ac, const char *av[], const void *arg);
+static int	NatSetCommand(Context ctx, int ac, const char *const av[], const void *arg);
   
 /*
  * GLOBAL VARIABLES
@@ -116,7 +116,7 @@ NatInit(Bund b)
  */
 
 static int
-NatSetCommand(Context ctx, int ac, const char *av[], const void *arg)
+NatSetCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
   NatState	const nat = &ctx->bund->iface.nat;
   IfaceState	const iface = &ctx->bund->iface;
@@ -409,7 +409,7 @@ NatSetCommand(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 int
-NatStat(Context ctx, int ac, const char *av[], const void *arg)
+NatStat(Context ctx, int ac, const char *const av[], const void *arg)
 {
     NatState	const nat = &ctx->bund->iface.nat;
 #ifdef NG_NAT_LIBALIAS_INFO

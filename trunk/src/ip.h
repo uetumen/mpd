@@ -41,12 +41,12 @@
  * FUNCTIONS
  */
 
-  extern int	IpShowRoutes(Context ctx, int ac, const char *av[], const void *arg);
+  extern int	IpShowRoutes(Context ctx, int ac, const char *const av[], const void *arg);
   extern int	IpAddrInRange(struct u_range *range, struct u_addr *addr);
 
   extern int	ParseAddr(const char *s, struct u_addr *addr, u_char allow);
   extern int	ParseRange(const char *s, struct u_range *range, u_char allow);
-  extern struct sockaddr_storage * ParseAddrPort(int ac, const char *av[], u_char allow);
+  extern struct sockaddr_storage * ParseAddrPort(int ac, const char *const av[], u_char allow);
 
   extern sa_family_t	u_addrfamily(struct u_addr *addr);
   extern sa_family_t	u_rangefamily(struct u_range *range);

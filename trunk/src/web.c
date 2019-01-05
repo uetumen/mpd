@@ -28,7 +28,7 @@
  * INTERNAL FUNCTIONS
  */
 
-  static int	WebSetCommand(Context ctx, int ac, const char *av[], const void *arg);
+  static int	WebSetCommand(Context ctx, int ac, const char *const av[], const void *arg);
 
   static int	WebServletRun(struct http_servlet *servlet,
                          struct http_request *req, struct http_response *resp);
@@ -157,7 +157,7 @@ WebClose(Web w)
  */
 
 int
-WebStat(Context ctx, int ac, const char *av[], const void *arg)
+WebStat(Context ctx, int ac, const char *const av[], const void *arg)
 {
   Web		w = &gWeb;
   char		addrstr[64];
@@ -641,7 +641,7 @@ WebRunBinCmd(FILE *f, const char *query, int priv)
 
     for (k = 0; k < argc; k++) {
 	int	ac, rtn;
-	const char *av[MAX_CONSOLE_ARGS];
+	char *av[MAX_CONSOLE_ARGS];
 	char	*buf1;
 
 	buf1 = Malloc(MB_WEB, strlen(argv[k]) + 1);
@@ -652,7 +652,7 @@ WebRunBinCmd(FILE *f, const char *query, int priv)
 	    buf1));
 	ac = ParseLine(buf1, av, sizeof(av) / sizeof(*av), 0);
 	cs->context.errmsg[0] = 0;
-	rtn = DoCommandTab(&cs->context, gCommands, ac, av);
+	rtn = DoCommandTab(&cs->context, gCommands, ac, (const char *const *)av);
 	Freee(buf1);
 	fprintf(f, "RESULT: %d %s\n", rtn, cs->context.errmsg);
     }
@@ -700,7 +700,7 @@ WebRunCmd(FILE *f, const char *query, int priv)
     fprintf(f, "<pre>\n");
     for (k = 0; k < argc; k++) {
 	int	ac;
-	const char *av[MAX_CONSOLE_ARGS];
+	char *av[MAX_CONSOLE_ARGS];
 	char	*buf1;
 
 	buf1 = Malloc(MB_WEB, strlen(argv[k]) + 1);
@@ -714,7 +714,7 @@ WebRunCmd(FILE *f, const char *query, int priv)
 	cs->write(cs, "%s\n", buf1);
     
 	ac = ParseLine(buf1, av, sizeof(av) / sizeof(*av), 0);
-	DoCommand(&cs->context, ac, av, NULL, 0);
+	DoCommand(&cs->context, ac, (const char *const *)av, NULL, 0);
 	Freee(buf1);
     }
     fprintf(f, "</pre>\n");
@@ -841,7 +841,7 @@ WebLogger(int sev, const char *fmt, ...)
  */
 
 static int
-WebSetCommand(Context ctx, int ac, const char *av[], const void *arg) 
+WebSetCommand(Context ctx, int ac, const char *const av[], const void *arg) 
 {
   Web	 		w = &gWeb;
   int			port;

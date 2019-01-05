@@ -62,9 +62,9 @@ struct configfiles {
 extern FILE *OpenConfFile(const char *name, struct configfile **cf);
 extern int SeekToLabel(FILE *fp, const char *label, int *lineNum, struct configfile *cf);
 extern char *ReadFullLine(FILE *fp, int *lineNum, char *result, int resultlen);
-extern int ReadFile(const char *filename, const char *target, int (*func) (Context ctx, int ac, const char *av[], const char *file, int line), Context ctx);
-extern int ParseLine(char *line, const char *vec[], int max_args, int copy);
-extern void FreeArgs(int ac, const char *av[]);
+extern int ReadFile(const char *filename, const char *target, int (*func) (Context ctx, int ac, const char *const av[], const char *file, int line), Context ctx);
+extern int ParseLine(char *line, char *vec[], int max_args, int copy);
+extern void FreeArgs(int ac, const char *const av[]);
 
 extern int TcpGetListenPort(struct u_addr *addr, in_port_t port, int block);
 extern int TcpAcceptConnection(int sock, struct sockaddr_storage *addr, int block);

@@ -58,7 +58,7 @@
   static int		ConsoleUserHashEqual(struct ghash *g, const void *item1, 
 		  		const void *item2);
   static u_int32_t	ConsoleUserHash(struct ghash *g, const void *item);
-  static int	ConsoleSetCommand(Context ctx, int ac, const char *av[], const void *arg);
+  static int	ConsoleSetCommand(Context ctx, int ac, const char *const av[], const void *arg);
 
 
 /*
@@ -188,7 +188,7 @@ ConsoleCancelCleanup(void *rwlock)
  */
 
 int
-ConsoleStat(Context ctx, int ac, const char *av[], const void *arg)
+ConsoleStat(Context ctx, int ac, const char *const av[], const void *arg)
 {
   Console		c = &gConsole;
   ConsoleSession	s;
@@ -393,7 +393,7 @@ ConsoleSessionReadEvent(int type, void *cookie)
   int			n, ac, ac2, i;
   u_char		c;
   char			compl[MAX_CONSOLE_LINE], line[MAX_CONSOLE_LINE];
-  const char		*av[MAX_CONSOLE_ARGS], *av2[MAX_CONSOLE_ARGS];
+  char			*av[MAX_CONSOLE_ARGS], *av2[MAX_CONSOLE_ARGS];
   const char		*av_copy[MAX_CONSOLE_ARGS];
   char                  addrstr[INET6_ADDRSTRLEN];
 
@@ -478,7 +478,7 @@ ConsoleSessionReadEvent(int type, void *cookie)
 	strcpy(line, cmd->name);
         ac2 = ParseLine(line, av2, sizeof(av2) / sizeof(*av2), 1);
 	snprintf(&compl[strlen(compl)], sizeof(compl) - strlen(compl), "%s ", av2[0]);
-	FreeArgs(ac2, av2);
+	FreeArgs(ac2, (const char* const*)av2);
 	if (cmd->func != CMD_SUBMENU && 
 	  (i != 0 || strcmp(compl, "help ") !=0)) {
 	    i++;
@@ -501,7 +501,7 @@ ConsoleSessionReadEvent(int type, void *cookie)
       cs->cmd_len = strlen(cs->cmd);
       cs->write(cs, cs->cmd);
 notfound:
-      FreeArgs(ac, av);
+      FreeArgs(ac, (const char* const*)av);
       break;
     case CTRL('C'):
       if (cs->telnet)
@@ -618,11 +618,11 @@ success:
 	    cs->context.lnk ? cs->context.lnk->name :
 		(cs->context.bund? cs->context.bund->name : ""), 
 	    cs->user.username, cs->cmd));
-        DoCommand(&cs->context, ac, av, NULL, 0);
+        DoCommand(&cs->context, ac, (const char *const *)av, NULL, 0);
       } else {
-        HelpCommand(&cs->context, ac, av, NULL);
+        HelpCommand(&cs->context, ac, (const char *const *)av, NULL);
       }
-      FreeArgs(ac, av_copy);
+      FreeArgs(ac, (const char* const*)av_copy);
       if (cs->exit)
 	goto abort;
       cs->prompt(cs);
@@ -808,7 +808,7 @@ ConsoleUserHashEqual(struct ghash *g, const void *item1, const void *item2)
  */
 
 static int
-ConsoleSetCommand(Context ctx, int ac, const char *av[], const void *arg) 
+ConsoleSetCommand(Context ctx, int ac, const char *const av[], const void *arg) 
 {
   Console	 	c = &gConsole;
   ConsoleSession	cs = ctx->cs;
@@ -883,7 +883,7 @@ ConsoleShutdown(Console c)
  */
 
 int
-UserCommand(Context ctx, int ac, const char *av[], const void *arg) 
+UserCommand(Context ctx, int ac, const char *const av[], const void *arg) 
 {
     ConsoleUser		u;
 
@@ -920,7 +920,7 @@ UserCommand(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 int
-UserStat(Context ctx, int ac, const char *av[], const void *arg)
+UserStat(Context ctx, int ac, const char *const av[], const void *arg)
 {
     struct ghash_walk	walk;
     ConsoleUser		u;

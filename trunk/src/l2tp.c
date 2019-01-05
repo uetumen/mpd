@@ -144,7 +144,7 @@
   static void	L2tpNodeUpdate(Link l);
   static int	L2tpListen(Link l);
   static void	L2tpUnListen(Link l);
-  static int	L2tpSetCommand(Context ctx, int ac, const char *av[], const void *arg);
+  static int	L2tpSetCommand(Context ctx, int ac, const char *const av[], const void *arg);
 
   /* L2TP control callbacks */
   static ppp_l2tp_ctrl_connected_t	ppp_l2tp_ctrl_connected_cb;
@@ -1723,7 +1723,7 @@ L2tpNodeUpdate(Link l)
  */
 
 static int
-L2tpSetCommand(Context ctx, int ac, const char *av[], const void *arg)
+L2tpSetCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
     L2tpInfo		const l2tp = (L2tpInfo) ctx->lnk->info;
     char		**fqdn_peer_addr = &l2tp->conf.fqdn_peer_addr;
@@ -1803,7 +1803,7 @@ L2tpSetCommand(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 int
-L2tpsStat(Context ctx, int ac, const char *av[], const void *arg)
+L2tpsStat(Context ctx, int ac, const char *const av[], const void *arg)
 {
     struct l2tp_tun	*tun;
     struct ghash_walk	walk;

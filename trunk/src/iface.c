@@ -130,7 +130,7 @@
   static void	IfaceShutdownLimits(Bund b);
 #endif
 
-  static int	IfaceSetCommand(Context ctx, int ac, const char *av[], const void *arg);
+  static int	IfaceSetCommand(Context ctx, int ac, const char *const av[], const void *arg);
   static void	IfaceSessionTimeout(void *arg);
   static void	IfaceIdleTimeout(void *arg);
 
@@ -1513,7 +1513,7 @@ IfaceIsDemand(int proto, Mbuf pkt)
  */
 
 static int
-IfaceSetCommand(Context ctx, int ac, const char *av[], const void *arg)
+IfaceSetCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
   IfaceState	const iface = &ctx->bund->iface;
   int		empty_arg;
@@ -1738,7 +1738,7 @@ IfaceSetCommand(Context ctx, int ac, const char *av[], const void *arg)
  */
 
 int
-IfaceStat(Context ctx, int ac, const char *av[], const void *arg)
+IfaceStat(Context ctx, int ac, const char *const av[], const void *arg)
 {
     Bund	const b = ctx->bund;
     IfaceState	const iface = &b->iface;
@@ -3271,7 +3271,7 @@ IfaceSetupLimits(Bund b)
 	        char		str[ACL_LEN];
 #define	ACL_MAX_PARAMS	7	/* one more then max number of arguments */
 	        int		ac;
-	        const char	*av[ACL_MAX_PARAMS];
+	        char		*av[ACL_MAX_PARAMS];
 		int		p;
 		char		stathook[NG_HOOKSIZ];
 		struct svcs	*ss = NULL;

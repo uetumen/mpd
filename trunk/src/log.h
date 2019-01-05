@@ -151,7 +151,7 @@
   extern void	LogPrintf(const char *fmt, ...) __printflike(1, 2);
   extern void	vLogPrintf(const char *fmt, va_list args);
   extern void	LogPrintf2(const char *fmt, ...) __printflike(1, 2);
-  extern int	LogCommand(Context ctx, int ac, const char *av[], const void *arg);
+  extern int	LogCommand(Context ctx, int ac, const char *const av[], const void *arg);
   extern void	LogDumpBuf2(const u_char *buf, int len,
 			const char *fmt, ...) __printflike(3, 4);
   extern void	LogDumpBp2(Mbuf bp, const char *fmt, ...)

@@ -51,12 +51,12 @@ typedef struct optinfo *Options;
  * FUNCTIONS
  */
 
-extern void AcceptCommand(int ac, const char *av[], Options opt, ConfInfo conf);
-extern void DenyCommand(int ac, const char *av[], Options opt, ConfInfo conf);
-extern void EnableCommand(int ac, const char *av[], Options opt, ConfInfo conf);
-extern void DisableCommand(int ac, const char *av[], Options opt, ConfInfo conf);
-extern void YesCommand(int ac, const char *av[], Options opt, ConfInfo conf);
-extern void NoCommand(int ac, const char *av[], Options opt, ConfInfo conf);
+extern void AcceptCommand(int ac, const char *const av[], Options opt, ConfInfo conf);
+extern void DenyCommand(int ac, const char *const av[], Options opt, ConfInfo conf);
+extern void EnableCommand(int ac, const char *const av[], Options opt, ConfInfo conf);
+extern void DisableCommand(int ac, const char *const av[], Options opt, ConfInfo conf);
+extern void YesCommand(int ac, const char *const av[], Options opt, ConfInfo conf);
+extern void NoCommand(int ac, const char *const av[], Options opt, ConfInfo conf);
 extern void OptStat(Context ctx, Options c, ConfInfo conf);
 
 #endif

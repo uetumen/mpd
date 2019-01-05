@@ -87,7 +87,7 @@ static const u_int16_t Crc16Table[256] = {
 
   static void           IndexConfFile(FILE *fp, struct configfile **cf);
   
-  struct configfiles	*ConfigFilesIndex=NULL;
+  static struct configfiles	*ConfigFilesIndex=NULL;
 
 #undef isspace
 #define isspace(c) (((c)==' '||(c)=='\t'||(c)=='\n'||(c)=='\r')?1:0)
@@ -241,7 +241,7 @@ ExecCmdNosh(int log, const char *label, const char *fmt, ...)
  */
 
 int
-ParseLine(char *line, const char *av[], int max_args, int copy)
+ParseLine(char *line, char *av[], int max_args, int copy)
 {
   int	ac;
   char	*s, *arg;
@@ -326,7 +326,7 @@ ParseLine(char *line, const char *av[], int max_args, int copy)
  */
 
 void
-FreeArgs(int ac, const char *av[])
+FreeArgs(int ac, const char *const av[])
 {
   while (ac > 0)
     Freee(av[--ac]);
@@ -379,7 +379,7 @@ Escape(char *line)
 
 int
 ReadFile(const char *filename, const char *target,
-	int (*func)(Context ctx, int ac, const char *av[], const char *file, int line), Context ctx)
+	int (*func)(Context ctx, int ac, const char *const av[], const char *file, int line), Context ctx)
 {
   FILE	*fp;
   int	ac;
@@ -410,7 +410,7 @@ ReadFile(const char *filename, const char *target,
       break;
     }
     ac = ParseLine(line, av, sizeof(av) / sizeof(*av), 0);
-    (*func)(ctx, ac, av, filename, lineNum);
+    (*func)(ctx, ac, (const char *const *)av, filename, lineNum);
   }
 
 /* Done */
