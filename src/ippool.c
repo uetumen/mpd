@@ -28,8 +28,8 @@ struct ippool {
 
 typedef	struct ippool	*IPPool;
 
-SLIST_HEAD(, ippool)	gIPPools;
-pthread_mutex_t		gIPPoolMutex;
+static SLIST_HEAD(, ippool)	gIPPools;
+static pthread_mutex_t		gIPPoolMutex;
 
 static void	IPPoolAdd(const char *pool, struct in_addr begin, struct in_addr end);
 static int	IPPoolSetCommand(Context ctx, int ac, const char *const av[], const void *arg);
@@ -37,7 +37,7 @@ static int	IPPoolSetCommand(Context ctx, int ac, const char *const av[], const v
   const struct cmdtab IPPoolSetCmds[] = {
     { "add {pool} {start} {end}",	"Add IP range to the pool",
 	IPPoolSetCommand, NULL, 2, (void *) SET_ADD },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
 void
@@ -112,7 +112,7 @@ IPPoolAdd(const char *pool, struct in_addr begin, struct in_addr end)
     struct ippool_rec	*r;
     int			i, j, k;
     int			total;
-    u_int		c = ntohl(end.s_addr) - ntohl(begin.s_addr) + 1;
+    int			c = ntohl(end.s_addr) - ntohl(begin.s_addr) + 1;
     
     if (c > 65536) {
 	Log(LG_ERR, ("Too big IP range: %d", c));
@@ -166,6 +166,10 @@ IPPoolStat(Context ctx, int ac, const char *const av[], const void *arg)
 {
     IPPool 	p;
 
+    (void)ac;
+    (void)av;
+    (void)arg;
+
     Printf("Available IP pools:\r\n");
     MUTEX_LOCK(gIPPoolMutex);
     SLIST_FOREACH(p, &gIPPools, next) {
@@ -192,6 +196,7 @@ IPPoolStat(Context ctx, int ac, const char *const av[], const void *arg)
 static int
 IPPoolSetCommand(Context ctx, int ac, const char *const av[], const void *arg)
 {
+    (void)ctx;
     switch ((intptr_t)arg) {
     case SET_ADD:
       {
