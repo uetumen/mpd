@@ -102,6 +102,8 @@ structs_string_binify(const struct structs_type *type,
 	const int as_null = type->args[1].i;
 	char *s;
 
+	(void)ebuf;
+	(void)emax;
 	if (as_null && *ascii == '\0')
 		s = NULL;
 	else if ((s = STRDUP(mtype, ascii)) == NULL)
@@ -179,6 +181,7 @@ structs_bstring_equal(const struct structs_type *type,
 	const char *const s1 = v1;
 	const char *const s2 = v2;
 
+	(void)type;
 	return (strcmp(s1, s2) == 0);
 }
 
@@ -188,6 +191,7 @@ structs_bstring_ascify(const struct structs_type *type,
 {
 	const char *const s = data;
 
+	(void)type;
 	return (STRDUP(mtype, s));
 }
 
