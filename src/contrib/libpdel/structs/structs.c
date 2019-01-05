@@ -332,7 +332,7 @@ structs_set_binary(const struct structs_type *type, const char *name,
 			strlcpy(ebuf, strerror(errno), emax);
 		return (-1);
 	}
-	assert(clen <= code->length);
+	assert((unsigned)clen <= code->length);
 
 	/* Replace existing item, freeing it first */
 	(*type->uninit)(type, data);
@@ -628,7 +628,7 @@ structs_trav(struct structs_trav *t, const char *name,
 {
 	const char *const dot = (*name == '\0' ? "" : ".");
 	char *ename;
-	int i;
+	unsigned i;
 
 	/* Dereference through pointer(s) */
 	while (type->tclass == STRUCTS_TYPE_POINTER) {
@@ -672,7 +672,7 @@ structs_trav(struct structs_trav *t, const char *name,
 			    = (char *)ary->elems + (i * etype->size);
 
 			if (ASPRINTF(t->mtype,
-			    &ename, "%s%s%d", name, dot, i) == -1)
+			    &ename, "%s%s%u", name, dot, i) == -1)
 				return (-1);
 			if (structs_trav(t, ename, etype, edata) == -1) {
 				FREE(t->mtype, ename);
@@ -696,7 +696,7 @@ structs_trav(struct structs_trav *t, const char *name,
 			    = (char *)data + (i * etype->size);
 
 			if (ASPRINTF(t->mtype,
-			    &ename, "%s%s%d", name, dot, i) == -1)
+			    &ename, "%s%s%u", name, dot, i) == -1)
 				return (-1);
 			if (structs_trav(t, ename, etype, edata) == -1) {
 				FREE(t->mtype, ename);
