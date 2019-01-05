@@ -159,6 +159,10 @@ char *
 structs_notsupp_ascify(const struct structs_type *type,
 	const char *mtype, const void *data)
 {
+	(void)type;
+	(void)mtype;
+	(void)data;
+
 	errno = EOPNOTSUPP;
 	return (NULL);
 }
@@ -166,6 +170,9 @@ structs_notsupp_ascify(const struct structs_type *type,
 int
 structs_notsupp_init(const struct structs_type *type, void *data)
 {
+	(void)type;
+	(void)data;
+
 	errno = EOPNOTSUPP;
 	return (-1);
 }
@@ -174,6 +181,10 @@ int
 structs_notsupp_copy(const struct structs_type *type,
 	const void *from, void *to)
 {
+	(void)type;
+	(void)from;
+	(void)to;
+
 	errno = EOPNOTSUPP;
 	return (-1);
 }
@@ -182,6 +193,10 @@ int
 structs_notsupp_equal(const struct structs_type *type,
 	const void *v1, const void *v2)
 {
+	(void)type;
+	(void)v1;
+	(void)v2;
+
 	errno = EOPNOTSUPP;
 	return (-1);
 }
@@ -191,6 +206,10 @@ int
 structs_notsupp_binify(const struct structs_type *type,
 	const char *ascii, void *data, char *ebuf, size_t emax)
 {
+	(void)type;
+	(void)ascii;
+	(void)data;
+
 	strlcpy(ebuf,
 	    "parsing from ASCII is not supported by this structs type", emax);
 	errno = EOPNOTSUPP;
@@ -201,6 +220,11 @@ int
 structs_notsupp_encode(const struct structs_type *type, const char *mtype,
 	struct structs_data *code, const void *data)
 {
+	(void)type;
+	(void)mtype;
+	(void)code;
+	(void)data;
+
 	errno = EOPNOTSUPP;
 	return (-1);
 }
@@ -209,6 +233,11 @@ int
 structs_notsupp_decode(const struct structs_type *type,
 	const u_char *code, size_t cmax, void *data, char *ebuf, size_t emax)
 {
+	(void)type;
+	(void)code;
+	(void)cmax;
+	(void)data;
+
 	strlcpy(ebuf,
 	    "binary decoding is not supported by this structs type", emax);
 	errno = EOPNOTSUPP;
@@ -218,6 +247,9 @@ structs_notsupp_decode(const struct structs_type *type,
 void
 structs_nothing_free(const struct structs_type *type, void *data)
 {
+	(void)type;
+	(void)data;
+
 	return;
 }
 
