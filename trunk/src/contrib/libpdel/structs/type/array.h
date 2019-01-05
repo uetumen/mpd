@@ -81,7 +81,8 @@ struct name {								\
 	structs_array_encode,						\
 	structs_array_decode,						\
 	structs_array_free,						\
-	{ { (void *)(etype) }, { (void *)(mtype) }, { (void *)(etag) } }\
+	{ { (const void *)(etype) }, { (const void *)(mtype) },		\
+	  { (const void *)(etag) } }					\
 }
 
 __BEGIN_DECLS

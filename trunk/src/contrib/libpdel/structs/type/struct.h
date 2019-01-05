@@ -85,7 +85,7 @@ struct structs_field {
 	structs_struct_encode,						\
 	structs_struct_decode,						\
 	structs_struct_free,						\
-	{ { (void *)(flist) }, { NULL }, { NULL } }			\
+	{ { (const void *)(flist) }, { NULL }, { NULL } }		\
 }
 
 __BEGIN_DECLS
