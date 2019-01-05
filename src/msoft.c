@@ -55,9 +55,9 @@
 void
 LMPasswordHash(const char *password, u_char *hash)
 {
-  const u_char	*const clear = (u_char *) "KGS!@#$%%";
+  const u_char	*const clear = "KGS!@#$%%";
   u_char	up[14];		/* upper case password */
-  int		k;
+  unsigned	k;
 
   memset(&up, 0, sizeof(up));
   for (k = 0; k < sizeof(up) && password[k]; k++)
@@ -78,7 +78,7 @@ void
 NTPasswordHash(const char *password, u_char *hash)
 {
   u_int16_t	unipw[128];
-  int		unipwLen;
+  unsigned	unipwLen;
   MD4_CTX	md4ctx;
   const char	*s;
 
@@ -107,7 +107,7 @@ NTPasswordHashHash(const u_char *nthash, u_char *hash)
   MD4_CTX	md4ctx;
 
   MD4_Init(&md4ctx);
-  MD4_Update(&md4ctx, (u_char *) nthash, 16);
+  MD4_Update(&md4ctx, nthash, 16);
   MD4_Final(hash, &md4ctx);
 }
 
@@ -181,7 +181,14 @@ DesEncrypt(const u_char *clear, u_char *key0, u_char *cypher)
 
 /* Encrypt using key */
 
-  DES_ecb_encrypt((DES_cblock *) clear, (DES_cblock *) cypher, &ks, 1);
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wcast-qual"
+#endif
+  DES_ecb_encrypt((const_DES_cblock *) clear, (DES_cblock *) cypher, &ks, 1);
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 }
 
 /*
