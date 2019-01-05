@@ -394,7 +394,7 @@ ConsoleSessionReadEvent(int type, void *cookie)
   u_char		c;
   char			compl[MAX_CONSOLE_LINE], line[MAX_CONSOLE_LINE];
   char			*av[MAX_CONSOLE_ARGS], *av2[MAX_CONSOLE_ARGS];
-  const char		*av_copy[MAX_CONSOLE_ARGS];
+  char			*av_copy[MAX_CONSOLE_ARGS];
   char                  addrstr[INET6_ADDRSTRLEN];
 
   (void)type;
@@ -478,7 +478,7 @@ ConsoleSessionReadEvent(int type, void *cookie)
 	strcpy(line, cmd->name);
         ac2 = ParseLine(line, av2, sizeof(av2) / sizeof(*av2), 1);
 	snprintf(&compl[strlen(compl)], sizeof(compl) - strlen(compl), "%s ", av2[0]);
-	FreeArgs(ac2, (const char* const*)av2);
+	FreeArgs(ac2, av2);
 	if (cmd->func != CMD_SUBMENU && 
 	  (i != 0 || strcmp(compl, "help ") !=0)) {
 	    i++;
@@ -501,7 +501,7 @@ ConsoleSessionReadEvent(int type, void *cookie)
       cs->cmd_len = strlen(cs->cmd);
       cs->write(cs, cs->cmd);
 notfound:
-      FreeArgs(ac, (const char* const*)av);
+      FreeArgs(ac, av);
       break;
     case CTRL('C'):
       if (cs->telnet)
@@ -622,7 +622,7 @@ success:
       } else {
         HelpCommand(&cs->context, ac, (const char *const *)av, NULL);
       }
-      FreeArgs(ac, (const char* const*)av_copy);
+      FreeArgs(ac, av_copy);
       if (cs->exit)
 	goto abort;
       cs->prompt(cs);

@@ -1063,7 +1063,7 @@ AuthGetData(char *authname, char *password, size_t passlen,
 			if (av[1][0] == '!') {	/* external auth program */
 				if (AuthGetExternalPassword((av[1] + 1),
 				    authname, password, passlen) == -1) {
-					FreeArgs(ac, (const char* const*)av);
+					FreeArgs(ac, av);
 					fclose(fp);
 					return (-1);
 				}
@@ -1077,11 +1077,11 @@ AuthGetData(char *authname, char *password, size_t passlen,
 				else
 					*range_valid = FALSE;
 			}
-			FreeArgs(ac, (const char* const*)av);
+			FreeArgs(ac, av);
 			fclose(fp);
 			return (0);
 		}
-		FreeArgs(ac, (const char* const*)av);
+		FreeArgs(ac, av);
 	}
 	fclose(fp);
 

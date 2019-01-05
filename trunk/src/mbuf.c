@@ -81,10 +81,10 @@ Mstrdup(const char *type, const void *src)
  */
 
 void
-Freee(const void *ptr)
+Freee(void *ptr)
 {
     if (ptr) {
-	char	*const *memory = ptr;
+	char	**memory = ptr;
 	memory--;
 	FREE(memory[0], memory);
     }
