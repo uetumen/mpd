@@ -60,7 +60,7 @@
   	WebSetCommand, NULL, 2, (void *) SET_ENABLE },
     { "disable [opt ...]",	"Disable web option" ,
   	WebSetCommand, NULL, 2, (void *) SET_DISABLE },
-    { NULL },
+    { NULL, NULL, NULL, NULL, 0, NULL },
   };
 
 
@@ -161,6 +161,10 @@ WebStat(Context ctx, int ac, const char *const av[], const void *arg)
 {
   Web		w = &gWeb;
   char		addrstr[64];
+
+  (void)ac;
+  (void)av;
+  (void)arg;
 
   Printf("Web configuration:\r\n");
   Printf("\tState         : %s\r\n", w->srv ? "OPENED" : "CLOSED");
@@ -446,6 +450,7 @@ WebShowJSONSummary(FILE *f, int priv)
   Rep		R;
   char		buf[64],buf2[64];
 
+  (void)priv;
   int first_l = 1;
   fprintf(f, "{\"links\":[\n");
   for (b = 0; b<gNumLinks; b++) {
@@ -502,7 +507,7 @@ WebShowJSONSummary(FILE *f, int priv)
 	fprintf(f, "\"ccp\": \"%s\",\n", FsmStateName(B->ccp.fsm.state));
 	fprintf(f, "\"ecp\": \"%s\",\n", FsmStateName(B->ecp.fsm.state));
 
-	int first_l = 1;
+	first_l = 1;
 	fprintf(f, "\"links\":[\n");
 	for (l = 0; l < NG_PPP_MAX_LINKS; l++) {
 	    if ((L=B->links[l]) != NULL) {
@@ -560,7 +565,7 @@ WebShowJSONSummary(FILE *f, int priv)
 
 	fprintf(f, "\"repeater\": \"%s\",\n", R->name);
 
-	int first_l = 1;
+	first_l = 1;
 	fprintf(f, "\"links\":[\n");
 	for (l = 0; l < 2; l++) {
 	    if ((L=R->links[l]) != NULL) {
@@ -728,6 +733,7 @@ done:
 
 static void
 WebServletRunCleanup(void *cookie) {
+    (void)cookie;
     GIANT_MUTEX_UNLOCK();
 }
 
@@ -740,6 +746,7 @@ WebServletRun(struct http_servlet *servlet,
     const char *query;
     int priv = 0;
     
+    (void)servlet;
     if (Enabled(&gWeb.options, WEB_AUTH)) {
 	const char *username;
 	const char *password;
@@ -824,6 +831,7 @@ WebServletRun(struct http_servlet *servlet,
 static void	
 WebServletDestroy(struct http_servlet *servlet)
 {
+    (void)servlet;
 }
 
 static void
@@ -831,6 +839,7 @@ WebLogger(int sev, const char *fmt, ...)
 {
   va_list       args;
 
+  (void)sev;
   va_start(args, fmt);
   vLogPrintf(fmt, args);
   va_end(args);
