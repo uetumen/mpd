@@ -210,7 +210,7 @@ typed_mem_enable(void)
 	pthread_mutexattr_destroy(&mattr);
 
 	/* Fill in guard bytes */
-	for (i = 0; i < ALIGNMENT; i++) {
+	for (i = 0; i < (int)ALIGNMENT; i++) {
 		typed_mem_guard[i] = typed_mem_guard_data[
 		    i % sizeof(typed_mem_guard_data)];
 	}
@@ -422,7 +422,7 @@ typed_mem_free(
 #if TYPED_MEM_TRACE
 	const char *file, u_int line,
 #endif
-	const char *typename, const void *mem)
+	const char *typename, void *mem)
 {
 	const int errno_save = errno;
 	struct mem_info *info;
@@ -597,7 +597,7 @@ typed_mem_vasprintf(
  * Get type for a memory block.
  */
 char *
-typed_mem_type(const void *mem, char *typebuf)
+typed_mem_type(void *mem, char *typebuf)
 {
 	struct mem_info *info = NULL;
 	struct mem_info ikey;
@@ -818,6 +818,7 @@ type_cmp(struct gtree *g, const void *item1, const void *item2)
 	const struct mem_type *const type1 = item1;
 	const struct mem_type *const type2 = item2;
 
+	(void)g;
 	return (strcmp(type1->name, type2->name));
 }
 
@@ -829,6 +830,7 @@ type_print(struct gtree *g, const void *item)
 {
 	const struct mem_type *const type = item;
 
+	(void)g;
 	return (type->name);
 }
 
@@ -841,6 +843,7 @@ mem_cmp(struct gtree *g, const void *item1, const void *item2)
 	const struct mem_info *const info1 = item1;
 	const struct mem_info *const info2 = item2;
 
+	(void)g;
 	if (info1->mem < info2->mem)
 		return (-1);
 	if (info1->mem > info2->mem)
@@ -859,6 +862,7 @@ mem_print(struct gtree *g, const void *item)
 	const struct mem_info *const info = item;
 	static char buf[32];
 
+	(void)g;
 	snprintf(buf, sizeof(buf), "%p", info->mem);
 	return (buf);
 }

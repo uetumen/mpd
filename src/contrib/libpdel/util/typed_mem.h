@@ -143,7 +143,7 @@ extern void	*typed_mem_calloc(const char *file, u_int line,
 extern char	*typed_mem_strdup(const char *file, u_int line,
 			const char *type, const char *string);
 extern void	typed_mem_free(const char *file, u_int line,
-			const char *type, const void *mem);
+			const char *type, void *mem);
 extern int	typed_mem_asprintf(const char *file, u_int line,
 			const char *type, char **ret, const char *format, ...);
 extern int	typed_mem_vasprintf(const char *file, u_int line,
@@ -154,7 +154,7 @@ extern void	*typed_mem_realloc(const char *type, void *mem, size_t size);
 extern void	*typed_mem_reallocf(const char *type, void *mem, size_t size);
 extern void	*typed_mem_calloc(const char *type, size_t num, size_t size);
 extern char	*typed_mem_strdup(const char *type, const char *string);
-extern void	typed_mem_free(const char *type, const void *mem);
+extern void	typed_mem_free(const char *type, void *mem);
 extern int	typed_mem_asprintf(const char *type,
 			char **ret, const char *format, ...);
 extern int	typed_mem_vasprintf(const char *type, char **ret,
@@ -165,7 +165,7 @@ extern int	typed_mem_vasprintf(const char *type, char **ret,
 extern int	typed_mem_enable(void);
 
 /* Typed statistics routines */
-extern char	*typed_mem_type(const void *mem, char *typebuf);
+extern char	*typed_mem_type(void *mem, char *typebuf);
 extern int	typed_mem_usage(struct typed_mem_stats *stats);
 #ifndef _KERNEL
 extern void	typed_mem_dump(FILE *fp);
