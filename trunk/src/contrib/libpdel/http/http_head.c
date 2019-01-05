@@ -81,7 +81,7 @@ struct http_header {
 
 struct http_head {
 	char			*words[3];	/* first line stuff */
-	int			num_hdrs;	/* number of headers */
+	unsigned		num_hdrs;	/* number of headers */
 	struct http_header	*hdrs;		/* headers, sorted */
 };
 
@@ -136,7 +136,7 @@ void
 _http_head_free(struct http_head **headp)
 {
 	struct http_head *const head = *headp;
-	int i;
+	unsigned i;
 
 	if (head == NULL)
 		return;
@@ -160,7 +160,7 @@ struct http_head *
 _http_head_copy(struct http_head *head0)
 {
 	struct http_head *head;
-	int i;
+	unsigned i;
 
 	/* Get new header struct */
 	if ((head = _http_head_new()) == NULL)
@@ -177,7 +177,7 @@ _http_head_copy(struct http_head *head0)
 
 	/* Copy other headers */
 	for (i = 0; i < head0->num_hdrs; i++) {
-		const char *name;
+		char *name;
 		const char *value;
 
 		if (_http_head_get_by_index(head0, i, &name, &value) == -1)
@@ -200,7 +200,7 @@ fail:
  * For headers listed multiple times, this only gets the first instance.
  */
 const char *
-_http_head_get(struct http_head *head, const char *name)
+_http_head_get(struct http_head *head, char *name)
 {
 	struct http_header key;
 	struct http_header *hdr;
@@ -234,7 +234,7 @@ _http_head_num_headers(struct http_head *head)
  */
 int
 _http_head_get_by_index(struct http_head *head, u_int index,
-	const char **namep, const char **valuep)
+	char **namep, const char **valuep)
 {
 	if (index >= head->num_hdrs) {
 		errno = EINVAL;
@@ -254,7 +254,7 @@ int
 _http_head_get_headers(struct http_head *head,
 	const char **names, size_t max_names)
 {
-	int i;
+	unsigned i;
 
 	if (max_names > head->num_hdrs)
 		max_names = head->num_hdrs;
@@ -268,7 +268,7 @@ _http_head_get_headers(struct http_head *head,
  */
 int
 _http_head_set(struct http_head *head, int append,
-	const char *name, const char *valfmt, ...)
+	char *name, const char *valfmt, ...)
 {
 	va_list args;
 	int ret;
@@ -284,7 +284,7 @@ _http_head_set(struct http_head *head, int append,
  */
 int
 _http_head_vset(struct http_head *head, int append,
-	const char *name, const char *valfmt, va_list args)
+	char *name, const char *valfmt, va_list args)
 {
 	struct http_header key;
 	struct http_header *hdr;
@@ -358,7 +358,7 @@ _http_head_vset(struct http_head *head, int append,
  * Remove a header.
  */
 int
-_http_head_remove(struct http_head *head, const char *name)
+_http_head_remove(struct http_head *head, char *name)
 {
 	struct http_header key;
 	struct http_header *hdr;
@@ -416,7 +416,7 @@ http_header_cmp(const void *v1, const void *v2)
 {
 	const struct http_header *const hdrs[] = { v1, v2 };
 	int sortval[2];
-	int i, j;
+	unsigned i, j;
 
 	/* Check assigned ordering list */
 	for (i = 0; i < 2; i++) {
@@ -557,7 +557,7 @@ fail:
 int
 _http_head_write(struct http_head *head, FILE *fp)
 {
-	int i;
+	unsigned i;
 
 	for (i = 0; i < 3; i++) {
 		if (head->words[i] == NULL) {
@@ -595,10 +595,11 @@ int
 _http_head_want_keepalive(struct http_head *head)
 {
 	const char *hval;
+	static char hconn[] = HTTP_HEADER_CONNECTION;
+	static char hpconn[]= HTTP_HEADER_PROXY_CONNECTION;
 
-	return (((hval = _http_head_get(head, HTTP_HEADER_CONNECTION)) != NULL
-	      || (hval = _http_head_get(head,
-	       HTTP_HEADER_PROXY_CONNECTION)) != NULL)
+	return (((hval = _http_head_get(head, hconn)) != NULL
+	      || (hval = _http_head_get(head, hpconn)) != NULL)
 	    && strcasecmp(hval, "Keep-Alive") == 0);
 }
 
