@@ -63,17 +63,6 @@
   #define PPTP_FIND_CHAN_PNS_CID	3	/* match field vs. PNS cid */
   #define PPTP_FIND_CHAN_PAC_CID	4	/* match field vs. PAC cid */
 
-  /* Total info about a message type (except field layout) */
-  struct pptpmsginfo {
-    const char		*name;		/* name for this message type */
-    void		(*handler)();	/* message handler function */
-    u_char		isReply;	/* this is always a reply message */
-    u_char		length;		/* length of message (sans header) */
-    u_short		states;		/* states which admit this message */
-    struct pptpchanid	match;		/* how to find corresponding channel */
-    struct pptpreqrep	reqrep;		/* what kind of reply we expect */
-  };
-  typedef const struct pptpmsginfo	*PptpMsgInfo;
 
   /* Receive window size XXX */
   #define PPTP_RECV_WIN			16
@@ -135,6 +124,19 @@
     char		peer_name[MAXHOSTNAMELEN]; /* remote hostname */
   };
   typedef struct pptpctrl	*PptpCtrl;
+  typedef void (*PptpHandler)(PptpCtrl, void *);
+
+  /* Total info about a message type (except field layout) */
+  struct pptpmsginfo {
+    const char		*name;		/* name for this message type */
+    PptpHandler		handler;	/* message handler function */
+    u_char		isReply;	/* this is always a reply message */
+    u_char		length;		/* length of message (sans header) */
+    u_short		states;		/* states which admit this message */
+    struct pptpchanid	match;		/* how to find corresponding channel */
+    struct pptpreqrep	reqrep;		/* what kind of reply we expect */
+  };
+  typedef const struct pptpmsginfo	*PptpMsgInfo;
 
   struct pptplis {
     struct u_addr	self_addr;	/* local IP address */
@@ -305,91 +307,91 @@
       FALSE, sizeof(struct pptpMsgHead),
       0, { 0, 0, NULL, NULL }, { 0, 0, 0 },
     },
-    { "StartCtrlConnRequest", PptpStartCtrlConnRequest,
+    { "StartCtrlConnRequest", (PptpHandler) PptpStartCtrlConnRequest,
       FALSE, sizeof(struct pptpStartCtrlConnRequest),
       CL(IDLE),
       { 0, 0, NULL, NULL },			/* no associated channel */
       { PPTP_StartCtrlConnReply, TRUE, PPTP_DFL_REPLY_TIME },
     },
-    { "StartCtrlConnReply", PptpStartCtrlConnReply,
+    { "StartCtrlConnReply", (PptpHandler) PptpStartCtrlConnReply,
       TRUE, sizeof(struct pptpStartCtrlConnReply),
       CL(WAIT_CTL_REPLY),
       { 0, 0, NULL, NULL },			/* no associated channel */
       { 0, 0, 0 },				/* no reply expected */
     },
-    { "StopCtrlConnRequest", PptpStopCtrlConnRequest,
+    { "StopCtrlConnRequest", (PptpHandler) PptpStopCtrlConnRequest,
       FALSE, sizeof(struct pptpStopCtrlConnRequest),
       CL(WAIT_CTL_REPLY)|CL(WAIT_STOP_REPLY)|CL(ESTABLISHED),
       { 0, 0, NULL, NULL },			/* no associated channel */
       { PPTP_StopCtrlConnReply, TRUE, PPTP_STOPCCR_REPLY_TIME },
     },
-    { "StopCtrlConnReply", PptpStopCtrlConnReply,
+    { "StopCtrlConnReply", (PptpHandler) PptpStopCtrlConnReply,
       TRUE, sizeof(struct pptpStopCtrlConnReply),
       CL(WAIT_STOP_REPLY),
       { 0, 0, NULL, NULL },			/* no associated channel */
       { 0, 0, 0 },				/* no reply expected */
     },
-    { "EchoRequest", PptpEchoRequest,
+    { "EchoRequest", (PptpHandler) PptpEchoRequest,
       FALSE, sizeof(struct pptpEchoRequest),
       CL(ESTABLISHED),
       { 0, 0, NULL, NULL },			/* no associated channel */
       { PPTP_EchoReply, TRUE, PPTP_DFL_REPLY_TIME },
     },
-    { "EchoReply", PptpEchoReply,
+    { "EchoReply", (PptpHandler) PptpEchoReply,
       TRUE, sizeof(struct pptpEchoReply),
       CL(ESTABLISHED),
       { 0, 0, NULL, NULL },			/* no associated channel */
       { 0, 0, 0 },				/* no reply expected */
     },
-    { "OutCallRequest", PptpOutCallRequest,
+    { "OutCallRequest", (PptpHandler) PptpOutCallRequest,
       FALSE, sizeof(struct pptpOutCallRequest),
       CL(ESTABLISHED),
       { 0, PPTP_FIND_CHAN_MY_CID, NULL, "cid" },
       { PPTP_OutCallReply, TRUE, PPTP_OUTCALLREQ_REPLY_TIME },
     },
-    { "OutCallReply", PptpOutCallReply,
+    { "OutCallReply", (PptpHandler) PptpOutCallReply,
       TRUE, sizeof(struct pptpOutCallReply),
       CH(WAIT_OUT_REPLY),
       { PPTP_FIND_CHAN_MY_CID, PPTP_FIND_CHAN_MY_CID, "peerCid", "cid" },
       { 0, 0, 0 },				/* no reply expected */
     },
-    { "InCallRequest", PptpInCallRequest,
+    { "InCallRequest", (PptpHandler) PptpInCallRequest,
       FALSE, sizeof(struct pptpInCallRequest),
       CL(ESTABLISHED),
       { 0, PPTP_FIND_CHAN_MY_CID, NULL, "cid" },
       { PPTP_InCallReply, FALSE, PPTP_DFL_REPLY_TIME },
     },
-    { "InCallReply", PptpInCallReply,
+    { "InCallReply", (PptpHandler) PptpInCallReply,
       TRUE, sizeof(struct pptpInCallReply),
       CH(WAIT_IN_REPLY),
       { PPTP_FIND_CHAN_MY_CID, PPTP_FIND_CHAN_MY_CID, "peerCid", "cid" },
       { PPTP_InCallConn, FALSE, PPTP_INCALLREP_REPLY_TIME },
     },
-    { "InCallConn", PptpInCallConn,
+    { "InCallConn", (PptpHandler) PptpInCallConn,
       TRUE, sizeof(struct pptpInCallConn),
       CH(WAIT_CONNECT),
       { PPTP_FIND_CHAN_MY_CID, PPTP_FIND_CHAN_PEER_CID, "peerCid", "peerCid" },
       { 0, 0, 0 },				/* no reply expected */
     },
-    { "CallClearRequest", PptpCallClearRequest,
+    { "CallClearRequest", (PptpHandler) PptpCallClearRequest,
       FALSE, sizeof(struct pptpCallClearRequest),
       CH(WAIT_IN_REPLY)|CH(WAIT_ANSWER)|CH(ESTABLISHED),
       { PPTP_FIND_CHAN_PNS_CID, PPTP_FIND_CHAN_PNS_CID, "cid", "cid" },
       { PPTP_CallDiscNotify, TRUE, PPTP_DFL_REPLY_TIME },
     },
-    { "CallDiscNotify", PptpCallDiscNotify,
+    { "CallDiscNotify", (PptpHandler) PptpCallDiscNotify,
       FALSE, sizeof(struct pptpCallDiscNotify),
       CH(WAIT_OUT_REPLY)|CH(WAIT_CONNECT)|CH(WAIT_DISCONNECT)|CH(ESTABLISHED),
       { PPTP_FIND_CHAN_PAC_CID, PPTP_FIND_CHAN_PAC_CID, "cid", "cid" },
       { 0, 0, 0 },				/* no reply expected */
     },
-    { "WanErrorNotify", PptpWanErrorNotify,
+    { "WanErrorNotify", (PptpHandler) PptpWanErrorNotify,
       FALSE, sizeof(struct pptpWanErrorNotify),
       CH(ESTABLISHED),
       { PPTP_FIND_CHAN_PNS_CID, PPTP_FIND_CHAN_PNS_CID, "cid", "cid" },
       { 0, 0, 0 },				/* no reply expected */
     },
-    { "SetLinkInfo", PptpSetLinkInfo,
+    { "SetLinkInfo", (PptpHandler) PptpSetLinkInfo,
       FALSE, sizeof(struct pptpSetLinkInfo),
       CH(ESTABLISHED),
       { PPTP_FIND_CHAN_PAC_CID, PPTP_FIND_CHAN_PAC_CID, "cid", "cid" },
