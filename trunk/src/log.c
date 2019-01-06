@@ -249,7 +249,7 @@ LogPrintf(const char *fmt, ...)
 }
 
 void
-vLogPrintf(const char *fmt, va_list args)
+vLogPrintf(const char *fmt, va_list args) NO_THREAD_SAFETY_ANALYSIS
 {
     if (!SLIST_EMPTY(&gConsole.sessions)) {
 	char		buf[1000];

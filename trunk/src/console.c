@@ -176,7 +176,7 @@ ConsoleClose(Console c)
 }
 
 void
-ConsoleCancelCleanup(void *rwlock)
+ConsoleCancelCleanup(void *rwlock) NO_THREAD_SAFETY_ANALYSIS
 {
   pthread_rwlock_t p = (pthread_rwlock_t)rwlock;
 
@@ -189,6 +189,7 @@ ConsoleCancelCleanup(void *rwlock)
 
 int
 ConsoleStat(Context ctx, int ac, const char *const av[], const void *arg)
+    NO_THREAD_SAFETY_ANALYSIS
 {
   Console		c = &gConsole;
   ConsoleSession	s;
@@ -921,6 +922,7 @@ UserCommand(Context ctx, int ac, const char *const av[], const void *arg)
 
 int
 UserStat(Context ctx, int ac, const char *const av[], const void *arg)
+    NO_THREAD_SAFETY_ANALYSIS
 {
     struct ghash_walk	walk;
     ConsoleUser		u;

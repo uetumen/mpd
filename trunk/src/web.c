@@ -732,7 +732,8 @@ done:
 }
 
 static void
-WebServletRunCleanup(void *cookie) {
+WebServletRunCleanup(void *cookie) NO_THREAD_SAFETY_ANALYSIS
+{
     (void)cookie;
     GIANT_MUTEX_UNLOCK();
 }

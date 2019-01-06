@@ -68,6 +68,23 @@
   /* Do our own version of assert() so it shows up in the logs */
   #define assert(e)	((e) ? (void)0 : DoAssert(__FILE__, __LINE__, #e))
 
+#ifdef __clang__
+
+#ifndef THREAD_ANNOTATION_ATTRIBUTE__
+  #define THREAD_ANNOTATION_ATTRIBUTE__(x)   __attribute__((x))
+#else
+  #define THREAD_ANNOTATION_ATTRIBUTE__(x)
+#endif
+
+#ifndef NO_THREAD_SAFETY_ANALYSIS
+  #define NO_THREAD_SAFETY_ANALYSIS \
+	THREAD_ANNOTATION_ATTRIBUTE__(no_thread_safety_analysis)
+#else
+  #define NO_THREAD_SAFETY_ANALYSIS
+#endif
+
+#endif /* __clang__ */
+
   /* Giant Mutex handling */
   #define GIANT_MUTEX_LOCK()	assert(pthread_mutex_lock(&gGiantMutex) == 0)
   #define GIANT_MUTEX_UNLOCK()	assert(pthread_mutex_unlock(&gGiantMutex) == 0)
