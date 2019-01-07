@@ -115,6 +115,13 @@ struct http_virthost {
 				servlets;	/* registered servlets */
 };
 
+struct const_http_virthost {
+	struct http_server	*server;	/* back pointer to server */
+	const char		*host;		/* virtual hostname */
+	LIST_HEAD(,http_servlet_hook)
+				servlets;	/* registered servlets */
+};
+
 /* What a registered servlet looks like */
 struct http_servlet_hook {
 	struct http_servlet	*servlet;	/* servlet */
@@ -242,7 +249,7 @@ http_server_start(struct pevent_ctx *ctx, struct in_addr ip,
 	}
 	(void)fcntl(serv->sock, F_SETFD, 1);
 	if (setsockopt(serv->sock, SOL_SOCKET,
-	    SO_REUSEADDR, (char *)&one, sizeof(one)) == -1) {
+	    SO_REUSEADDR, &one, sizeof(one)) == -1) {
 		(*serv->logger)(LOG_ERR,
 		    "%s: %s", "setsockopt", strerror(errno));
 		goto fail;
@@ -413,7 +420,7 @@ http_server_register_servlet(struct http_server *serv,
 	const char *urlpat, int order)
 {
 	struct http_servlet_hook *hook;
-	struct http_virthost vhost_key;
+	struct const_http_virthost vhost_key;
 	int got_rwlock = 0;
 	int got_regex = 0;
 	char ebuf[128];
@@ -471,7 +478,7 @@ http_server_register_servlet(struct http_server *serv,
 	MUTEX_LOCK(&serv->mutex, serv->mutex_count);
 
 	/* Find virtual host; create a new one if necessary */
-	vhost_key.host = (char *)vhost;
+	vhost_key.host = vhost;
 	if ((hook->vhost = ghash_get(serv->vhosts, &vhost_key)) == NULL) {
 
 		/* Create a new virtual host */
@@ -973,6 +980,7 @@ http_server_ssl_pem_password_cb(char *buf, int size, int rwflag, void *udata)
 {
 	struct http_server *const serv = udata;
 
+	(void)rwflag;
 	if (serv->pkey_pw == NULL) {
 		(*serv->logger)(LOG_ERR,
 		    "SSL private key is encrypted but no key was supplied");
@@ -1009,6 +1017,7 @@ static int
 http_server_virthost_equal(struct ghash *g,
 	const void *item1, const void *item2)
 {
+	(void)g;
 	const struct http_virthost *const vhost1 = item1;
 	const struct http_virthost *const vhost2 = item2;
 
@@ -1022,6 +1031,7 @@ http_server_virthost_hash(struct ghash *g, const void *item)
 	u_int32_t hash;
 	const char *s;
 
+	(void)g;
 	for (hash = 0, s = vhost->host; *s != '\0'; s++)
 		hash = (hash * 31) + (u_char)tolower(*s);
 	return (hash);
