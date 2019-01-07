@@ -79,6 +79,11 @@ struct http_header {
 	char	*value;
 };
 
+struct const_http_header {
+	const char *name;
+	char	*value;
+};
+
 struct http_head {
 	char			*words[3];	/* first line stuff */
 	unsigned		num_hdrs;	/* number of headers */
@@ -177,7 +182,7 @@ _http_head_copy(struct http_head *head0)
 
 	/* Copy other headers */
 	for (i = 0; i < head0->num_hdrs; i++) {
-		char *name;
+		const char *name;
 		const char *value;
 
 		if (_http_head_get_by_index(head0, i, &name, &value) == -1)
@@ -200,9 +205,9 @@ fail:
  * For headers listed multiple times, this only gets the first instance.
  */
 const char *
-_http_head_get(struct http_head *head, char *name)
+_http_head_get(struct http_head *head, const char *name)
 {
-	struct http_header key;
+	struct const_http_header key;
 	struct http_header *hdr;
 	int i;
 
@@ -211,7 +216,7 @@ _http_head_get(struct http_head *head, char *name)
 		return (head->words[i]);
 
 	/* Normal headers */
-	key.name = (char *)name;
+	key.name = name;
 	if ((hdr = bsearch(&key, head->hdrs, head->num_hdrs,
 	    sizeof(*head->hdrs), http_header_cmp)) == NULL) {
 		errno = ENOENT;
@@ -234,7 +239,7 @@ _http_head_num_headers(struct http_head *head)
  */
 int
 _http_head_get_by_index(struct http_head *head, u_int index,
-	char **namep, const char **valuep)
+	const char **namep, const char **valuep)
 {
 	if (index >= head->num_hdrs) {
 		errno = EINVAL;
@@ -268,7 +273,7 @@ _http_head_get_headers(struct http_head *head,
  */
 int
 _http_head_set(struct http_head *head, int append,
-	char *name, const char *valfmt, ...)
+	const char *name, const char *valfmt, ...)
 {
 	va_list args;
 	int ret;
@@ -284,9 +289,9 @@ _http_head_set(struct http_head *head, int append,
  */
 int
 _http_head_vset(struct http_head *head, int append,
-	char *name, const char *valfmt, va_list args)
+	const char *name, const char *valfmt, va_list args)
 {
-	struct http_header key;
+	struct const_http_header key;
 	struct http_header *hdr;
 	char *value;
 	void *mem;
@@ -305,7 +310,7 @@ _http_head_vset(struct http_head *head, int append,
 	}
 
 	/* If header doesn't already exist, add it (unless special) */
-	key.name = (char *)name;
+	key.name = name;
 	if (strcasecmp(name, HTTP_HEADER_SET_COOKIE) == 0	/* XXX blech */
 	    || (hdr = bsearch(&key, head->hdrs, head->num_hdrs,
 	      sizeof(*head->hdrs), http_header_cmp)) == NULL) {
@@ -358,9 +363,9 @@ _http_head_vset(struct http_head *head, int append,
  * Remove a header.
  */
 int
-_http_head_remove(struct http_head *head, char *name)
+_http_head_remove(struct http_head *head, const char *name)
 {
-	struct http_header key;
+	struct const_http_header key;
 	struct http_header *hdr;
 	int i;
 
@@ -375,7 +380,7 @@ _http_head_remove(struct http_head *head, char *name)
 	}
 
 	/* Does header exist? */
-	key.name = (char *)name;
+	key.name = name;
 	if ((hdr = bsearch(&key, head->hdrs, head->num_hdrs,
 	    sizeof(*head->hdrs), http_header_cmp)) == NULL)
 		return (0);
@@ -595,11 +600,10 @@ int
 _http_head_want_keepalive(struct http_head *head)
 {
 	const char *hval;
-	static char hconn[] = HTTP_HEADER_CONNECTION;
-	static char hpconn[]= HTTP_HEADER_PROXY_CONNECTION;
 
-	return (((hval = _http_head_get(head, hconn)) != NULL
-	      || (hval = _http_head_get(head, hpconn)) != NULL)
+	return (((hval = _http_head_get(head, HTTP_HEADER_CONNECTION)) != NULL
+	      || (hval = _http_head_get(head,
+	       HTTP_HEADER_PROXY_CONNECTION)) != NULL)
 	    && strcasecmp(hval, "Keep-Alive") == 0);
 }
 
