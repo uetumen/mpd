@@ -48,7 +48,7 @@ __BEGIN_DECLS
  *
  * Returns NULL and sets errno if there was an error.
  */
-extern FILE	*string_buf_input(const void *buf, size_t len, int copy);
+extern FILE	*string_buf_input(void *buf, size_t len, int copy);
 
 /*
  * Create a new string output buffer. The string will be allocated

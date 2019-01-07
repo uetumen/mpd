@@ -256,7 +256,7 @@ static int	string_buf_input_close(void *arg);
  * Create a new input string buffer stream.
  */
 FILE *
-string_buf_input(const void *buf, size_t len, int copy)
+string_buf_input(void *buf, size_t len, int copy)
 {
 	struct input_buf *r;
 	int esave;
@@ -273,7 +273,7 @@ string_buf_input(const void *buf, size_t len, int copy)
 		memcpy(r->data, buf, len);
 		r->copied = 1;
 	} else
-		r->data = (char *)buf;
+		r->data = buf;
 	r->pos = 0;
 	r->len = len;
 	if ((fp = funopen(r, string_buf_input_read,
