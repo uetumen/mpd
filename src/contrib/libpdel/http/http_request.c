@@ -739,8 +739,7 @@ http_request_decode_auth(struct http_request *req)
 	const char *s;
 	char buf[128];
 	char *pw;
-	int step;
-	int len;
+	size_t len, step;
 
 	/* Initialize table (first time only) */
 	if (table[0] == 0) {
@@ -917,10 +916,10 @@ fail:		info->error = errno;
 const char *
 http_request_get_value(struct http_request *req, const char *name, int instance)
 {
-	struct http_nvp key;
+	struct const_http_nvp key;
 	struct http_nvp *nvp;
 
-	key.name = (char *)name;
+	key.name = name;
 	if ((nvp = bsearch(&key,
 	    req->nvp, req->num_nvp, sizeof(*req->nvp), nvp_cmp)) == NULL)
 		return (NULL);
@@ -1238,7 +1237,7 @@ read_string_until(const char *mtype, FILE *fp, const char *term)
 	size_t alloc = 32;
 	void *mem;
 	char *s;
-	int len = 0;
+	size_t len = 0;
 	int ch;
 
 	if ((s = MALLOC(mtype, alloc)) == NULL)
@@ -1337,7 +1336,7 @@ http_request_parse_time(const char *string)
 	};
 	struct tm whentm;
 	time_t when;
-	int i;
+	unsigned i;
 
 	for (i = 0; i < sizeof(fmts) / sizeof(*fmts); i++) {
 		memset(&whentm, 0, sizeof(whentm));

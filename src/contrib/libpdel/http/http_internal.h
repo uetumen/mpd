@@ -74,6 +74,11 @@ struct http_nvp {
 	char		*value;
 };
 
+struct const_http_nvp {
+	const char	*name;
+	char		*value;
+};
+
 /* HTTP request/response common info */
 struct http_message {
 	struct http_connection	*conn;		/* associated connection */
