@@ -121,18 +121,18 @@ extern int	_http_head_write(struct http_head *head, FILE *fp);
 extern struct	http_head *_http_head_copy(struct http_head *head);
 extern void	_http_head_reset(struct http_head *head);
 extern void	_http_head_free(struct http_head **headp);
-extern const	char *_http_head_get(struct http_head *head, char *name);
+extern const	char *_http_head_get(struct http_head *head, const char *name);
 extern int	_http_head_get_headers(struct http_head *head,
 			const char **names, size_t max_names);
 extern int	_http_head_set(struct http_head *head, int append,
-			char *name, const char *valfmt, ...)
+			const char *name, const char *valfmt, ...)
 			__printflike(4, 5);
 extern int	_http_head_vset(struct http_head *head, int append,
-			char *name, const char *valfmt, va_list args);
+			const char *name, const char *valfmt, va_list args);
 extern int	_http_head_num_headers(struct http_head *head);
 extern int	_http_head_get_by_index(struct http_head *head, u_int index,
-			char **namep, const char **valuep);
-extern int	_http_head_remove(struct http_head *head, char *name);
+			const char **namep, const char **valuep);
+extern int	_http_head_remove(struct http_head *head, const char *name);
 extern int	_http_head_err_response(struct http_head **headp, int code);
 extern int	_http_head_has_anything(struct http_head *head);
 extern int	_http_head_want_keepalive(struct http_head *head);
