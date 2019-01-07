@@ -78,7 +78,7 @@ __END_DECLS
 	structs_string_encode,						\
 	structs_string_decode,						\
 	structs_string_free,						\
-	{ { (void *)(mtype) }, { (void *)(asnull) }, { NULL } }		\
+	{ { (const void *)(mtype) }, { (void *)(asnull) }, { NULL } }		\
 }
 
 __BEGIN_DECLS

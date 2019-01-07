@@ -66,8 +66,8 @@ structs_string_equal(const struct structs_type *type,
 	const void *v1, const void *v2)
 {
 	const int as_null = type->args[1].i;
-	const char *const s1 = *((const char **)v1);
-	const char *const s2 = *((const char **)v2);
+	const char *const s1 = *((const char *const *)v1);
+	const char *const s2 = *((const char *const *)v2);
 	int empty1;
 	int empty2;
 
@@ -87,7 +87,7 @@ structs_string_ascify(const struct structs_type *type,
 	const char *mtype, const void *data)
 {
 	const int as_null = type->args[1].i;
-	const char *s = *((char **)data);
+	const char *s = *((const char *const *)data);
 
 	if (as_null && s == NULL)
 		s = "";
@@ -138,7 +138,7 @@ structs_string_decode(const struct structs_type *type,
 	size_t slen;
 
 	/* Determine length of string */
-	for (slen = 0; slen < cmax && ((char *)code)[slen] != '\0'; slen++);
+	for (slen = 0; slen < cmax && code[slen] != '\0'; slen++);
 	if (slen == cmax) {
 		strlcpy(ebuf, "encoded string is truncated", emax);
 		errno = EINVAL;
