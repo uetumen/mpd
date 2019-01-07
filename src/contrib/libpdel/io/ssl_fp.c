@@ -394,6 +394,10 @@ ssl_log(ssl_logger_t *logger, void *logarg)
 static void
 null_logger(void *arg, int sev, const char *fmt, ...)
 {
+	(void)arg;
+	(void)sev;
+	(void)fmt;
+
 	return;
 }
 
