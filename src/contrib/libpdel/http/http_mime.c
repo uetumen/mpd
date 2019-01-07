@@ -119,7 +119,7 @@ _http_request_read_mime_handler(void *arg, struct mime_part *part0, FILE *fp)
 	struct mime_part *part;
 	FILE *sb = NULL;
 	char buf[256];
-	int nr;
+	size_t nr;
 
 	/* Allocate new part structure */
 	if (mp->nalloc < mp->nparts + 1) {
@@ -289,7 +289,7 @@ void
 http_mime_multipart_free(struct mime_multipart **mpp)
 {
 	struct mime_multipart *const mp = *mpp;
-	int i;
+	unsigned i;
 
 	if (mp == NULL)
 		return;
