@@ -140,7 +140,27 @@ timeout_fp_write(void *cookie, const char *buf, int len)
 {
 	struct fdt_info *const fdt = cookie;
 
-	return (timeout_fp_readwrite(fdt, (char *)buf, len, 1));
+	struct pollfd pfd;
+	int nfds;
+
+	/* Set up write poll(2) event */
+	memset(&pfd, 0, sizeof(pfd));
+	pfd.fd = fdt->fd;
+	pfd.events = POLLWRNORM;
+
+	/* Wait for writability */
+	if ((nfds = poll(&pfd, 1, fdt->timeout * 1000)) == -1)
+		return (-1);
+
+	/* Check for timeout */
+	if (nfds == 0) {
+		errno = ETIMEDOUT;
+		return (-1);
+	}
+
+	/* Do I/O */
+	return write(fdt->fd, buf, len);
+
 }
 
 /*
