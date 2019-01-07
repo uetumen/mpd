@@ -151,35 +151,35 @@ structs_int_ascify(const struct structs_type *type,
 	switch (type->args[0].i) {
 	case 0:
 		snprintf(buf, sizeof(buf), fmt, (type->args[1].i == 1) ? 
-		    *((char *)data) : *((u_char *)data));
+		    *((const char *)data) : *((const u_char *)data));
 		break;
 	case 1:
 		snprintf(buf, sizeof(buf), fmt, (type->args[1].i == 1) ? 
-		    *((short *)data) : *((u_short *)data));
+		    *((const short *)data) : *((const u_short *)data));
 		break;
 	case 2:
 		snprintf(buf, sizeof(buf), fmt, (type->args[1].i == 1) ? 
-		    *((int *)data) : *((u_int *)data));
+		    *((const int *)data) : *((const u_int *)data));
 		break;
 	case 3:
 		snprintf(buf, sizeof(buf), fmt, (type->args[1].i == 1) ? 
-		    *((long *)data) : *((u_long *)data));
+		    *((const long *)data) : *((const u_long *)data));
 		break;
 	case 4:
 		snprintf(buf, sizeof(buf), fmt, (type->args[1].i == 1) ? 
-		    *((int8_t *)data) : *((u_int8_t *)data));
+		    *((const int8_t *)data) : *((const u_int8_t *)data));
 		break;
 	case 5:
 		snprintf(buf, sizeof(buf), fmt, (type->args[1].i == 1) ? 
-		    *((int16_t *)data) : *((u_int16_t *)data));
+		    *((const int16_t *)data) : *((const u_int16_t *)data));
 		break;
 	case 6:
 		snprintf(buf, sizeof(buf), fmt, (type->args[1].i == 1) ? 
-		    *((int32_t *)data) : *((u_int32_t *)data));
+		    *((const int32_t *)data) : *((const u_int32_t *)data));
 		break;
 	case 7:
 		snprintf(buf, sizeof(buf), fmt, (type->args[1].i == 1) ? 
-		    *((int64_t *)data) : *((u_int64_t *)data));
+		    *((const int64_t *)data) : *((const u_int64_t *)data));
 		break;
 	default:
 		errno = EDOM;
