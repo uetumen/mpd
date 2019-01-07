@@ -360,7 +360,7 @@ http_message_input_read(void *cookie, char *buf, int len)
 
 	if (msg->input_read == msg->input_len || len < 0)
 		return (0);
-	if (len > msg->input_len - msg->input_read)
+	if ((unsigned)len > msg->input_len - msg->input_read)
 		len = msg->input_len - msg->input_read;
 	if ((ret = fread(buf, 1, len, msg->conn->fp)) != len) {
 		if (ferror(msg->conn->fp))
