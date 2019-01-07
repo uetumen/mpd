@@ -197,6 +197,10 @@ http_connection_ssl_logger(void *arg, int sev, const char *fmt, ...)
 		return;
 	(*conn->logger)(sev, "%s: %s", inet_ntoa(conn->remote_ip), s);
 	FREE(TYPED_MEM_TEMP, s);
+#else
+	(void)arg;
+	(void)sev;
+	(void)fmt;
 #endif
 }
 
