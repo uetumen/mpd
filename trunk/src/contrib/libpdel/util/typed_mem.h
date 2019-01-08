@@ -41,6 +41,8 @@
 #ifndef _PDEL_UTIL_TYPED_MEM_H_
 #define _PDEL_UTIL_TYPED_MEM_H_
 
+#include <sys/cdefs.h>
+
 /*
  * Memory type to use for temporary memory that is to be free'd
  * before the calling function returns. Note: the type string
@@ -145,10 +147,12 @@ extern char	*typed_mem_strdup(const char *file, u_int line,
 extern void	typed_mem_free(const char *file, u_int line,
 			const char *type, void *mem);
 extern int	typed_mem_asprintf(const char *file, u_int line,
-			const char *type, char **ret, const char *format, ...);
+			const char *type, char **ret, const char *format, ...)
+			__printflike(5, 6);
 extern int	typed_mem_vasprintf(const char *file, u_int line,
 			const char *type, char **ret,
-			const char *format, va_list va);
+			const char *format, va_list va)
+			__printflike(5, 0);
 #else
 extern void	*typed_mem_realloc(const char *type, void *mem, size_t size);
 extern void	*typed_mem_reallocf(const char *type, void *mem, size_t size);
@@ -156,9 +160,11 @@ extern void	*typed_mem_calloc(const char *type, size_t num, size_t size);
 extern char	*typed_mem_strdup(const char *type, const char *string);
 extern void	typed_mem_free(const char *type, void *mem);
 extern int	typed_mem_asprintf(const char *type,
-			char **ret, const char *format, ...);
+			char **ret, const char *format, ...)
+			__printflike(3, 4);
 extern int	typed_mem_vasprintf(const char *type, char **ret,
-			const char *format, va_list va);
+			const char *format, va_list va)
+			__printflike(3, 0);
 #endif
 
 /* Typed memory must be enabled by calling this function before any ops */
