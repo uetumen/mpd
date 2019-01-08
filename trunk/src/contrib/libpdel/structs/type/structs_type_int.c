@@ -130,6 +130,11 @@ INTTYPES(int64, sizeof(int64_t), 7);
 			INTEGRAL TYPES
 *********************************************************************/
 
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-nonliteral"
+#endif
+
 char *
 structs_int_ascify(const struct structs_type *type,
 	const char *mtype, const void *data)
@@ -187,6 +192,10 @@ structs_int_ascify(const struct structs_type *type,
 	}
 	return (STRDUP(mtype, buf));
 }
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 
 int
 structs_int_binify(const struct structs_type *type,
