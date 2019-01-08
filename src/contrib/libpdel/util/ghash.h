@@ -79,7 +79,7 @@ typedef void	ghash_add_t(struct ghash *g, void *item);
  *
  * Supplying this function is optional.
  */
-typedef void	ghash_del_t(struct ghash *g, void *item);
+typedef void	ghash_del_t(struct ghash *g, const void *item);
 
 /**********************************************************************
 			HASH TABLE METHODS
@@ -119,7 +119,7 @@ extern void	*ghash_arg(struct ghash *g);
  *
  * Returns the item, or NULL if the item does not exist.
  */
-extern void	*ghash_get(struct ghash *g, const void *item);
+extern void	*ghash_get(struct ghash *g, void *item);
 
 /*
  * Put an item.
@@ -127,7 +127,7 @@ extern void	*ghash_get(struct ghash *g, const void *item);
  * Returns 0 if the item is new, 1 if it replaces an existing
  * item, and -1 if there was an error.
  */
-extern int	ghash_put(struct ghash *g, const void *item);
+extern int	ghash_put(struct ghash *g, void *item);
 
 /*
  * Remove an item.
