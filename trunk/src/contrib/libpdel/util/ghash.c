@@ -196,7 +196,7 @@ ghash_destroy(struct ghash **gp)
 			g->buckets[i] = e->next;
 			FREE(g->mtype.gent, e);
 			g->size--;
-			(*g->del)(g, (void *)item);
+			(*g->del)(g, item);
 		}
 	}
 	FREE(g->mtype.buckets, g->buckets);
