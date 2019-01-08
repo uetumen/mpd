@@ -993,7 +993,7 @@ http_server_ssl_pem_password_cb(char *buf, int size, int rwflag, void *udata)
 /*
  * SSL callback for logging.
  */
-static void
+static void __printflike(3, 4)
 http_server_ssl_logger(void *arg, int sev, const char *fmt, ...)
 {
 	struct http_server *const serv = arg;

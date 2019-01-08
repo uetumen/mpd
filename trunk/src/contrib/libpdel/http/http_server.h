@@ -227,7 +227,8 @@ extern void	http_response_send_redirect(struct http_response *resp,
 extern void	http_response_send_basic_auth(struct http_response *resp,
 			const char *realm);
 extern void	http_response_send_error(struct http_response *resp,
-			int code, const char *fmt, ...);
+			int code, const char *fmt, ...)
+			__printflike(3, 4);
 extern void	http_response_send_errno_error(struct http_response *resp);
 
 extern int	http_response_no_body(int code);

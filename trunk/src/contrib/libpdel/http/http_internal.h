@@ -133,7 +133,8 @@ extern int	_http_head_set(struct http_head *head, int append,
 			const char *name, const char *valfmt, ...)
 			__printflike(4, 5);
 extern int	_http_head_vset(struct http_head *head, int append,
-			const char *name, const char *valfmt, va_list args);
+			const char *name, const char *valfmt, va_list args)
+			__printflike(4, 0);
 extern int	_http_head_num_headers(struct http_head *head);
 extern int	_http_head_get_by_index(struct http_head *head, u_int index,
 			const char **namep, const char **valuep);
@@ -171,7 +172,8 @@ extern void	_http_message_send_headers(struct http_message *msg,
 			int unbuffer);
 extern void	_http_message_send_body(struct http_message *msg);
 extern int	_http_message_vset_header(struct http_message *msg, int append,
-			const char *name, const char *valfmt, va_list args);
+			const char *name, const char *valfmt, va_list args)
+			__printflike(4, 0);
 extern int	_http_message_remove_header(struct http_message *msg,
 			const char *name);
 extern const	char *_http_message_connection_header(struct http_message *msg);
