@@ -72,7 +72,7 @@ struct node {
 	struct node	*left;			/* left child */
 	struct node	*right;			/* right child */
 	struct node	*parent;		/* parent */
-	const void	*item;			/* this item */
+	void		*item;			/* this item */
 };
 
 /* The tree itself */
@@ -117,7 +117,7 @@ static gtree_del_t	gtree_default_del;
 #define NIL	(&nil)
 
 /* Note: nil->parent is modified during normal operation */
-static struct	node nil = { BLACK, NIL, NIL, NULL };
+static struct	node nil = { BLACK, NIL, NIL, NULL, NULL };
 
 /*
  * Create a new tree.
@@ -207,7 +207,7 @@ gtree_size(struct gtree *g)
  * Returns the item, or NULL if the item does not exist.
  */
 void *
-gtree_get(struct gtree *g, const void *item)
+gtree_get(struct gtree *g, void *item)
 {
 	struct node *dummy;
 	struct node *node;
@@ -237,7 +237,7 @@ gtree_get(struct gtree *g, const void *item)
  * item, and -1 if there was an error.
  */
 int
-gtree_put(struct gtree *g, const void *item)
+gtree_put(struct gtree *g, void *item)
 {
 	return (gtree_put_prealloc(g, item, NULL));
 }
@@ -246,7 +246,7 @@ gtree_put(struct gtree *g, const void *item)
  * Put an item -- common internal code.
  */
 int
-gtree_put_prealloc(struct gtree *g, const void *item, void *new_node)
+gtree_put_prealloc(struct gtree *g, void *item, void *new_node)
 {
 	struct node *parent;
 	struct node *node;
@@ -524,7 +524,7 @@ gtree_dump(struct gtree *g, void ***listp, const char *mtype)
 {
 	struct node *node;
 	void **list;
-	int i;
+	unsigned i;
 
 	/* Get items in a list */
 	if ((list = MALLOC(mtype, g->size * sizeof(*list))) == NULL)
@@ -557,6 +557,7 @@ gtree_print(struct gtree *g, FILE *fp)
 static int
 gtree_default_cmp(struct gtree *g, const void *item1, const void *item2)
 {
+	(void)g;
 	if (item1 < item2)
 		return (-1);
 	if (item1 > item2)
@@ -567,12 +568,18 @@ gtree_default_cmp(struct gtree *g, const void *item1, const void *item2)
 static void
 gtree_default_add(struct gtree *g, void *item)
 {
+	(void)g;
+	(void)item;
+
 	return;
 }
 
 static void
 gtree_default_del(struct gtree *g, void *item)
 {
+	(void)g;
+	(void)item;
+
 	return;
 }
 

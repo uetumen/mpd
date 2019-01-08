@@ -67,7 +67,7 @@
 #define MIN_LOAD_FACTOR			20	/* 1/20 of current size */
 
 struct gent {
-	const void	*item;			/* this item */
+	void		*item;			/* this item */
 	struct gent	*next;			/* next item in bucket */
 };
 
@@ -228,7 +228,7 @@ ghash_size(struct ghash *g)
  * Returns the item, or NULL if the item does not exist.
  */
 void *
-ghash_get(struct ghash *g, const void *item)
+ghash_get(struct ghash *g, void *item)
 {
 	struct gent *e;
 
@@ -249,7 +249,7 @@ ghash_get(struct ghash *g, const void *item)
  * item, and -1 if there was an error.
  */
 int
-ghash_put(struct ghash *g, const void *item)
+ghash_put(struct ghash *g, void *item)
 {
 	struct gent **start;
 	struct gent *e;
@@ -333,7 +333,7 @@ ghash_remove(struct ghash *g, const void *item)
 		struct gent *const e = *ep;
 
 		if ((*g->equal)(g, item, e->item)) {
-			const void *const oitem = e->item;
+			void *const oitem = e->item;
 
 			*ep = e->next;
 			FREE(g->mtype.gent, e);
@@ -453,7 +453,7 @@ int
 ghash_iter_remove(struct ghash_iter *iter)
 {
 	struct ghash *const g = iter->g;
-	const void *item;
+	void *item;
 	struct gent *e;
 
 	/* Sanity checks */
@@ -571,24 +571,30 @@ ghash_walk_next(struct ghash *g, struct ghash_walk *walk)
 static int
 ghash_default_equal(struct ghash *g, const void *item1, const void *item2)
 {
+	(void)g;
 	return (item1 == item2);
 }
 
 static u_int32_t
 ghash_default_hash(struct ghash *g, const void *item)
 {
+	(void)g;
 	return ((u_int32_t)(u_long)item);
 }
 
 static void
 ghash_default_add(struct ghash *g, void *item)
 {
+	(void)g;
+	(void)item;
 	return;
 }
 
 static void
-ghash_default_del(struct ghash *g, void *item)
+ghash_default_del(struct ghash *g, const void *item)
 {
+	(void)g;
+	(void)item;
 	return;
 }
 
@@ -786,7 +792,7 @@ ghash_test_add(struct ghash *g, void *item)
 }
 
 static void
-ghash_test_del(struct ghash *g, void *item)
+ghash_test_del(struct ghash *g, const void *item)
 {
 	printf("-> deleting \"%s\"\n", (char *)item);
 }

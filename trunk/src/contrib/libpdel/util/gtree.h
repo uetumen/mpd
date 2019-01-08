@@ -112,7 +112,7 @@ extern void	*gtree_arg(struct gtree *g);
  *
  * Returns the item, or NULL if the item does not exist.
  */
-extern void	*gtree_get(struct gtree *g, const void *item);
+extern void	*gtree_get(struct gtree *g, void *item);
 
 /*
  * Put an item.
@@ -123,7 +123,7 @@ extern void	*gtree_get(struct gtree *g, const void *item);
  * Note: NULL is an invalid item because gtree_get() returns
  * NULL to indicate that the item was not found.
  */
-extern int	gtree_put(struct gtree *g, const void *item);
+extern int	gtree_put(struct gtree *g, void *item);
 
 /*
  * Same as gtree_put() but caller supplies a pre-allocated
@@ -133,7 +133,7 @@ extern int	gtree_put(struct gtree *g, const void *item);
  * this memory. gtree_put_prealloc() never returns -1.
  */
 extern int	gtree_put_prealloc(struct gtree *g,
-			const void *item, void *node);
+			void *item, void *node);
 
 /*
  * Remove an item.
