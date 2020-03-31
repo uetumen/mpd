@@ -145,7 +145,7 @@ static struct UdpIf UdpIfs[UDP_MAXPARENTIFS];
  * INTERNAL VARIABLES
  */
 
-  static struct confinfo	gConfList[] = {
+  static const struct confinfo	gConfList[] = {
     { 0,	UDP_CONF_RESOLVE_ONCE,	"resolve-once"	},
     { 0,	0,			NULL		},
   };

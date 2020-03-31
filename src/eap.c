@@ -59,7 +59,7 @@
  * INTERNAL VARIABLES
  */
 
-  static struct confinfo	gConfList[] = {
+  static const struct confinfo	gConfList[] = {
     { 0,	EAP_CONF_RADIUS,	"radius-proxy"	},
     { 1,	EAP_CONF_MD5,		"md5"		},
     { 0,	0,			NULL		},

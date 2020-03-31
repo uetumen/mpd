@@ -125,7 +125,7 @@
  * INTERNAL VARIABLES
  */
 
-  static struct confinfo	gConfList[] = {
+  static const struct confinfo	gConfList[] = {
     { 0,	LINK_CONF_INCOMING,	"incoming"	},
     { 1,	LINK_CONF_PAP,		"pap"		},
     { 1,	LINK_CONF_CHAPMD5,	"chap-md5"	},
