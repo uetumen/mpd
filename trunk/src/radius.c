@@ -104,7 +104,7 @@
  * INTERNAL VARIABLES
  */
 
-  static struct confinfo	gConfList[] = {
+  static const struct confinfo	gConfList[] = {
     { 0,	RADIUS_CONF_MESSAGE_AUTHENTIC,	"message-authentic"	},
     { 0,	0,				NULL			},
   };

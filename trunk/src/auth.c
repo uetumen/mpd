@@ -140,7 +140,7 @@ static unsigned	gMaxLoginsCI = 0;
  * INTERNAL VARIABLES
  */
 
-static struct confinfo gConfList[] = {
+static const struct confinfo gConfList[] = {
 	{0, AUTH_CONF_RADIUS_AUTH, "radius-auth"},
 	{0, AUTH_CONF_RADIUS_ACCT, "radius-acct"},
 	{0, AUTH_CONF_INTERNAL, "internal"},

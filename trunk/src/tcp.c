@@ -148,7 +148,7 @@ static struct TcpIf TcpIfs[TCP_MAXPARENTIFS];
  * INTERNAL VARIABLES
  */
 
-  static struct confinfo	gConfList[] = {
+  static const struct confinfo	gConfList[] = {
     { 0,	TCP_CONF_RESOLVE_ONCE,	"resolve-once"	},
     { 0,	0,			NULL		},
   };

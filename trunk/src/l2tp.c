@@ -227,7 +227,7 @@
  * INTERNAL VARIABLES
  */
 
-  static struct confinfo	gConfList[] = {
+  static const struct confinfo	gConfList[] = {
     { 0,	L2TP_CONF_OUTCALL,	"outcall"	},
     { 0,	L2TP_CONF_HIDDEN,	"hidden"	},
     { 0,	L2TP_CONF_LENGTH,	"length"	},
