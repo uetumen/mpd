@@ -1948,7 +1948,7 @@ IfaceChangeFlags(Bund b, int clear, int set)
     memset(&ifrq, '\0', sizeof(ifrq));
     strlcpy(ifrq.ifr_name, b->iface.ifname, sizeof(ifrq.ifr_name));
     if (ioctl(s, SIOCGIFFLAGS, &ifrq) < 0) {
-	Perror("[%s] IFACE: ioctl(SIOCGIFFLAGS, %s)", b->name, b->iface.ifname);
+	Perror("[%s] IFACE: ioctl(%s, %s)", b->name, b->iface.ifname, "SIOCGIFFLAGS");
 	close(s);
 	return;
     }
@@ -1961,7 +1961,7 @@ IfaceChangeFlags(Bund b, int clear, int set)
     ifrq.ifr_flagshigh = new_flags >> 16;
 
     if (ioctl(s, SIOCSIFFLAGS, &ifrq) < 0) {
-	Perror("[%s] IFACE: ioctl(SIOCSIFFLAGS, %s)", b->name, b->iface.ifname);
+	Perror("[%s] IFACE: ioctl(%s, %s)", b->name, b->iface.ifname, "SIOCSIFFLAGS");
 	close(s);
 	return;
     }
@@ -2173,10 +2173,10 @@ IfaceCorrectMSS(Mbuf pkt, uint16_t maxmss)
   if (pkt == NULL)
     return;
 
-  iphdr = (struct ip *)MBDATAU(pkt);
+  iphdr = (struct ip *)(void *)MBDATAU(pkt);
   hlen = iphdr->ip_hl << 2;
   pktlen = MBLEN(pkt) - hlen;
-  tc = (struct tcphdr *)(MBDATAU(pkt) + hlen);
+  tc = (struct tcphdr *)(void *)(MBDATAU(pkt) + hlen);
   hlen = tc->th_off << 2;
 
   /* Invalid header length or header without options. */
@@ -2200,7 +2200,7 @@ IfaceCorrectMSS(Mbuf pkt, uint16_t maxmss)
       if (*opt == TCPOPT_MAXSEG) {
 	if (optlen != TCPOLEN_MAXSEG)
 	  continue;
-	mss = (u_int16_t *)(opt + 2);
+	mss = (u_int16_t *)(void *)(opt + 2);
 	if (ntohs(*mss) > maxmss) {
 	  accumulate = *mss;
 	  *mss = htons(maxmss);
@@ -3781,7 +3781,7 @@ IfaceSetName(Bund b, const char * ifname)
 
     if (ioctl(s, SIOCSIFNAME, (caddr_t)&ifr) < 0) {
 	if (errno != EEXIST) {
-	    Perror("[%s] IFACE: ioctl(%s, SIOCSIFNAME)", b->name, iface->ifname);
+	    Perror("[%s] IFACE: ioctl(%s, %s)", b->name, iface->ifname, "SIOCSIFNAME");
 	    close(s);
 	    return(-1);
 	}
@@ -4087,7 +4087,7 @@ IfaceAddGroup(Bund b, const char * ifgroup)
 
     i = ioctl(s, SIOCAIFGROUP, (caddr_t)&ifgr);
     if (i < 0 && i != EEXIST) {
-	Perror("[%s] IFACE: ioctl(%s, SIOCAIFGROUP)", b->name, iface->ifname);
+	Perror("[%s] IFACE: ioctl(%s, %s)", b->name, iface->ifname, "SIOCAIFGROUP");
         close(s);
         return(-1);
     }
@@ -4126,7 +4126,7 @@ IfaceDelGroup(Bund b, const char * ifgroup)
 	b->name, iface->ifname, ifgroup));
 
     if (ioctl(s, SIOCDIFGROUP, (caddr_t)&ifgr) == -1) {
-	Perror("[%s] IFACE: ioctl(%s, SIOCDIFGROUP)", b->name, iface->ifname);
+	Perror("[%s] IFACE: ioctl(%s, %s)", b->name, iface->ifname, "SIOCDIFGROUP");
 	close(s);
 	return(-1);
     }
