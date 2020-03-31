@@ -416,7 +416,7 @@ EapRadiusProxy(Link l, AuthData auth, const u_char *pkt, u_short len)
         data_len = AUTH_MAX_AUTHNAME - 1;
     }
     memset(eap->identity, 0, sizeof(eap->identity));
-    strncpy(eap->identity, data, data_len);
+    strncpy(eap->identity, (char *)data, data_len);
     Log(LG_AUTH, ("[%s] EAP: Identity: %s", l->name, eap->identity));
   }
 
