@@ -448,7 +448,7 @@ ChapInput(Link l, AuthData auth, const u_char *pkt, u_short len)
       }
 
       /* Log message */
-      ShowMesg(LG_AUTH, l->name, (char *)pkt, len);
+      ShowMesg(LG_AUTH, l->name, pkt, len);
       AuthFinish(l, AUTH_SELF_TO_PEER, auth->code == CHAP_SUCCESS);
       break;
       
