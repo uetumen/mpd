@@ -55,7 +55,7 @@
 void
 LMPasswordHash(const char *password, u_char *hash)
 {
-  const u_char*	 clear = (u_char *)"KGS!@#$%%";
+  const u_char*	 clear = (const u_char *)"KGS!@#$%%";
   u_char	up[14];		/* upper case password */
   unsigned	k;
 
