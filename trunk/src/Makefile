@@ -162,7 +162,7 @@ STDSRCS+=	web.c
 LDADD+=		-lssl
 .endif
 
-CFLAGS+=	-DNOLIBPDEL -I./contrib/libpdel
+CFLAGS+=	-DNOLIBPDEL -I. -I./contrib/libpdel
 PDPATH1=	contrib/libpdel/util:contrib/libpdel/structs
 PDPATH2=	contrib/libpdel/structs/type
 .if defined ( NOWEB )

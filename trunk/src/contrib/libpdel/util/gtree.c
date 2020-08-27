@@ -58,6 +58,9 @@
 #include "util/gtree.h"
 #include "util/typed_mem.h"
 
+#include "defs.h"
+#include "log.h"
+
 /* Enabled debug tracing: only use this when keys are strings */
 #define GTREE_TRACE	0
 
@@ -1091,7 +1094,7 @@ gtree_assert(int pred, const char *s, const char *func, int line)
 {
 	if (pred)
 		return;
-	printf("FAILURE: %s:%u: %s\n", func, line, s);
+	Perror("FAILURE: %s:%u: %s\n", func, line, s);
 	gtree_print(g, stdout);
 	kill(getpid(), SIGABRT);
 }
