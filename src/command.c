@@ -1412,7 +1412,7 @@ ShowSessions(Context ctx, int ac, const char *const av[], const void *arg)
 		case SHOW_PEER:
 		    if (strcmp(av[0], peer))
 			continue;
-			break;
+		    break;
 		default:
 		    return (-1);
 	    }

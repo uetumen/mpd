@@ -355,10 +355,10 @@ UdpClose(Link l)
 static void
 UdpShutdown(Link l)
 {
-    UdpInfo const pi = (UdpInfo) l->info;
+	UdpInfo const pi = (UdpInfo) l->info;
 
-    if (pi->conf.fqdn_peer_addr)
-        Freee(pi->conf.fqdn_peer_addr);
+	if (pi->conf.fqdn_peer_addr)
+		Freee(pi->conf.fqdn_peer_addr);
 
 	UdpDoClose(l);
 	UdpUnListen(l);
