@@ -553,10 +553,10 @@ TcpClose(Link l)
 static void
 TcpShutdown(Link l)
 {
-    TcpInfo const pi = (TcpInfo) l->info;
+	TcpInfo const pi = (TcpInfo) l->info;
 
-    if (pi->conf.fqdn_peer_addr)
-        Freee(pi->conf.fqdn_peer_addr);
+	if (pi->conf.fqdn_peer_addr)
+		Freee(pi->conf.fqdn_peer_addr);
 
 	TcpDoClose(l);
 	TcpUnListen(l);
