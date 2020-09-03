@@ -459,6 +459,7 @@ AuthInput(Link l, int proto, Mbuf bp)
 	u_char *pkt;
 	char buf[16];
 	u_short len;
+	uint16_t fsmh_len;
 
 	/* Sanity check */
 	if (l->lcp.phase != PHASE_AUTHENTICATE && l->lcp.phase != PHASE_NETWORK) {
@@ -475,26 +476,36 @@ AuthInput(Link l, int proto, Mbuf bp)
 		mbfree(bp);
 		return;
 	}
-	auth = AuthDataNew(l);
-	auth->proto = proto;
 
 	bp = mbread(bp, &fsmh, sizeof(fsmh));
-	if (len > ntohs(fsmh.length))
-		len = ntohs(fsmh.length);
-	len -= sizeof(fsmh);
 
+	fsmh_len = ntohs(fsmh.length);
+	if (len > fsmh_len) {
+		/* Sanity check length */
+		if (fsmh_len < sizeof(fsmh)) {
+		    Log(LG_ERR | LG_AUTH, ("[%s] AUTH: bad length: says %hu, rec'd %hu",
+			l->name, fsmh_len, len));
+		    mbfree(bp);
+		    return;
+		}
+		len = fsmh_len;
+	}
+
+	len -= sizeof(fsmh);
 	pkt = MBDATA(bp);
 
 	if (proto == PROTO_EAP && bp) {
-		Log(LG_AUTH, ("[%s] %s: rec'd %s #%d len: %d, type: %s", l->name,
+		Log(LG_AUTH, ("[%s] %s: rec'd %s #%d len: %hu, type: %s", l->name,
 		    ProtoName(proto), AuthCode(proto, fsmh.code, buf, sizeof(buf)), fsmh.id,
-		    ntohs(fsmh.length), EapType(pkt[0])));
+		    fsmh_len, EapType(pkt[0])));
 	} else {
-		Log(LG_AUTH, ("[%s] %s: rec'd %s #%d len: %d", l->name,
+		Log(LG_AUTH, ("[%s] %s: rec'd %s #%d len: %hu", l->name,
 		    ProtoName(proto), AuthCode(proto, fsmh.code, buf, sizeof(buf)), fsmh.id,
-		    ntohs(fsmh.length)));
+		    fsmh_len));
 	}
 
+	auth = AuthDataNew(l);
+	auth->proto = proto;
 	auth->id = fsmh.id;
 	auth->code = fsmh.code;
 	/* Status defaults to undefined */
