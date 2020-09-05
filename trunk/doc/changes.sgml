@@ -17,7 +17,7 @@
 	<item> Changes:
 	<itemize>
 	  <item> Improve compatibility with new implementation of ipfw tables
-	    in the FreeBSD 11 when ipfw table delete command takes
+	    for FreeBSD versions when ipfw table delete command takes
 	    list of addresses.
 	  </item>
 	  <item> Use only 64-bit counters on modern FreeBSD.
@@ -34,6 +34,13 @@
 	    might lead to unexpected termination of the mpd5 process.
 	    Installations not using RADIUS or not using %aX templates
 	    in RADIUS attributes were not affected.
+	  </item>
+	  <item> Fix buffer overflow in parsing of L2TP control packets
+	    introduced in version 4.0 that initially brought in L2TP support:
+	    a specially crafted incoming L2TP control packet
+	    might lead to unexpected termination of the process.
+	    Installations not using L2TP clients nor L2TP server configuration
+	    were not affected.
 	  </item>
 	</itemize>
 	</item>
