@@ -550,7 +550,7 @@ do {									\
 
 #define AVP_MEMCPY_OFF(field, offset)					\
 do {									\
-	if (avp->vlen >= offset)					\
+	if (avp->vlen > offset)						\
 	    memcpy(ptrs->field, (char *)avp->value + offset, avp->vlen - offset);	\
 } while (0)
 
