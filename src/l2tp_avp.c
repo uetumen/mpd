@@ -518,7 +518,7 @@ ppp_l2tp_avp_list2ptrs(const struct ppp_l2tp_avp_list *list)
 	struct ppp_l2tp_avp_ptrs *ptrs;
 	unsigned i;
 
-	/* Macro to allocate one pointer structure */
+	/* Macro to allocate one pointer structure. Malloc zeroes area. */
 #define AVP_ALLOC(field)						\
 do {									\
 	size_t _size = sizeof(*ptrs->field);				\
@@ -528,6 +528,30 @@ do {									\
 	_size += 16;							\
 	Freee(ptrs->field);				\
 	ptrs->field = Malloc(AVP_PTRS_MTYPE, _size);			\
+} while (0)
+
+#define AVP_STORE8(field, offset)					\
+do {									\
+	if (avp->vlen > offset)						\
+	    ptrs->field = ptr8[offset];					\
+} while (0)
+
+#define AVP_STORE16(field, offset)					\
+do {									\
+	if (avp->vlen >= (offset + 1) * sizeof(u_int16_t))		\
+	    ptrs->field = ntohs(ptr16[offset]);				\
+} while (0)
+
+#define AVP_STORE32(field)					\
+do {									\
+	if (avp->vlen >= sizeof(u_int32_t))				\
+	    ptrs->field = ntohl(ptr32[0]);				\
+} while (0)
+
+#define AVP_MEMCPY_OFF(field, offset)					\
+do {									\
+	if (avp->vlen >= offset)					\
+	    memcpy(ptrs->field, (char *)avp->value + offset, avp->vlen - offset);	\
 } while (0)
 
 	/* Create new pointers structure */
@@ -545,44 +569,46 @@ do {									\
 		switch (avp->type) {
 		case AVP_MESSAGE_TYPE:
 			AVP_ALLOC(message);
-			ptrs->message->mesgtype = ntohs(ptr16[0]);
+			AVP_STORE16(message->mesgtype, 0);
 			break;
 		case AVP_RESULT_CODE:
 			AVP_ALLOC(errresultcode);
-			ptrs->errresultcode->result = ntohs(ptr16[0]);
-			if (avp->vlen > 2)
-				ptrs->errresultcode->error = ntohs(ptr16[1]);
-			if (avp->vlen > 4) {
-				memcpy(ptrs->errresultcode->errmsg,
-				    (char *)avp->value + 4, avp->vlen - 4);
-			}
+			AVP_STORE16(errresultcode->result, 0);
+			AVP_STORE16(errresultcode->error, 1);
+			AVP_MEMCPY_OFF(errresultcode->errmsg, 4);
 			break;
 		case AVP_PROTOCOL_VERSION:
 			AVP_ALLOC(protocol);
-			ptrs->protocol->version = ptr8[0];
-			ptrs->protocol->revision = ptr8[1];
+			AVP_STORE8(protocol->version, 0);
+			AVP_STORE8(protocol->revision, 1);
 			break;
 		case AVP_FRAMING_CAPABILITIES:
 			AVP_ALLOC(framingcap);
-			ptrs->framingcap->sync =
-			    (ntohl(ptr32[0]) & L2TP_FRAMING_SYNC) != 0;
-			ptrs->framingcap->async =
-			    (ntohl(ptr32[0]) & L2TP_FRAMING_ASYNC) != 0;
+			if (avp->vlen >= sizeof(u_int32_t)) {
+			    ptrs->framingcap->sync =
+				(ntohl(ptr32[0]) & L2TP_FRAMING_SYNC) != 0;
+			    ptrs->framingcap->async =
+				(ntohl(ptr32[0]) & L2TP_FRAMING_ASYNC) != 0;
+			}
 			break;
 		case AVP_BEARER_CAPABILITIES:
 			AVP_ALLOC(bearercap);
-			ptrs->bearercap->digital =
-			    (ntohl(ptr32[0]) & L2TP_BEARER_DIGITAL) != 0;
-			ptrs->bearercap->analog =
-			    (ntohl(ptr32[0]) & L2TP_BEARER_ANALOG) != 0;
+			if (avp->vlen >= sizeof(u_int32_t)) {
+			    ptrs->bearercap->digital =
+				(ntohl(ptr32[0]) & L2TP_BEARER_DIGITAL) != 0;
+			    ptrs->bearercap->analog =
+				(ntohl(ptr32[0]) & L2TP_BEARER_ANALOG) != 0;
+			}
 			break;
 		case AVP_TIE_BREAKER:
 			AVP_ALLOC(tiebreaker);
-			memcpy(ptrs->tiebreaker->value, avp->value, 8);
+			if (avp->vlen >= 8)
+				memcpy(ptrs->tiebreaker->value,
+					(char *)avp->value, 8);
 			break;
 		case AVP_FIRMWARE_REVISION:
 			AVP_ALLOC(firmware);
-			ptrs->firmware->revision = ntohs(ptr16[0]);
+			AVP_STORE16(firmware->revision, 0);
 			break;
 		case AVP_HOST_NAME:
 			AVP_ALLOC(hostname);
@@ -594,11 +620,11 @@ do {									\
 			break;
 		case AVP_ASSIGNED_TUNNEL_ID:
 			AVP_ALLOC(tunnelid);
-			ptrs->tunnelid->id = ntohs(ptr16[0]);
+			AVP_STORE16(tunnelid->id, 0);
 			break;
 		case AVP_RECEIVE_WINDOW_SIZE:
 			AVP_ALLOC(winsize);
-			ptrs->winsize->size = ntohs(ptr16[0]);
+			AVP_STORE16(winsize->size, 0);
 			break;
 		case AVP_CHALLENGE:
 			AVP_ALLOC(challenge);
@@ -607,10 +633,9 @@ do {									\
 			break;
 		case AVP_CAUSE_CODE:
 			AVP_ALLOC(causecode);
-			ptrs->causecode->causecode = ntohs(ptr16[0]);
-			ptrs->causecode->causemsg = ptr8[3];
-			memcpy(ptrs->causecode->message,
-			    (char *)avp->value + 3, avp->vlen - 3);
+			AVP_STORE16(causecode->causecode, 0);
+			AVP_STORE8(causecode->causemsg, 3);
+			AVP_MEMCPY_OFF(causecode->message, 4);
 			break;
 		case AVP_CHALLENGE_RESPONSE:
 			AVP_ALLOC(challengresp);
@@ -619,33 +644,37 @@ do {									\
 			break;
 		case AVP_ASSIGNED_SESSION_ID:
 			AVP_ALLOC(sessionid);
-			ptrs->sessionid->id = ntohs(ptr16[0]);
+			AVP_STORE16(sessionid->id, 0);
 			break;
 		case AVP_CALL_SERIAL_NUMBER:
 			AVP_ALLOC(serialnum);
-			ptrs->serialnum->serialnum = ntohl(ptr32[0]);
+			AVP_STORE32(serialnum->serialnum);
 			break;
 		case AVP_MINIMUM_BPS:
 			AVP_ALLOC(minbps);
-			ptrs->minbps->minbps = ntohl(ptr32[0]);
+			AVP_STORE32(minbps->minbps);
 			break;
 		case AVP_MAXIMUM_BPS:
 			AVP_ALLOC(maxbps);
-			ptrs->maxbps->maxbps = ntohl(ptr32[0]);
+			AVP_STORE32(maxbps->maxbps);
 			break;
 		case AVP_BEARER_TYPE:
 			AVP_ALLOC(bearer);
-			ptrs->bearer->digital =
-			    (ntohl(ptr32[0]) & L2TP_BEARER_DIGITAL) != 0;
-			ptrs->bearer->analog =
-			    (ntohl(ptr32[0]) & L2TP_BEARER_ANALOG) != 0;
+			if (avp->vlen >= sizeof(u_int32_t)) {
+			    ptrs->bearer->digital =
+				(ntohl(ptr32[0]) & L2TP_BEARER_DIGITAL) != 0;
+			    ptrs->bearer->analog =
+				(ntohl(ptr32[0]) & L2TP_BEARER_ANALOG) != 0;
+			}
 			break;
 		case AVP_FRAMING_TYPE:
 			AVP_ALLOC(framing);
-			ptrs->framing->sync =
-			    (ntohl(ptr32[0]) & L2TP_FRAMING_SYNC) != 0;
-			ptrs->framing->async =
-			    (ntohl(ptr32[0]) & L2TP_FRAMING_ASYNC) != 0;
+			if (avp->vlen >= sizeof(u_int32_t)) {
+			    ptrs->framing->sync =
+				(ntohl(ptr32[0]) & L2TP_FRAMING_SYNC) != 0;
+			    ptrs->framing->async =
+				(ntohl(ptr32[0]) & L2TP_FRAMING_ASYNC) != 0;
+			}
 			break;
 		case AVP_CALLED_NUMBER:
 			AVP_ALLOC(callednum);
@@ -661,11 +690,11 @@ do {									\
 			break;
 		case AVP_TX_CONNECT_SPEED:
 			AVP_ALLOC(txconnect);
-			ptrs->txconnect->bps = ntohl(ptr32[0]);
+			AVP_STORE32(txconnect->bps);
 			break;
 		case AVP_PHYSICAL_CHANNEL_ID:
 			AVP_ALLOC(channelid);
-			ptrs->channelid->channel = ntohl(ptr32[0]);
+			AVP_STORE32(channelid->channel);
 			break;
 		case AVP_INITIAL_RECV_CONFREQ:
 			AVP_ALLOC(recvlcp);
@@ -684,7 +713,7 @@ do {									\
 			break;
 		case AVP_PROXY_AUTHEN_TYPE:
 			AVP_ALLOC(proxyauth);
-			ptrs->proxyauth->type = ntohs(ptr16[0]);
+			AVP_STORE16(proxyauth->type, 0);
 			break;
 		case AVP_PROXY_AUTHEN_NAME:
 			AVP_ALLOC(proxyname);
@@ -699,7 +728,7 @@ do {									\
 			break;
 		case AVP_PROXY_AUTHEN_ID:
 			AVP_ALLOC(proxyid);
-			ptrs->proxyid->id = ntohs(ptr16[0]);
+			AVP_STORE16(proxyid->id, 0);
 			break;
 		case AVP_PROXY_AUTHEN_RESPONSE:
 			AVP_ALLOC(proxyres);
@@ -707,29 +736,31 @@ do {									\
 			memcpy(ptrs->proxyres->data, avp->value, avp->vlen);
 			break;
 		case AVP_CALL_ERRORS:
-		    {
-			u_int32_t vals[6];
-
-			memcpy(&vals, &ptr16[1], sizeof(vals));
 			AVP_ALLOC(callerror);
-			ptrs->callerror->crc = ntohl(vals[0]);
-			ptrs->callerror->frame = ntohl(vals[1]);
-			ptrs->callerror->overrun = ntohl(vals[2]);
-			ptrs->callerror->buffer = ntohl(vals[3]);
-			ptrs->callerror->timeout = ntohl(vals[4]);
-			ptrs->callerror->alignment = ntohl(vals[5]);
-			break;
-		    }
-		case AVP_ACCM:
-		    {
-			u_int32_t vals[2];
+			if (avp->vlen >=
+			    sizeof(u_int16_t) + 6*sizeof(u_int32_t)) {
+				u_int32_t vals[6];
 
-			memcpy(&vals, &ptr16[1], sizeof(vals));
-			AVP_ALLOC(accm);
-			ptrs->accm->xmit = ntohl(vals[0]);
-			ptrs->accm->recv = ntohl(vals[1]);
+				memcpy(&vals, &ptr16[1], sizeof(vals));
+				ptrs->callerror->crc = ntohl(vals[0]);
+				ptrs->callerror->frame = ntohl(vals[1]);
+				ptrs->callerror->overrun = ntohl(vals[2]);
+				ptrs->callerror->buffer = ntohl(vals[3]);
+				ptrs->callerror->timeout = ntohl(vals[4]);
+				ptrs->callerror->alignment = ntohl(vals[5]);
+			}
 			break;
-		    }
+		case AVP_ACCM:
+			AVP_ALLOC(accm);
+			if (avp->vlen >=
+			    sizeof(u_int16_t) + 2*sizeof(u_int32_t)) {
+				u_int32_t vals[2];
+
+				memcpy(&vals, &ptr16[1], sizeof(vals));
+				ptrs->accm->xmit = ntohl(vals[0]);
+				ptrs->accm->recv = ntohl(vals[1]);
+			}
+			break;
 		case AVP_PRIVATE_GROUP_ID:
 			AVP_ALLOC(groupid);
 			ptrs->groupid->length = avp->vlen;
@@ -737,7 +768,7 @@ do {									\
 			break;
 		case AVP_RX_CONNECT_SPEED:
 			AVP_ALLOC(rxconnect);
-			ptrs->rxconnect->bps = ntohl(ptr32[0]);
+			AVP_STORE32(rxconnect->bps);
 			break;
 		case AVP_SEQUENCING_REQUIRED:
 			AVP_ALLOC(seqrequired);
