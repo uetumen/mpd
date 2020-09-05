@@ -2542,6 +2542,10 @@ ppp_l2tp_ctrl_dump(struct ppp_l2tp_ctrl *ctrl,
 	unsigned i;
 
 	(void)ctrl;
+
+	if ((gLogOptions & LOG_DEBUG) == 0)
+		return;
+
 	va_start(args, fmt);
 	vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
