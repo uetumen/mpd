@@ -11,7 +11,7 @@ PROG?=			mpd5
 PREFIX?=		/usr/local
 LOCALBASE?=		${PREFIX}
 BINDIR?=		${PREFIX}/sbin
-VERSION=		5.9a
+VERSION=		5.9
 NOMAN=
 MK_MAN=			no
 
