@@ -35,6 +35,9 @@
 	    Installations not using RADIUS or not using %aX templates
 	    in RADIUS attributes were not affected.
 	  </item>
+	  <item>LCP negotiation fixed for rare case of remote peer restarting it
+	    when in phase AUTHENTICATE or NETWORK.
+	  </item>
 	  <item> Fix buffer overflow in parsing of L2TP control packets
 	    introduced in version 4.0 that initially brought in L2TP support:
 	    a specially crafted incoming L2TP control packet
