@@ -5,31 +5,32 @@ VERSION!=	cat src/Makefile | grep ^VERSION | awk '{ print $$2 }'
 DISTNAME=	mpd-${VERSION}
 TARBALL=	${DISTNAME}.tar.gz
 PORTBALL=	port.tgz
-CVSROOT?=	:pserver:anonymous@mpd.cvs.sourceforge.net:/cvsroot/mpd
+SVN?=		svn
+SVNROOT?=	https://svn.code.sf.net/p/mpd/svn/tags
 
 all:		${TARBALL} ${PORTBALL}
 
-${TARBALL}:	.export-done
-	cd mpd && ${MAKE} .${TARBALL}
+${TARBALL}:	.vcsexport-done
+	cd mpd && ${MAKE} .tarball
 	cp mpd/${TARBALL} ./${TARBALL}
 
-.${TARBALL}:	.dist-done
+.tarball:	.dist-done
 	rm -f ${TARBALL}
 	tar cvf - ${DISTNAME} | gzip --best > ${TARBALL}
 
-${PORTBALL}:	.export-done
-	cd mpd && ${MAKE} .${PORTBALL}
+${PORTBALL}:	.vcsexport-done
+	cd mpd && ${MAKE} .portball
 	cp mpd/${PORTBALL} ./${PORTBALL}
 
-.${PORTBALL}:	.dist-done
+.portball:	.dist-done
 	cd port && ${MAKE} port
 
-.export-done:
+.vcsexport-done:
 	@if [ -z ${TAG} ]; then						\
 		echo ERROR: Please specify TAG in environment;		\
 		false;							\
 	fi
-	cvs -d${CVSROOT} export -r ${TAG} mpd
+	${SVN} export ${SVNROOT}/${TAG} mpd
 	touch ${.TARGET}
 
 .dist-done:	.doc-done
@@ -58,7 +59,7 @@ send:	${TARBALL}
 
 clean cleandir:
 	rm -rf mpd
-	rm -f .export-done
+	rm -f .vcsexport-done
 	cd doc && ${MAKE} clean
 	rm -f .doc-done
 	rm -rf ${DISTNAME} ${TARBALL} ${PORTBALL}
