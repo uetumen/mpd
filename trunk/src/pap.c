@@ -148,7 +148,7 @@ PapInput(Link l, AuthData auth, const u_char *pkt, u_short len)
 	    goto error;
 
 	name_len = pkt[0];
-	name_ptr = pkt + 1;
+	name_ptr = (const char*)(pkt + 1);
 
 	if (1 + name_len >= len)
 	    goto error;
@@ -191,7 +191,7 @@ PapInput(Link l, AuthData auth, const u_char *pkt, u_short len)
 	/* Show reply message */
 	if (len > 0) {
 	    int		msg_len = pkt[0];
-	    const char	*msg = &pkt[1];
+	    const char	*msg = (const char*)(pkt + 1);
 	    if (msg_len < len - 1)
 		msg_len = len - 1;
 	    ShowMesg(LG_AUTH, l->name, msg, msg_len);
