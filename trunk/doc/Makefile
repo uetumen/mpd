@@ -6,6 +6,9 @@ all:		mpd.8
 
 DOC=		mpd
 FORMATS=	html ps
+DATE!=		date +%Y-%m-%d
+PREFIX?=	/usr/local
+VERSION!=	awk '/^VERSION=/ { print $$2 }' ../src/Makefile
 
 SRCS+=		mpd.sgml version.sgml overview.sgml layers.sgml manorg.sgml
 SRCS+=		changes.sgml getting.sgml building.sgml installing.sgml
@@ -22,11 +25,10 @@ CLEANFILES+=	version.sgml mpd.8 mpd.ps
 .SUFFIXES:	.in
 
 .in:
-	VERSION=`grep ^VERSION= ../src/Makefile | awk '{ print $$2 }'`; \
-	DATE=`date +'%Y-%m-%d'`; \
 	sed \
-	  -e "s/@DATE@/$$DATE/g" \
-	  -e "s/@VERSION@/$$VERSION/g" \
+	  -e "s/@DATE@/${DATE}/g" \
+	  -e "s,@PREFIX@,${PREFIX},g" \
+	  -e "s/@VERSION@/${VERSION}/g" \
 	  < ${.ALLSRC} > ${.TARGET}
 
 .include "bsd.sgml.mk"
