@@ -47,7 +47,7 @@ ECP_DES=		yes
 USE_NG_BPF=		yes
 USE_NG_CAR=		yes
 USE_NG_DEFLATE=		yes
-USE_NG_IPACCT=		yes
+USE_NG_IPACCT?=		yes
 USE_NG_MPPC=		yes
 USE_NG_NAT=		yes
 USE_NG_NETFLOW=		yes
@@ -275,7 +275,7 @@ DPADD+=		${LIBPCAP}
 .if defined ( USE_NG_CAR )
 CFLAGS+=	-DUSE_NG_CAR
 .endif
-.if defined ( USE_NG_IPACCT )
+.if defined ( USE_NG_IPACCT ) && ( ${USE_NG_IPACCT} == yes )
 CFLAGS+=	-DUSE_NG_IPACCT -nostdinc -I/usr/include -I${LOCALBASE}/include
 .endif
 .if defined ( USE_NG_NAT )
