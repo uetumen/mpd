@@ -7,7 +7,6 @@ all:		mpd.8
 DOC=		mpd
 FORMATS=	html ps
 DATE!=		date +%Y-%m-%d
-PREFIX?=	/usr/local
 VERSION!=	awk '/^VERSION=/ { print $$2 }' ../src/Makefile
 
 SRCS+=		mpd.sgml version.sgml overview.sgml layers.sgml manorg.sgml
@@ -27,7 +26,6 @@ CLEANFILES+=	version.sgml mpd.8 mpd.ps
 .in:
 	sed \
 	  -e "s/@DATE@/${DATE}/g" \
-	  -e "s,@PREFIX@,${PREFIX},g" \
 	  -e "s/@VERSION@/${VERSION}/g" \
 	  < ${.ALLSRC} > ${.TARGET}
 
