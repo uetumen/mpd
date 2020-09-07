@@ -42,8 +42,8 @@
 	    introduced in version 4.0 that initially brought in L2TP support:
 	    a specially crafted incoming L2TP control packet
 	    might lead to unexpected termination of the process.
-	    Installations not using L2TP clients nor L2TP server configuration
-	    were not affected.
+	    Installations with neither L2TP clients nor L2TP server configured
+	    are not affected.
 	  </item>
 	</itemize>
 	</item>
