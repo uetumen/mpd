@@ -154,7 +154,7 @@ PapInput(Link l, AuthData auth, const u_char *pkt, u_short len)
 	    goto error;
 
 	pass_len = pkt[1 + name_len];
-	pass_ptr = pkt + 1 + name_len + 1;
+	pass_ptr = (const char *)pkt + 1 + name_len + 1;
 
 	if (name_len + 1 + pass_len + 1 > len)
 	    goto error;
