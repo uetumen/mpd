@@ -634,8 +634,8 @@ do {									\
 		case AVP_CAUSE_CODE:
 			AVP_ALLOC(causecode);
 			AVP_STORE16(causecode->causecode, 0);
-			AVP_STORE8(causecode->causemsg, 3);
-			AVP_MEMCPY_OFF(causecode->message, 4);
+			AVP_STORE8(causecode->causemsg, 2);
+			AVP_MEMCPY_OFF(causecode->message, 3);
 			break;
 		case AVP_CHALLENGE_RESPONSE:
 			AVP_ALLOC(challengresp);
