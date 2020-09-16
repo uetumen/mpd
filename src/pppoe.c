@@ -1294,6 +1294,7 @@ PppoeListenEvent(int type, void *arg)
 	}
 	bzero(agent_cid, sizeof(agent_cid));
 	bzero(agent_rid, sizeof(agent_rid));
+	/* https://tools.ietf.org/html/rfc4679#section-3.1 */
 	if ((tag = get_vs_tag(ph, htonl(0x00000DE9)))) {
 	    size_t len = ntohs(tag->tag_len) - 4, pos = 0;
 	    const char *b = (const char *)(tag + 1) + 4;
