@@ -220,7 +220,7 @@ packet.  The rogue router drops the ICMP message and the originator
 never gets to discover that it must reduce the fragment size or drop
 the IP Don't Fragment option from its outgoing data.
 
-The code is based on tcpmssd wich was written by Ruslan Ermilov
+The code is based on tcpmssd which was written by Ruslan Ermilov
 <htmlurl url='mailto:<ru@FreeBSD.org>' name='&lt;ru@FreeBSD.org&gt;'>
  based on work done by Patrick Bihan-Faou
 <htmlurl url='mailto:<patrick@mindstep.com>' name='&lt;patrick@mindstep.com&gt;'>.
