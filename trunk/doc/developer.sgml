@@ -22,7 +22,7 @@ operators and operands.
 <p>
 NEVER call NgFuncGetStats() with the <em>clear</em> parameter set to true, because 
 there are other functions (echo requests/replies, bandwidth management) 
-wich relies on increasing link-stats. Mpd carries a copy of the netgraph 
+which relies on increasing link-stats. Mpd carries a copy of the netgraph 
 link-stats at link-level, just use these instead. You can call 
 LinkUpdateStats() for updating the internal stats-struct.
 </p>

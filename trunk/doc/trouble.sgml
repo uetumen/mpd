@@ -91,7 +91,7 @@ I am getting no valid response from the RADIUS server.
 Double-check the shared secret in the RADIUS servers config and the
 one specified in <tt>mpd.conf</tt> or <tt>radius.conf</tt>.
 Check the ports of the RADIUS server: they should be 1812 (authentication)
-and 1813 (accounting), wich are also the default ports of mpd. In
+and 1813 (accounting), which are also the default ports of mpd. In
 the past unofficial port numbers (1645 and 1646) were used for RADIUS,
 but these are deprecated.
 
