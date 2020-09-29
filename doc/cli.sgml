@@ -15,7 +15,7 @@
 	<tt>mpd.conf</tt> config file.
 
 	At any given time, there is always exists an <em>active context</em>
-	shich includes active link, bundle and repeater. These name are
+	which includes active link, bundle and repeater. These name are
 	shown in the prompt. Here is an example of running mpd
 	with a configuration in <tt>mpd.conf</tt> that defines
 	a bundle <tt>myisp</tt> containing two links <tt>modem1</tt>
