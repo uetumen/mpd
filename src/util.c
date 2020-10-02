@@ -1183,7 +1183,7 @@ GetAnyIpAddress(struct u_addr *ipaddr, const char *ifname)
 	    ipa.s_addr = 0; 	/* We don't like 127.0.0.1 */
     }
 
-    /* If simple is not enouth try complex call */
+    /* If simple is not enough try complex call */
     if (ipa.s_addr == 0) {
       struct ifreq *ifs;
       while (1) {
