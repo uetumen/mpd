@@ -675,6 +675,7 @@ ppp_l2tp_initiate(struct ppp_l2tp_ctrl *ctrl, int out,
 	/* Check control connection */
 	/* XXX add support for sessions waiting for open ctrl conection */
 	if (ctrl->state != CS_ESTABLISHED) {
+		Log(LOG_ERR, ("L2TP: inappropriate call to %s", __FUNCTION__));
 		errno = ENXIO;
 		return (NULL);
 	}
