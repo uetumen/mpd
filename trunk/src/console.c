@@ -109,7 +109,7 @@ ConsoleInit(Console c)
     int ret;
 
   /* setup console-defaults */
-  memset(&gConsole, 0, sizeof(gConsole));
+  memset(c, 0, sizeof(*c));
   ParseAddr(DEFAULT_CONSOLE_IP, &c->addr, ALLOW_IPV4|ALLOW_IPV6);
   c->port = DEFAULT_CONSOLE_PORT;
   Enable(&c->options, CONSOLE_AUTH);
