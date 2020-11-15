@@ -354,7 +354,7 @@ pppoe_client:
 	set auth authname MyLogin
 	set auth password MyPass
 	set link max-redial 0
-	set link mtu 1460
+	set link enable multilink
 	set link keep-alive 10 60
 	set pppoe iface fxp0
 	set pppoe service ""
