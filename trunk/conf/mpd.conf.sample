@@ -246,6 +246,7 @@ pptp_vpn:
 	create bundle static B1
 	set ipcp ranges 192.168.1.1/32 192.168.2.1/32
 	set iface route 192.168.2.0/24
+	set iface enable tcpmssfix
 # Enable Microsoft Point-to-Point encryption (MPPE)
 	set bundle enable compression
 	set ccp yes mppc
@@ -308,6 +309,8 @@ pppoe_server:
 
 # Create clonable bundle template
 	create bundle template B
+# Adjust TCP MSS for PPPoE
+	set iface enable tcpmssfix
 # Set IP addresses. Peer address will be later replaced by RADIUS.
 	set ipcp ranges 192.168.0.1/32 127.0.0.2/32
 
@@ -343,6 +346,7 @@ pppoe_client:
 
 	create bundle static B1
 	set iface route default
+	set iface enable tcpmssfix
 	set ipcp ranges 0.0.0.0/0 0.0.0.0/0
 	
 	create link static L1 pppoe
