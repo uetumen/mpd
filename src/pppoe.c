@@ -614,8 +614,8 @@ PppoeCtrlReadEvent(int type, void *arg)
 	/* Decode message. */
 	switch (u.resp.header.cmd) {
 	    case NGM_PPPOE_SESSIONID: /* XXX: I do not know what to do with this? */
-		Log(LG_PHYS3, ("PPPoE: rec'd SESSIONID %u from \"%s\"",
-		  ntohs((uint16_t)u.resp.data), path));
+		Log(LG_PHYS3, ("PPPoE: rec'd SESSIONID %hu from \"%s\"",
+		  ntohs(*(uint16_t*)&u.resp.data), path));
 		break;
 	    case NGM_PPPOE_SUCCESS:
 		Log(LG_PHYS, ("[%s] PPPoE: connection successful", l->name));
